@@ -128,8 +128,14 @@ export class NightBotMonitor {
             this.chatClient.onMessage((channel, user, message, msg) => {
                 const username = user.toLowerCase();
 
+                // Игнорируем сообщения от ботов (включая свои собственные)
                 if (username === 'nightbot') {
                     this.handleNightbotMessage(channel, message, msg);
+                    return;
+                }
+
+                // Игнорируем сообщения от своего бота
+                if (username.includes('bot') || username === 'kunila666_bot') {
                     return;
                 }
 
