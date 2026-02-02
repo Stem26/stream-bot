@@ -1,67 +1,71 @@
-/*
-================== PM2 / ДЕПЛОЙ БОТА ==================
+## Управление ботами на сервере
 
-Команды PM2 для управления ботом:
+### Статус и логи
+```bash
+pm2 list                    # Статус всех ботов
+pm2 logs                    # Логи всех ботов
+pm2 logs telegram-bot       # Логи только Telegram бота
+pm2 logs twitch-bot         # Логи только Twitch бота
+```
 
-Остановить:
-pm2 stop telegram-bot
+### Перезапуск
+```bash
+pm2 restart all             # Перезапустить оба бота
+pm2 restart telegram-bot    # Только Telegram бот
+pm2 restart twitch-bot      # Только Twitch бот
+```
 
-Перезапустить:
+### Остановка/Запуск
+```bash
+pm2 stop telegram-bot       # Остановить
+pm2 start telegram-bot      # Запустить
+```
+
+---
+
+## Обновление бота
+
+### 1. Локально
+```bash
+git add .
+git commit -m "описание изменений"
+git push
+```
+
+### 2. На сервере
+
+**Обновить оба бота:**
+```bash
+/root/stream-bot/update.sh
+```
+
+**Обновить только Telegram бот:**
+```bash
+cd /root/stream-bot
+git pull origin main
+npm install
+npm run build:telegram
 pm2 restart telegram-bot
+```
 
-Удалить из списка PM2:
-pm2 delete telegram-bot
+**Обновить только Twitch бот:**
+```bash
+cd /root/stream-bot
+git pull origin main
+npm install
+npm run build:twitch
+pm2 restart twitch-bot
+```
 
-Проверить статус:
-pm2 list
+---
 
-Посмотреть логи:
-pm2 logs telegram-bot
+## Прочее
 
-Остановка — бот не работает, но остается в списке PM2.
-Запуск снова:
-pm2 start telegram-bot
+```bash
+# Nightbot команда
+npm run nightbot:send -- "@Kunilika666 текст"
 
-Перезапуск — бот останавливается и сразу запускается заново
-(быстрее, чем stop + start).
-
----------------- ПОРЯДОК ОБНОВЛЕНИЯ БОТА ----------------
-
-1. ЛОКАЛЬНО (на компьютере):
-    - Внести изменения в код
-    - Открыть GitHub Desktop
-    - Сделать Commit
-    - Сделать Push в GitHub
-
-2. СЕРВЕР (вручную):
-   cd /root/telegram-bot-repo
-   git pull origin main
-   npm install
-   npm run build
-   pm2 restart telegram-bot
-========================================================
-*/
-cd /root/telegram-bot-repo
-nano .env
-nano /root/telegram-bot-repo/twitch-players.json
-nano /root/telegram-bot-repo/.env
-npm run nightbot:send -- "@Kunilika666 Милый стример "
-cd /root/telegram-bot-repo && npm run nightbot:send -- "@Kunilika666 Милый стример"
-5. npm start
-6. Прод ID: -1001983402471
-   Заходя на канал используй команду !dick"
-   !dick !top_dick !bottomdick
-
-8. npm test
-
-# Одноразовый запуск
-npm run test:run
-
-# С покрытием кода
-npm run test:coverage
-
-# Для теста с продовым ботом
-npm run test:stream
-
-# Для теста с тестовым ботом
-npm run test:stream:dev
+# Прод канал ID: -1001983402471
+# Команды: /dick /top_dick /bottomdick
+# Twitch: !dick !top_dick !bottomdick !vanish
+```
