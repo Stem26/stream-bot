@@ -1,0 +1,33 @@
+{
+  "name": "telegram-twitch-bots-monorepo",
+  "version": "1.0.0",
+  "description": "Монорепозиторий с микросервисами для Telegram и Twitch ботов",
+  "private": true,
+  "workspaces": [
+    "services/telegram-service",
+    "services/twitch-service"
+  ],
+  "scripts": {
+    "dev:telegram": "npm --workspace services/telegram-service run dev",
+    "dev:twitch": "npm --workspace services/twitch-service run dev",
+    "build:telegram": "npm --workspace services/telegram-service run build",
+    "build:twitch": "npm --workspace services/twitch-service run build",
+    "start:telegram": "npm --workspace services/telegram-service run start",
+    "start:twitch": "npm --workspace services/twitch-service run start",
+    "nightbot:send": "npm --workspace services/twitch-service run nightbot:send",
+    "twitch:announcement:test": "npm --workspace services/twitch-service run twitch:announcement:test",
+    "twitch:token:check": "npm --workspace services/twitch-service run twitch:token:check"
+  },
+  "keywords": [
+    "telegram",
+    "twitch",
+    "bot",
+    "monorepo",
+    "microservices"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "rimraf": "^5.0.5"
+  }
+}
