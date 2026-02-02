@@ -16,7 +16,7 @@ export async function postCommand(ctx: BotContext, bot: Telegraf<BotContext>) {
   }
 
   // ✨ Используем ctx.config вместо импорта!
-  const channelId = ctx.config.channelId;
+  const channelId = ctx.config.telegram.channelId;
   
   // Проверка наличия канала
   if (!channelId) {
