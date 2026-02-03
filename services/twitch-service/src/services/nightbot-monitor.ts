@@ -3,7 +3,7 @@ import { StaticAuthProvider } from '@twurple/auth';
 import { processTwitchDickCommand } from '../commands/twitch-dick';
 import { processTwitchTopDickCommand } from '../commands/twitch-topDick';
 import { processTwitchBottomDickCommand } from '../commands/twitch-bottomDick';
-import { processTwitchDuelCommand } from '../commands/twitch-duel';
+import { processTwitchDuelCommand, clearDuelQueue } from '../commands/twitch-duel';
 import { processTwitchPointsCommand, processTwitchTopPointsCommand } from '../commands/twitch-points';
 import { IS_LOCAL } from '../config/env';
 
@@ -384,6 +384,13 @@ export class NightBotMonitor {
     setStreamStatusCheck(checkFunction: () => boolean): void {
         this.isStreamOnlineCheck = checkFunction;
         console.log('✅ Установлена функция проверки статуса стрима');
+    }
+
+    /**
+     * Очистка очереди на дуэли (вызывается при окончании стрима)
+     */
+    clearDuelQueue(): void {
+        clearDuelQueue();
     }
 
     async disconnect() {

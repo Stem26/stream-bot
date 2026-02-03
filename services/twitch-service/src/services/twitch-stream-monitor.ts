@@ -1,7 +1,7 @@
 import {ApiClient} from '@twurple/api';
 import {StaticAuthProvider} from '@twurple/auth';
 import {EventSubWsListener} from '@twurple/eventsub-ws';
-import type { Telegram } from 'telegraf';
+import type {Telegram} from 'telegraf';
 
 const STREAM_WELCOME_MESSAGE =
     '📸Boosty (запретные фото): https://boosty.to/kunilika911 ───────────────── ' +
@@ -10,9 +10,9 @@ const STREAM_WELCOME_MESSAGE =
     '🔮Telegram (тайная жизнь): https://t.me/+V96KfRWs17AxNzM9';
 
 const LINK_ANNOUNCEMENTS = [
-    { message: '💖Donation (шанс, что приду): https://donatex.gg/donate/kunilika666', color: 'orange' as const },
-    { message: '📸Boosty (запретные фото): https://boosty.to/kunilika911', color: 'purple' as const },
-    { message: '🔮Telegram (тайная жизнь): https://t.me/+V96KfRWs17AxNzM9', color: 'blue' as const }
+    {message: '💖Donation (шанс, что приду): https://donatex.gg/donate/kunilika666', color: 'orange' as const},
+    {message: '📸Boosty (запретные фото): https://boosty.to/kunilika911', color: 'purple' as const},
+    {message: '🔮Telegram (тайная жизнь): https://t.me/+V96KfRWs17AxNzM9', color: 'blue' as const}
 ];
 
 const ANNOUNCEMENT_REPEAT_INTERVAL_MS = 60 * 60 * 1000;
@@ -44,7 +44,8 @@ export class TwitchStreamMonitor {
     private linkRotationTimeout: NodeJS.Timeout | null = null;
     private currentLinkIndex: number = 0;
     private isStreamOnline: boolean = false;
-    
+    private onStreamOfflineCallback: (() => void) | null = null;
+
     // Для отправки announcement
     private accessToken: string = '';
     private clientId: string = '';
@@ -92,9 +93,9 @@ export class TwitchStreamMonitor {
             console.error(`✅ Найден канал: ${user.displayName}`);
 
             const validateRes = await fetch('https://id.twitch.tv/oauth2/validate', {
-                headers: { 'Authorization': `OAuth ${accessToken}` }
+                headers: {'Authorization': `OAuth ${accessToken}`}
             });
-            
+
             if (validateRes.ok) {
                 const validateData = await validateRes.json() as { user_id: string };
                 this.moderatorId = validateData.user_id;
@@ -114,22 +115,22 @@ export class TwitchStreamMonitor {
 
                 console.error(`🔴 Стрим начался на канале ${event.broadcasterDisplayName}!`);
                 this.isStreamOnline = true;
-                
+
                 // Отправляем приветственный announcement (все ссылки)
                 await this.sendWelcomeAnnouncement();
-                
+
                 // Запускаем повтор welcome announcement каждый час
                 this.startWelcomeAnnouncementInterval();
-                
+
                 // Запускаем ротацию отдельных ссылок через 15 минут
                 this.startLinkRotation();
-                
+
                 await this.handleStreamOnline(event, telegramChannelId);
-                
+
                 // Получаем реальное время начала стрима из API
                 const stream = await this.apiClient!.streams.getStreamByUserId(event.broadcasterId);
                 const startDate = stream?.startDate || new Date();
-                
+
                 this.startViewerCountTracking(event.broadcasterId, event.broadcasterName, startDate);
             });
 
@@ -137,11 +138,18 @@ export class TwitchStreamMonitor {
             this.listener.onStreamOffline(user.id, async (event) => {
                 console.error(`⚫ Стрим завершился на канале ${event.broadcasterDisplayName}`);
                 this.isStreamOnline = false;
-                
+
+                try {
+                    this.onStreamOfflineCallback?.();
+                    console.log('🧹 Очередь дуэлей очищена (стрим оффлайн)');
+                } catch (e) {
+                    console.error('❌ Ошибка при очистке очереди дуэлей:', e);
+                }
+
                 // Останавливаем все интервалы
                 this.stopWelcomeAnnouncementInterval();
                 this.stopLinkRotation();
-                
+
                 const result = this.stopViewerCountTracking();
                 await this.handleStreamOffline(event, telegramChannelId, result);
             });
@@ -172,20 +180,20 @@ export class TwitchStreamMonitor {
                 console.error(`   🎮 Игра: ${stream.gameName || 'Не указана'}`);
                 console.error(`   📝 Название: ${stream.title}`);
                 console.error(`   👥 Зрителей: ${stream.viewers}`);
-                
+
                 // Устанавливаем флаг, что стрим онлайн
                 this.isStreamOnline = true;
-                
+
                 // Отправляем welcome announcement, так как стрим уже идёт
                 console.error(`📣 Отправляем welcome announcement...`);
                 await this.sendWelcomeAnnouncement();
-                
+
                 // Запускаем повтор welcome announcement
                 this.startWelcomeAnnouncementInterval();
-                
+
                 // Запускаем ротацию ссылок
                 this.startLinkRotation();
-                
+
                 // Получаем информацию о broadcasterе для запуска отслеживания
                 const user = await this.apiClient.users.getUserById(userId);
                 if (user) {
@@ -213,7 +221,7 @@ export class TwitchStreamMonitor {
         try {
             // Пытаемся получить информацию о стриме с повторными попытками
             let stream = await this.apiClient.streams.getStreamByUserId(event.broadcasterId);
-            
+
             // Если не получилось с первого раза, делаем повторную попытку через 2 секунды
             if (!stream) {
                 console.error('⚠️ Не удалось получить информацию о стриме с первой попытки, повторная попытка через 2 сек...');
@@ -223,7 +231,7 @@ export class TwitchStreamMonitor {
 
             // Формируем сообщение в зависимости от наличия данных
             let message: string;
-            
+
             if (stream) {
                 message = `
 🟢 <b>Стрим начался!</b>
@@ -254,7 +262,7 @@ export class TwitchStreamMonitor {
             console.error('✅ Уведомление о начале стрима отправлено в Telegram');
         } catch (error) {
             console.error('❌ Ошибка при отправке уведомления:', error);
-            
+
             // Даже при ошибке пытаемся отправить минимальное уведомление
             try {
                 const fallbackMessage = `🟢 <b>Стрим начался на канале ${event.broadcasterDisplayName}!</b>\n\n🔗 <a href="https://twitch.tv/${event.broadcasterName}">${event.broadcasterDisplayName}</a>`;
@@ -299,6 +307,10 @@ export class TwitchStreamMonitor {
         this.fetchAndRecordViewerCount();
     }
 
+    public setOnStreamOfflineCallback(cb: () => void) {
+        this.onStreamOfflineCallback = cb;
+    }
+
     /**
      * Остановка отслеживания количества зрителей
      * @returns статистика стрима или null
@@ -328,7 +340,7 @@ export class TwitchStreamMonitor {
         // Очищаем данные
         this.currentStreamStats = null;
 
-        return { stats, broadcasterName };
+        return {stats, broadcasterName};
     }
 
     /**
@@ -379,7 +391,7 @@ export class TwitchStreamMonitor {
         // Отправляем уведомление о завершении со статистикой
         if (telegramChannelId && result) {
             try {
-                const { stats } = result;
+                const {stats} = result;
 
                 const message = [
                     `🔴 Стрим <a href="https://twitch.tv/${event.broadcasterName}">${event.broadcasterDisplayName}</a> закончился`,
@@ -456,7 +468,7 @@ export class TwitchStreamMonitor {
         this.welcomeInterval = setInterval(async () => {
             console.log('🔄 Повтор welcome announcement...');
             await this.sendWelcomeAnnouncement();
-            
+
             // Сбрасываем ротацию ссылок после welcome
             console.log('🔄 Сброс ротации ссылок после welcome...');
             this.stopLinkRotation();
@@ -486,7 +498,7 @@ export class TwitchStreamMonitor {
 
         this.linkRotationTimeout = setTimeout(() => {
             this.sendNextLinkAnnouncement();
-            
+
             this.linkRotationInterval = setInterval(() => {
                 this.sendNextLinkAnnouncement();
             }, LINK_ROTATION_INTERVAL_MS);
@@ -505,13 +517,13 @@ export class TwitchStreamMonitor {
             clearTimeout(this.linkRotationTimeout);
             this.linkRotationTimeout = null;
         }
-        
+
         // Очищаем interval (повторы каждые 15 минут)
         if (this.linkRotationInterval) {
             clearInterval(this.linkRotationInterval);
             this.linkRotationInterval = null;
         }
-        
+
         // Сбрасываем индекс, если что-то было активно
         if (hadTimeout || hadInterval) {
             this.currentLinkIndex = 0;
@@ -529,7 +541,7 @@ export class TwitchStreamMonitor {
         }
 
         const currentLink = LINK_ANNOUNCEMENTS[this.currentLinkIndex];
-        
+
         try {
             console.log(`📣 Ротация ссылок [${this.currentLinkIndex + 1}/${LINK_ANNOUNCEMENTS.length}]: ${currentLink.message.split(':')[0]}`);
 

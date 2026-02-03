@@ -27,6 +27,11 @@ async function main() {
   // Связываем проверку статуса стрима: команды работают только когда стрим онлайн
   nightBotMonitor.setStreamStatusCheck(() => streamMonitor.getStreamStatus());
 
+  // Очищаем очередь на дуэли при окончании стрима
+  streamMonitor.setOnStreamOfflineCallback(() => {
+    nightBotMonitor.clearDuelQueue();
+  });
+
   await nightBotMonitor.connect(
     config.twitch.channel,
     config.twitch.accessToken,

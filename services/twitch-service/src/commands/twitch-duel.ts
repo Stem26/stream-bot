@@ -108,3 +108,14 @@ export function processTwitchDuelCommand(
     loser
   };
 }
+
+/**
+ * Очистка очереди на дуэли (вызывается при окончании стрима)
+ */
+export function clearDuelQueue(): void {
+  const queueSize = duelQueueByChannel.size;
+  duelQueueByChannel.clear();
+  if (queueSize > 0) {
+    console.log(`🧹 Очередь на дуэли очищена (было ${queueSize} игроков)`);
+  }
+}
