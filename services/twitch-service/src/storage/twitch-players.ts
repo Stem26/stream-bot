@@ -6,6 +6,9 @@ export interface TwitchPlayerData {
   size: number;
   lastUsed: number;
   lastUsedDate?: string;
+  points?: number;
+  duelTimeoutUntil?: number;
+  lastDuelUsed?: number;
 }
 
 const TWITCH_PLAYERS_FILE = path.join(process.cwd(), 'twitch-players.json');

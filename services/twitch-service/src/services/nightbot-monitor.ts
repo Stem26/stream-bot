@@ -3,6 +3,9 @@ import { StaticAuthProvider } from '@twurple/auth';
 import { processTwitchDickCommand } from '../commands/twitch-dick';
 import { processTwitchTopDickCommand } from '../commands/twitch-topDick';
 import { processTwitchBottomDickCommand } from '../commands/twitch-bottomDick';
+import { processTwitchDuelCommand } from '../commands/twitch-duel';
+import { processTwitchPointsCommand, processTwitchTopPointsCommand } from '../commands/twitch-points';
+import { IS_LOCAL } from '../config/env';
 
 type CommandHandler = (channel: string, user: string, message: string, msg: any) => void | Promise<void>;
 
@@ -27,6 +30,12 @@ export class NightBotMonitor {
         ['!topdick', (ch, u, m, msg) => void this.handleTopDickCommand(ch, u, m, msg)],
         ['!bottom_dick', (ch, u, m, msg) => void this.handleBottomDickCommand(ch, u, m, msg)],
         ['!bottomdick', (ch, u, m, msg) => void this.handleBottomDickCommand(ch, u, m, msg)],
+        ['!points', (ch, u, m, msg) => void this.handlePointsCommand(ch, u, m, msg)],
+        ['!очки', (ch, u, m, msg) => void this.handlePointsCommand(ch, u, m, msg)],
+        ['!top_points', (ch, u, m, msg) => void this.handleTopPointsCommand(ch, u, m, msg)],
+        ['!toppoints', (ch, u, m, msg) => void this.handleTopPointsCommand(ch, u, m, msg)],
+        ['!топ_очки', (ch, u, m, msg) => void this.handleTopPointsCommand(ch, u, m, msg)],
+        ['!дуэль', (ch, u, m, msg) => void this.handleDuelCommand(ch, u, m, msg)],
         ['!vanish', (ch, u, m, msg) => void this.handleVanishCommand(ch, u, msg)]
     ]);
 
@@ -124,6 +133,9 @@ export class NightBotMonitor {
 
             await new Promise(resolve => setTimeout(resolve, 2000));
             console.log('✅ Чат готов к работе!');
+            if (IS_LOCAL) {
+                console.log('🧪 Локальный режим: команды чата отключены');
+            }
 
             this.chatClient.onMessage((channel, user, message, msg) => {
                 const username = user.toLowerCase();
@@ -141,6 +153,10 @@ export class NightBotMonitor {
 
                 const trimmedMessage = message.trim().toLowerCase();
                 console.log(`📨 ${user}: ${message}`);
+
+                // if (IS_LOCAL) {
+                //     return;
+                // }
 
                 // Проверяем, есть ли команда в мапе
                 const commandHandler = this.commands.get(trimmedMessage);
@@ -203,6 +219,55 @@ export class NightBotMonitor {
     }
 
     /**
+     * Обработка команды !points из чата
+     */
+    private async handlePointsCommand(channel: string, user: string, message: string, msg: any) {
+        console.log(`💰 Команда !points от ${user} в ${channel}`);
+
+        try {
+            const response = processTwitchPointsCommand(user);
+            await this.sendMessage(channel, response);
+            console.log(`✅ Отправлен ответ в чат: ${response}`);
+        } catch (error) {
+            console.error('❌ Ошибка при обработке команды !points:', error);
+        }
+    }
+
+    /**
+     * Обработка команды !top_points из чата
+     */
+    private async handleTopPointsCommand(channel: string, user: string, message: string, msg: any) {
+        console.log(`💰 Команда !top_points от ${user} в ${channel}`);
+
+        try {
+            const response = processTwitchTopPointsCommand();
+            await this.sendMessage(channel, response);
+            console.log(`✅ Отправлен топ по очкам в чат`);
+        } catch (error) {
+            console.error('❌ Ошибка при обработке команды !top_points:', error);
+        }
+    }
+
+    /**
+     * Обработка команды !дуэль из чата
+     */
+    private async handleDuelCommand(channel: string, user: string, message: string, msg: any) {
+        console.log(`⚔️ Команда !дуэль от ${user} в ${channel}`);
+
+        try {
+            const result = processTwitchDuelCommand(user, channel);
+            await this.sendMessage(channel, result.response);
+            console.log(`✅ Отправлен ответ в чат: ${result.response}`);
+
+            if (result.loser) {
+                await this.timeoutUser(result.loser, 300, 'Duel');
+            }
+        } catch (error) {
+            console.error('❌ Ошибка при обработке команды !дуэль:', error);
+        }
+    }
+
+    /**
      * Обработка команды !vanish из чата
      * Даёт пользователю символический таймаут на 1 секунду для скрытия сообщений
      */
@@ -210,32 +275,39 @@ export class NightBotMonitor {
         console.log(`👻 Команда !vanish от ${user} в ${channel}`);
         
         try {
-            // Получаем ID пользователя
-            const userData = await this.helix<{ data: Array<{ id: string }> }>(
-                `https://api.twitch.tv/helix/users?login=${user}`
-            );
-            if (!userData.data[0]) {
-                console.error(`❌ Пользователь ${user} не найден`);
-                return;
-            }
-            const userId = userData.data[0].id;
-
-            // Выдаём таймаут через Helix API
-            await this.helix(
-                `https://api.twitch.tv/helix/moderation/bans?broadcaster_id=${this.broadcasterId}&moderator_id=${this.moderatorId}`,
-                {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        data: { user_id: userId, duration: 1, reason: 'Vanish' }
-                    })
-                }
-            );
-
-            console.log(`✅ Таймаут выдан: ${user}`);
+            await this.timeoutUser(user, 1, 'Vanish');
         } catch (error: any) {
             console.error(`❌ Ошибка !vanish:`, error?.message || error);
         }
+    }
+
+    /**
+     * Таймаут пользователя через Helix API
+     */
+    private async timeoutUser(username: string, durationSeconds: number, reason: string): Promise<void> {
+        // Получаем ID пользователя
+        const userData = await this.helix<{ data: Array<{ id: string }> }>(
+            `https://api.twitch.tv/helix/users?login=${username.toLowerCase()}`
+        );
+        if (!userData.data[0]) {
+            console.error(`❌ Пользователь ${username} не найден`);
+            return;
+        }
+        const userId = userData.data[0].id;
+
+        // Выдаём таймаут через Helix API
+        await this.helix(
+            `https://api.twitch.tv/helix/moderation/bans?broadcaster_id=${this.broadcasterId}&moderator_id=${this.moderatorId}`,
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    data: { user_id: userId, duration: durationSeconds, reason }
+                })
+            }
+        );
+
+        console.log(`✅ Таймаут выдан: ${username} на ${durationSeconds} сек.`);
     }
 
     /**

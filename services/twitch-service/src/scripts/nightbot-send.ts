@@ -27,10 +27,6 @@ async function main() {
 
   if (!message) {
     console.log('Использование:');
-    console.log('  npm run nightbot:send -- "Привет, чат!"');
-    console.log('  npm run nightbot:send -- "@Kunilika666 Милый стример"');
-    console.log('');
-    console.log('(сообщение с @ для упоминания пользователя)');
     process.exit(0);
   }
 
@@ -66,10 +62,7 @@ async function main() {
     console.error('   ', error.message || error);
 
     if (error.message?.includes('authentication')) {
-      console.error('');
       console.error('💡 Проверьте, что ваш TWITCH_ACCESS_TOKEN имеет права:');
-      console.error('   - chat:read');
-      console.error('   - chat:edit');
     }
 
     process.exit(1);
