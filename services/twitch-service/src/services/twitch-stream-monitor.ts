@@ -582,4 +582,11 @@ export class TwitchStreamMonitor {
             console.error('❌ Ошибка при отключении от Twitch EventSub:', error);
         }
     }
+
+    /**
+     * Проверка, онлайн ли сейчас стрим
+     */
+    public getStreamStatus(): boolean {
+        return this.isStreamOnline;
+    }
 }

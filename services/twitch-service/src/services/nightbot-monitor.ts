@@ -16,6 +16,7 @@ export class NightBotMonitor {
     private moderatorId: string = '';
     private accessToken: string = '';
     private clientId: string = '';
+    private isStreamOnlineCheck: () => boolean = () => true;
 
     private dickQueue: Promise<void> = Promise.resolve();
 
@@ -154,13 +155,18 @@ export class NightBotMonitor {
                 const trimmedMessage = message.trim().toLowerCase();
                 console.log(`📨 ${user}: ${message}`);
 
-                // if (IS_LOCAL) {
-                //     return;
-                // }
+                if (IS_LOCAL) {
+                    return;
+                }
 
                 // Проверяем, есть ли команда в мапе
                 const commandHandler = this.commands.get(trimmedMessage);
                 if (commandHandler) {
+                    // В dev режиме команды работают всегда, в prod только когда стрим онлайн
+                    if (!IS_LOCAL && !this.isStreamOnlineCheck()) {
+                        console.log(`⚠️ Команда ${trimmedMessage} проигнорирована: стрим оффлайн`);
+                        return;
+                    }
                     commandHandler(channel, user, message, msg);
                 }
             });
@@ -370,6 +376,15 @@ export class NightBotMonitor {
      * Callback для обработки сообщений Nightbot (можно переопределить)
      */
     public onNightbotMessage: (channel: string, message: string, msg: any) => void = () => {};
+
+    /**
+     * Установить функцию проверки статуса стрима
+     * @param checkFunction - функция, возвращающая true, если стрим онлайн
+     */
+    setStreamStatusCheck(checkFunction: () => boolean): void {
+        this.isStreamOnlineCheck = checkFunction;
+        console.log('✅ Установлена функция проверки статуса стрима');
+    }
 
     async disconnect() {
         if (this.chatClient) {

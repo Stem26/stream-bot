@@ -24,6 +24,9 @@ async function main() {
   // Chat monitor / commands / moderation
   const nightBotMonitor = new NightBotMonitor();
 
+  // Связываем проверку статуса стрима: команды работают только когда стрим онлайн
+  nightBotMonitor.setStreamStatusCheck(() => streamMonitor.getStreamStatus());
+
   await nightBotMonitor.connect(
     config.twitch.channel,
     config.twitch.accessToken,
