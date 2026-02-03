@@ -7,6 +7,7 @@ type DuelQueueEntry = {
 };
 
 const duelQueueByChannel = new Map<string, DuelQueueEntry>();
+const duelCooldownByChannel = new Map<string, number>();
 const DEFAULT_POINTS = 1000;
 const DUEL_WIN_POINTS = 25;
 const DUEL_TIMEOUT_MS = 5 * 60 * 1000;
@@ -52,10 +53,12 @@ export function processTwitchDuelCommand(
   const normalized = twitchUsername.toLowerCase();
   const player = ensurePlayer(players, twitchUsername);
 
-  if (player.lastDuelUsed && now - player.lastDuelUsed < DUEL_COOLDOWN_MS) {
-    const secondsLeft = Math.ceil((DUEL_COOLDOWN_MS - (now - player.lastDuelUsed)) / 1000);
+  const lastDuelAt = duelCooldownByChannel.get(channel);
+
+  if (lastDuelAt && now - lastDuelAt < DUEL_COOLDOWN_MS) {
+    const secondsLeft = Math.ceil((DUEL_COOLDOWN_MS - (now - lastDuelAt)) / 1000);
     return {
-      response: `@${twitchUsername}, КД на дуэль ещё ${secondsLeft} сек.`
+      response: `Револьверы ещё не остыли подожди ${secondsLeft} сек.`
     };
   }
 
@@ -98,9 +101,8 @@ export function processTwitchDuelCommand(
     player.duelTimeoutUntil = now + DUEL_TIMEOUT_MS;
   }
 
-  player.lastDuelUsed = now;
-  opponentPlayer.lastDuelUsed = now;
   duelQueueByChannel.delete(channel);
+  duelCooldownByChannel.set(channel, now);
   saveTwitchPlayers(players);
 
   return {
