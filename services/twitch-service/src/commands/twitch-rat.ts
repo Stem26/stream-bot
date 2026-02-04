@@ -1,8 +1,8 @@
 // Отслеживаем активных пользователей по каналам
 const activeUsersByChannel = new Map<string, Set<string>>();
-// Отслеживаем кулдаун команды !крыса по каналам
-const ratCooldownByChannel = new Map<string, number>();
-const RAT_COOLDOWN_MS = 60 * 1000; // 1 минута
+// Отслеживаем кд команд по каналам
+const cooldownByChannel = new Map<string, Map<string, number>>();
+const COOLDOWN_MS = 60 * 1000; // 1 минута
 
 /**
  * Добавить пользователя в список активных
@@ -15,18 +15,29 @@ export function addActiveUser(channel: string, username: string): void {
   activeUsersByChannel.get(normalized)!.add(username.toLowerCase());
 }
 
-export function processTwitchRatCommand(
-    channel: string
+export function processTwitchRandomUserCommand(
+    channel: string,
+    type: 'rat' | 'cutie' = 'rat'
 ): { response: string } {
   const normalized = channel.toLowerCase();
   const now = Date.now();
   
-  // Проверяем кулдаун
-  const lastRatAt = ratCooldownByChannel.get(normalized);
-  if (lastRatAt && now - lastRatAt < RAT_COOLDOWN_MS) {
-    const secondsLeft = Math.ceil((RAT_COOLDOWN_MS - (now - lastRatAt)) / 1000);
+  // Инициализируем Map кд для канала, если не существует
+  if (!cooldownByChannel.has(normalized)) {
+    cooldownByChannel.set(normalized, new Map());
+  }
+  
+  const channelCooldowns = cooldownByChannel.get(normalized)!;
+  const lastCommandAt = channelCooldowns.get(type);
+  
+  // Проверяем кд
+  if (lastCommandAt && now - lastCommandAt < COOLDOWN_MS) {
+    const secondsLeft = Math.ceil((COOLDOWN_MS - (now - lastCommandAt)) / 1000);
+    const cooldownMessage = type === "rat"
+      ? `Крысу уже ловили, жди ${secondsLeft} сек.`
+      : `Милашку уже выбрали, жди ${secondsLeft} сек.`;
     return {
-      response: `Крысу уже ловили, жди ${secondsLeft} сек.`
+      response: cooldownMessage
     };
   }
 
@@ -34,14 +45,27 @@ export function processTwitchRatCommand(
 
   // Конвертируем Set в Array и выбираем рандомного
   const usersArray = Array.from(activeUsers || []);
-  const randomRat = usersArray[Math.floor(Math.random() * usersArray.length)];
+  const randomUser = usersArray[Math.floor(Math.random() * usersArray.length)];
 
-  // Устанавливаем кулдаун
-  ratCooldownByChannel.set(normalized, now);
+  // Устанавливаем кд
+  channelCooldowns.set(type, now);
+
+  const resultMessage = type === "rat"
+    ? `КРЫСА ОБНАРУЖЕНА: @${randomUser}!`
+    : `Сегодня милашка чата @${randomUser}!`;
 
   return {
-    response: `КРЫСА ОБНАРУЖЕНА: @${randomRat}!`
+    response: resultMessage
   };
+}
+
+// Обратная совместимость
+export function processTwitchRatCommand(channel: string): { response: string } {
+  return processTwitchRandomUserCommand(channel, 'rat');
+}
+
+export function processTwitchCutieCommand(channel: string): { response: string } {
+  return processTwitchRandomUserCommand(channel, 'cutie');
 }
 
 /**
@@ -58,6 +82,6 @@ export function clearActiveUsers(channel: string): void {
  */
 export function clearAllActiveUsers(): void {
   activeUsersByChannel.clear();
-  ratCooldownByChannel.clear();
-  console.log(`🧹 Все активные пользователи и кулдауны очищены`);
+  cooldownByChannel.clear();
+  console.log(`🧹 Все активные пользователи и кды очищены`);
 }

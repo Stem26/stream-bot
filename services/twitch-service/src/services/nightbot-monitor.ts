@@ -4,7 +4,7 @@ import { processTwitchDickCommand } from '../commands/twitch-dick';
 import { processTwitchTopDickCommand } from '../commands/twitch-topDick';
 import { processTwitchBottomDickCommand } from '../commands/twitch-bottomDick';
 import { processTwitchDuelCommand } from '../commands/twitch-duel';
-import { processTwitchRatCommand, addActiveUser } from '../commands/twitch-rat';
+import { processTwitchRatCommand, processTwitchCutieCommand, addActiveUser } from '../commands/twitch-rat';
 import { processTwitchPointsCommand, processTwitchTopPointsCommand } from '../commands/twitch-points';
 import { IS_LOCAL } from '../config/env';
 
@@ -39,6 +39,7 @@ export class NightBotMonitor {
         ['!топ_очки', (ch, u, m, msg) => void this.handleTopPointsCommand(ch, u, m, msg)],
         ['!дуэль', (ch, u, m, msg) => void this.handleDuelCommand(ch, u, m, msg)],
         ['!крыса', (ch, u, m, msg) => void this.handleRatCommand(ch, u, m, msg)],
+        ['!милашка', (ch, u, m, msg) => void this.handleCutieCommand(ch, u, m, msg)],
         ['!vanish', (ch, u, m, msg) => void this.handleVanishCommand(ch, u, msg)]
     ]);
 
@@ -291,6 +292,22 @@ export class NightBotMonitor {
             console.log(`✅ Отправлен ответ в чат: ${result.response}`);
         } catch (error) {
             console.error('❌ Ошибка при обработке команды !крыса:', error);
+        }
+    }
+
+    /**
+     * Обработка команды !милашка из чата
+     * Выбирает рандомного активного чатера
+     */
+    private async handleCutieCommand(channel: string, user: string, message: string, msg: any) {
+        console.log(`💕 Команда !милашка от ${user} в ${channel}`);
+
+        try {
+            const result = processTwitchCutieCommand(channel);
+            await this.sendMessage(channel, result.response);
+            console.log(`✅ Отправлен ответ в чат: ${result.response}`);
+        } catch (error) {
+            console.error('❌ Ошибка при обработке команды !милашка:', error);
         }
     }
 
