@@ -3,7 +3,8 @@ import { StaticAuthProvider } from '@twurple/auth';
 import { processTwitchDickCommand } from '../commands/twitch-dick';
 import { processTwitchTopDickCommand } from '../commands/twitch-topDick';
 import { processTwitchBottomDickCommand } from '../commands/twitch-bottomDick';
-import { processTwitchDuelCommand, clearDuelQueue } from '../commands/twitch-duel';
+import { processTwitchDuelCommand } from '../commands/twitch-duel';
+import { processTwitchRatCommand, addActiveUser } from '../commands/twitch-rat';
 import { processTwitchPointsCommand, processTwitchTopPointsCommand } from '../commands/twitch-points';
 import { IS_LOCAL } from '../config/env';
 
@@ -37,6 +38,7 @@ export class NightBotMonitor {
         ['!toppoints', (ch, u, m, msg) => void this.handleTopPointsCommand(ch, u, m, msg)],
         ['!топ_очки', (ch, u, m, msg) => void this.handleTopPointsCommand(ch, u, m, msg)],
         ['!дуэль', (ch, u, m, msg) => void this.handleDuelCommand(ch, u, m, msg)],
+        ['!крыса', (ch, u, m, msg) => void this.handleRatCommand(ch, u, m, msg)],
         ['!vanish', (ch, u, m, msg) => void this.handleVanishCommand(ch, u, msg)]
     ]);
 
@@ -151,6 +153,9 @@ export class NightBotMonitor {
                 if (username.includes('bot') || username === 'kunila666_bot') {
                     return;
                 }
+
+                // Отслеживаем активных пользователей для команды !крыса
+                addActiveUser(channel, username);
 
                 const trimmedMessage = message.trim().toLowerCase();
                 console.log(`📨 ${user}: ${message}`);
@@ -274,6 +279,22 @@ export class NightBotMonitor {
     }
 
     /**
+     * Обработка команды !крыса из чата
+     * Выбирает рандомного активного чатера
+     */
+    private async handleRatCommand(channel: string, user: string, message: string, msg: any) {
+        console.log(`🐀 Команда !крыса от ${user} в ${channel}`);
+
+        try {
+            const result = processTwitchRatCommand(channel);
+            await this.sendMessage(channel, result.response);
+            console.log(`✅ Отправлен ответ в чат: ${result.response}`);
+        } catch (error) {
+            console.error('❌ Ошибка при обработке команды !крыса:', error);
+        }
+    }
+
+    /**
      * Обработка команды !vanish из чата
      * Даёт пользователю символический таймаут на 1 секунду для скрытия сообщений
      */
@@ -386,12 +407,6 @@ export class NightBotMonitor {
         console.log('✅ Установлена функция проверки статуса стрима');
     }
 
-    /**
-     * Очистка очереди на дуэли (вызывается при окончании стрима)
-     */
-    clearDuelQueue(): void {
-        clearDuelQueue();
-    }
 
     async disconnect() {
         if (this.chatClient) {
