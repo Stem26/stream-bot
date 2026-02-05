@@ -16,7 +16,8 @@
     "start:twitch": "npm --workspace services/twitch-service run start",
     "nightbot:send": "npm --workspace services/twitch-service run nightbot:send",
     "twitch:announcement:test": "npm --workspace services/twitch-service run twitch:announcement:test",
-    "twitch:token:check": "npm --workspace services/twitch-service run twitch:token:check"
+    "twitch:token:check": "npm --workspace services/twitch-service run twitch:token:check",
+    "stream:notification:test": "npm --workspace services/twitch-service run stream:notification:test"
   },
   "keywords": [
     "telegram",

@@ -11,6 +11,7 @@
     "nightbot:send": "ts-node src/scripts/nightbot-send.ts",
     "twitch:announcement:test": "ts-node src/scripts/announcement-test.ts",
     "twitch:token:check": "ts-node src/scripts/token-check.ts",
+    "stream:notification:test": "ts-node src/scripts/stream-notification-test.ts",
     "watch": "tsc --watch",
     "test": "vitest",
     "test:run": "vitest run"
