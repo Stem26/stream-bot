@@ -5,11 +5,16 @@ import { AppConfig } from '../types/config';
 const NODE_ENV = process.env.NODE_ENV || 'development';
 const IS_LOCAL = NODE_ENV === 'development';
 
-// Для dev используем .env.local, для start/prod - .env
-const envFile = IS_LOCAL ? '.env.local' : '.env';
-dotenv.config({ path: path.resolve(process.cwd(), envFile) });
+// Путь к корню монорепозитория (относительно этого файла: config -> src -> twitch-service -> services -> root)
+const MONOREPO_ROOT = path.resolve(__dirname, '../../../../');
 
-console.log(`[ENV] Загрузка конфигурации из: ${envFile} (NODE_ENV=${NODE_ENV})`);
+// Определяем какой .env файл загружать из корня монорепы
+const envFile = IS_LOCAL ? '.env.local' : '.env';
+const envPath = path.resolve(MONOREPO_ROOT, envFile);
+
+console.log(`[ENV] Загрузка конфигурации из: ${envPath} (NODE_ENV=${NODE_ENV})`);
+
+dotenv.config({ path: envPath });
 
 /**
  * Загружает конфигурацию из переменных окружения

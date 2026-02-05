@@ -96,7 +96,7 @@ pm2 restart twitch-bot
 
 ```bash
 # Nightbot команда
-npm run nightbot:send -- "@Kunilika666 текст"
+npm run nightbot:send -- "@Kunilika666 милый стример"
 
 # Прод канал ID: -1001983402471
 # Команды: /dick /top_dick /bottomdick

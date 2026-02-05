@@ -68,6 +68,7 @@ twitch-players.json
 services/*/players.json
 services/*/twitch-players.json
 *.json.backup
+announcement-state.json
 
 # PM2
 .pm2/

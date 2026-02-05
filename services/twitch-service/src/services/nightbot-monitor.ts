@@ -4,11 +4,36 @@ import { processTwitchDickCommand } from '../commands/twitch-dick';
 import { processTwitchTopDickCommand } from '../commands/twitch-topDick';
 import { processTwitchBottomDickCommand } from '../commands/twitch-bottomDick';
 import { processTwitchDuelCommand } from '../commands/twitch-duel';
-import { processTwitchRatCommand, processTwitchCutieCommand, addActiveUser } from '../commands/twitch-rat';
+import { processTwitchRatCommand, processTwitchCutieCommand, addActiveUser, setChattersAPIFunction } from '../commands/twitch-rat';
 import { processTwitchPointsCommand, processTwitchTopPointsCommand } from '../commands/twitch-points';
 import { IS_LOCAL } from '../config/env';
 
 type CommandHandler = (channel: string, user: string, message: string, msg: any) => void | Promise<void>;
+
+// Blacklist ботов для фильтрации из списка зрителей (нормализован в lowercase + Set для O(1) поиска)
+const BOT_BLACKLIST = new Set([
+    'nightbot',
+    'streamelements',
+    'streamlabs',
+    'moobot',
+    'fossabot',
+    'kunila666_bot',
+    'wizebot',
+    'botrix',
+    'coebot',
+    'vivbot',
+    'ankhbot',
+    'deepbot',
+    'streamjar',
+    'pretzelrocks',
+    'sery_bot',
+    'stay_hydrated_bot',
+    'commanderroot',
+    'virgoproz',
+    'p0sitivitybot',
+    'soundalerts',
+    'slocool'
+].map(x => x.toLowerCase()));
 
 export class NightBotMonitor {
     private chatClient: ChatClient | null = null;
@@ -20,6 +45,12 @@ export class NightBotMonitor {
     private isStreamOnlineCheck: () => boolean = () => true;
 
     private dickQueue: Promise<void> = Promise.resolve();
+
+    // Кеш списка зрителей чата (для команд !крыса, !милашка)
+    private chattersCache = new Map<string, { users: string[]; expires: number; createdAt: number }>();
+    private readonly CHATTERS_CACHE_TTL_MS = 60 * 1000; // 60 секунд
+    // Inflight promise для предотвращения параллельных запросов к API
+    private chattersFetchPromise: Promise<string[]> | null = null;
 
     // Мапа команд для чистого роутинга
     private readonly commands = new Map<string, CommandHandler>([
@@ -44,24 +75,162 @@ export class NightBotMonitor {
     ]);
 
     /**
-     * Helper для Helix API запросов
+     * Helper для Helix API запросов с retry логикой (exponential backoff)
+     * @param url - URL для запроса
+     * @param options - fetch options
+     * @param maxRetries - максимальное количество попыток (по умолчанию 3)
      */
-    private async helix<T>(url: string, options: RequestInit = {}): Promise<T> {
-        const res = await fetch(url, {
-            ...options,
-            headers: {
-                'Authorization': `Bearer ${this.accessToken}`,
-                'Client-Id': this.clientId,
-                ...(options.headers || {})
-            }
-        });
+    private async helix<T>(url: string, options: RequestInit = {}, maxRetries: number = 3): Promise<T> {
+        let lastError: Error | null = null;
 
-        if (!res.ok) {
-            const text = await res.text();
-            throw new Error(`HTTP ${res.status}: ${text}`);
+        for (let attempt = 0; attempt < maxRetries; attempt++) {
+            try {
+                const res = await fetch(url, {
+                    ...options,
+                    headers: {
+                        'Authorization': `Bearer ${this.accessToken}`,
+                        'Client-Id': this.clientId,
+                        ...(options.headers || {})
+                    }
+                });
+
+                if (!res.ok) {
+                    const text = await res.text();
+                    const error = new Error(`HTTP ${res.status}: ${text}`);
+                    (error as any).status = res.status;
+                    throw error;
+                }
+
+                return (await res.json()) as T;
+
+            } catch (error) {
+                lastError = error as Error;
+                const status = (error as any).status;
+                
+                // Не делаем retry на 4xx ошибках (клиентские ошибки, бессмысленно повторять)
+                if (status && status >= 400 && status < 500) {
+                    throw lastError;
+                }
+                
+                // Если это последняя попытка - пробрасываем ошибку
+                if (attempt === maxRetries - 1) {
+                    throw lastError;
+                }
+
+                // Exponential backoff: 1s, 2s, 4s, 8s...
+                const delayMs = 1000 * Math.pow(2, attempt);
+                console.log(`⚠️ Helix API ошибка (попытка ${attempt + 1}/${maxRetries}), повтор через ${delayMs}мс:`, lastError.message);
+                
+                await new Promise(resolve => setTimeout(resolve, delayMs));
+            }
         }
 
-        return (await res.json()) as T;
+        // Этот код никогда не выполнится, но TypeScript требует
+        throw lastError!;
+    }
+
+    /**
+     * Получить список всех зрителей подключенных к чату
+     * Обрабатывает пагинацию для получения всех пользователей (API лимит: 1000 за запрос)
+     * Использует кеширование для снижения нагрузки на Twitch API
+     * Использует inflight promise для предотвращения параллельных запросов
+     * Использует Stale-While-Revalidate: при ошибке API возвращает устаревший кеш
+     */
+    private async getChatters(channel: string): Promise<string[]> {
+        const normalized = channel.replace(/^#/, '').toLowerCase();
+        const now = Date.now();
+
+        // Проверяем свежий кеш
+        const cached = this.chattersCache.get(normalized);
+        if (cached && cached.expires > now) {
+            console.log(`📦 Используем кеш зрителей: ${cached.users.length} пользователей (свежесть: ${Math.round((cached.expires - now) / 1000)}с)`);
+            return cached.users;
+        }
+
+        // Если запрос уже в процессе - ждём его результата (race condition protection)
+        if (this.chattersFetchPromise) {
+            console.log(`⏳ Запрос к API уже в процессе, ожидаем...`);
+            return this.chattersFetchPromise;
+        }
+
+        // Создаём новый запрос и сохраняем promise
+        this.chattersFetchPromise = (async () => {
+            try {
+                let cursor: string | undefined;
+                const allChatters: string[] = [];
+                let pageCount = 0;
+                const MAX_PAGES = 50; // Safety limit: 50 страниц × 1000 = 50,000 зрителей максимум
+
+                do {
+                    const url = new URL('https://api.twitch.tv/helix/chat/chatters');
+                    url.searchParams.set('broadcaster_id', this.broadcasterId);
+                    url.searchParams.set('moderator_id', this.moderatorId);
+                    url.searchParams.set('first', '1000');
+
+                    if (cursor) {
+                        url.searchParams.set('after', cursor);
+                    }
+
+                    const response = await this.helix<{
+                        data: Array<{ user_login: string }>;
+                        pagination?: { cursor?: string };
+                        total: number;
+                    }>(url.toString());
+
+                    const pageChatters = response.data.map(c => c.user_login);
+                    allChatters.push(...pageChatters);
+                    cursor = response.pagination?.cursor;
+                    pageCount++;
+
+                    console.log(`📊 Страница ${pageCount}: получено ${pageChatters.length} зрителей (всего: ${allChatters.length})`);
+
+                    // Safety limit: защита от бесконечного цикла при баге pagination
+                    if (pageCount >= MAX_PAGES) {
+                        console.warn(`⚠️ Достигнут лимит страниц (${MAX_PAGES}), прерываем pagination`);
+                        break;
+                    }
+
+                } while (cursor);
+
+                console.log(`✅ Получено ${allChatters.length} зрителей из Twitch API за ${pageCount} запросов`);
+
+                // Фильтруем ботов (Set.has() = O(1) vs Array.includes() = O(n))
+                const filteredChatters = allChatters.filter(user => !BOT_BLACKLIST.has(user.toLowerCase()));
+                const botsFiltered = allChatters.length - filteredChatters.length;
+
+                if (botsFiltered > 0) {
+                    console.log(`🤖 Отфильтровано ботов: ${botsFiltered} (осталось: ${filteredChatters.length} зрителей)`);
+                }
+
+                // Сохраняем в кеш с timestamp создания
+                this.chattersCache.set(normalized, {
+                    users: filteredChatters,
+                    expires: now + this.CHATTERS_CACHE_TTL_MS,
+                    createdAt: now
+                });
+
+                return filteredChatters;
+            } catch (error) {
+                console.error('❌ Ошибка получения списка зрителей:', error);
+                
+                // Stale-While-Revalidate: если API упал, используем старый кеш (даже истёкший)
+                const staleCache = this.chattersCache.get(normalized);
+                if (staleCache) {
+                    const staleAge = Math.round((now - staleCache.createdAt) / 1000);
+                    console.log(`⚠️ API недоступен, используем устаревший кеш: ${staleCache.users.length} пользователей (возраст: ${staleAge}с)`);
+                    return staleCache.users;
+                }
+                
+                // Только если кеша вообще нет - пробрасываем ошибку для fallback на activeUsers
+                console.error('❌ Кеш отсутствует, fallback на activeUsers');
+                throw error;
+            } finally {
+                // Очищаем inflight promise после завершения (успешного или с ошибкой)
+                this.chattersFetchPromise = null;
+            }
+        })();
+
+        return this.chattersFetchPromise;
     }
 
     /**
@@ -72,39 +241,43 @@ export class NightBotMonitor {
      */
     async connect(channelName: string, accessToken: string, clientId: string) {
         try {
-            this.channelName = channelName;
+            // Нормализуем имя канала сразу (убираем # и приводим к lowercase)
+            this.channelName = channelName.replace(/^#/, '').toLowerCase();
             this.accessToken = accessToken;
             this.clientId = clientId;
 
             console.log('🔄 Начинаем подключение к Twitch чату...');
-            console.log('   Канал:', channelName);
+            console.log('   Канал:', this.channelName);
 
             const authProvider = new StaticAuthProvider(clientId, accessToken);
 
             // Получаем broadcaster ID и moderator ID для команды !vanish
             const helixData = await this.helix<{ data: Array<{ id: string }> }>(
-                `https://api.twitch.tv/helix/users?login=${channelName}`
+                `https://api.twitch.tv/helix/users?login=${this.channelName}`
             );
-            
+
             if (!helixData.data[0]) {
-                throw new Error(`Канал ${channelName} не найден в Helix`);
+                throw new Error(`Канал ${this.channelName} не найден в Helix`);
             }
             this.broadcasterId = helixData.data[0].id;
 
             const validateRes = await fetch('https://id.twitch.tv/oauth2/validate', {
                 headers: { 'Authorization': `OAuth ${accessToken}` }
             });
-            
+
             if (!validateRes.ok) {
                 throw new Error(`Token validate failed: ${await validateRes.text()}`);
             }
-            
+
             const validateData = await validateRes.json() as { user_id: string };
             this.moderatorId = validateData.user_id;
 
+            // Устанавливаем функцию для получения списка зрителей
+            setChattersAPIFunction((channel: string) => this.getChatters(channel));
+
             this.chatClient = new ChatClient({
                 authProvider,
-                channels: [channelName]
+                channels: [this.channelName]
             });
 
             this.chatClient.onConnect(() => {
@@ -117,7 +290,7 @@ export class NightBotMonitor {
                     // Это нормальное автоматическое переподключение, игнорируем
                     return;
                 }
-                
+
                 console.log('🔌 Отключились от Twitch чата');
                 console.log('   Вручную:', manually);
                 if (reason) {
@@ -133,13 +306,16 @@ export class NightBotMonitor {
             });
 
             await this.chatClient.connect();
-            console.log(`✅ Подключено к чату канала: ${channelName}`);
+            console.log(`✅ Подключено к чату канала: ${this.channelName}`);
 
             await new Promise(resolve => setTimeout(resolve, 2000));
             console.log('✅ Чат готов к работе!');
             if (IS_LOCAL) {
                 console.log('🧪 Локальный режим: команды чата отключены');
             }
+
+            // Warming up: предзагружаем список зрителей для быстрого первого !крыса
+            this.warmupChattersCache();
 
             this.chatClient.onMessage((channel, user, message, msg) => {
                 const username = user.toLowerCase();
@@ -150,20 +326,20 @@ export class NightBotMonitor {
                     return;
                 }
 
-                // Игнорируем сообщения от своего бота
-                if (username.includes('bot') || username === 'kunila666_bot') {
+                // Игнорируем сообщения от ботов из blacklist
+                if (BOT_BLACKLIST.has(username)) {
                     return;
                 }
 
-                // Отслеживаем активных пользователей для команды !крыса
+                // Отслеживаем активных пользователей для команды !крыса (fallback)
                 addActiveUser(channel, username);
 
                 const trimmedMessage = message.trim().toLowerCase();
                 console.log(`📨 ${user}: ${message}`);
 
-                if (IS_LOCAL) {
-                    return;
-                }
+                // if (IS_LOCAL) {
+                //     return;
+                // }
 
                 // Проверяем, есть ли команда в мапе
                 const commandHandler = this.commands.get(trimmedMessage);
@@ -281,13 +457,13 @@ export class NightBotMonitor {
 
     /**
      * Обработка команды !крыса из чата
-     * Выбирает рандомного активного чатера
+     * Выбирает рандомного активного чатера из списка подключенных зрителей
      */
     private async handleRatCommand(channel: string, user: string, message: string, msg: any) {
         console.log(`🐀 Команда !крыса от ${user} в ${channel}`);
 
         try {
-            const result = processTwitchRatCommand(channel);
+            const result = await processTwitchRatCommand(channel, user);
             await this.sendMessage(channel, result.response);
             console.log(`✅ Отправлен ответ в чат: ${result.response}`);
         } catch (error) {
@@ -297,13 +473,13 @@ export class NightBotMonitor {
 
     /**
      * Обработка команды !милашка из чата
-     * Выбирает рандомного активного чатера
+     * Выбирает рандомного активного чатера из списка подключенных зрителей
      */
     private async handleCutieCommand(channel: string, user: string, message: string, msg: any) {
         console.log(`💕 Команда !милашка от ${user} в ${channel}`);
 
         try {
-            const result = processTwitchCutieCommand(channel);
+            const result = await processTwitchCutieCommand(channel, user);
             await this.sendMessage(channel, result.response);
             console.log(`✅ Отправлен ответ в чат: ${result.response}`);
         } catch (error) {
@@ -317,7 +493,7 @@ export class NightBotMonitor {
      */
     private async handleVanishCommand(channel: string, user: string, msg: any) {
         console.log(`👻 Команда !vanish от ${user} в ${channel}`);
-        
+
         try {
             await this.timeoutUser(user, 1, 'Vanish');
         } catch (error: any) {
@@ -357,7 +533,6 @@ export class NightBotMonitor {
     /**
      * Отправка сообщения в чат Twitch
      * Использует прямую отправку через Chat Client (с токеном модератора)
-     * Nightbot API используется только как fallback, если прямая отправка не удалась
      */
     async sendMessage(channel: string, message: string): Promise<void> {
         if (!this.chatClient) {
@@ -365,7 +540,6 @@ export class NightBotMonitor {
             throw new Error('Chat client не подключен');
         }
 
-        // Основной способ: прямая отправка через Chat Client с токеном модератора
         try {
             await this.chatClient.say(channel, message);
             return;
@@ -424,12 +598,41 @@ export class NightBotMonitor {
         console.log('✅ Установлена функция проверки статуса стрима');
     }
 
+    /**
+     * Очистить кеш зрителей чата (полезно при окончании стрима)
+     */
+    clearChattersCache(): void {
+        this.chattersCache.clear();
+        this.chattersFetchPromise = null;
+        console.log('🧹 Кеш зрителей очищен');
+    }
+
+    /**
+     * Warming up: предзагружает список зрителей в кеш для быстрого первого !крыса
+     * Выполняется асинхронно в фоне, не блокирует запуск
+     */
+    private warmupChattersCache(): void {
+        console.log('🔥 Warming up: предзагружаем список зрителей...');
+        
+        // Запускаем в фоне, не ждём результата
+        this.getChatters(this.channelName)
+            .then(chatters => {
+                console.log(`✅ Warming up завершён: ${chatters.length} зрителей в кеше`);
+            })
+            .catch(error => {
+                console.log(`⚠️ Warming up не удался (не критично):`, error.message);
+            });
+    }
 
     async disconnect() {
         if (this.chatClient) {
             await this.chatClient.quit();
             console.log('🔌 Отключено от Twitch чата');
         }
+
+        // Очищаем кеш зрителей и inflight promise
+        this.chattersCache.clear();
+        this.chattersFetchPromise = null;
     }
 
     isConnected(): boolean {

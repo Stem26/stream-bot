@@ -2,6 +2,43 @@ import {ApiClient} from '@twurple/api';
 import {StaticAuthProvider} from '@twurple/auth';
 import {EventSubWsListener} from '@twurple/eventsub-ws';
 import type {Telegram} from 'telegraf';
+import * as fs from 'fs';
+import * as path from 'path';
+
+// Файл для хранения состояния announcement'ов (в корне монорепы)
+const ANNOUNCEMENT_STATE_FILE = path.resolve(__dirname, '../../../../../announcement-state.json');
+
+interface AnnouncementState {
+    lastWelcomeAnnouncementAt: number | null;  // timestamp
+    lastLinkAnnouncementAt: number | null;     // timestamp
+    currentLinkIndex: number;
+}
+
+/**
+ * Загружает состояние announcement'ов из файла
+ */
+function loadAnnouncementState(): AnnouncementState {
+    try {
+        if (fs.existsSync(ANNOUNCEMENT_STATE_FILE)) {
+            const data = fs.readFileSync(ANNOUNCEMENT_STATE_FILE, 'utf-8');
+            return JSON.parse(data);
+        }
+    } catch (error) {
+        console.error('⚠️ Ошибка загрузки состояния announcements:', error);
+    }
+    return { lastWelcomeAnnouncementAt: null, lastLinkAnnouncementAt: null, currentLinkIndex: 0 };
+}
+
+/**
+ * Сохраняет состояние announcement'ов в файл
+ */
+function saveAnnouncementState(state: AnnouncementState): void {
+    try {
+        fs.writeFileSync(ANNOUNCEMENT_STATE_FILE, JSON.stringify(state, null, 2));
+    } catch (error) {
+        console.error('⚠️ Ошибка сохранения состояния announcements:', error);
+    }
+}
 
 const STREAM_WELCOME_MESSAGE =
     '📸Boosty (запретные фото): https://boosty.to/kunilika911 ───────────────── ' +
@@ -44,6 +81,7 @@ export class TwitchStreamMonitor {
     private linkRotationTimeout: NodeJS.Timeout | null = null;
     private currentLinkIndex: number = 0;
     private isStreamOnline: boolean = false;
+    private announcementState: AnnouncementState;
     private onStreamOfflineCallback: (() => void) | null = null;
 
     // Для отправки announcement
@@ -54,6 +92,10 @@ export class TwitchStreamMonitor {
 
     constructor(telegram: Telegram) {
         this.telegram = telegram;
+        // Загружаем состояние при создании
+        this.announcementState = loadAnnouncementState();
+        this.currentLinkIndex = this.announcementState.currentLinkIndex;
+        console.log('📋 Загружено состояние announcements:', this.announcementState);
     }
 
     /**
@@ -117,10 +159,10 @@ export class TwitchStreamMonitor {
                 this.isStreamOnline = true;
 
                 // Отправляем приветственный announcement (все ссылки)
-                await this.sendWelcomeAnnouncement();
+                // await this.sendWelcomeAnnouncement();
 
                 // Запускаем повтор welcome announcement каждый час
-                this.startWelcomeAnnouncementInterval();
+                // this.startWelcomeAnnouncementInterval();
 
                 // Запускаем ротацию отдельных ссылок через 15 минут
                 this.startLinkRotation();
@@ -147,7 +189,7 @@ export class TwitchStreamMonitor {
                 }
 
                 // Останавливаем все интервалы
-                this.stopWelcomeAnnouncementInterval();
+                // this.stopWelcomeAnnouncementInterval();
                 this.stopLinkRotation();
 
                 const result = this.stopViewerCountTracking();
@@ -186,10 +228,10 @@ export class TwitchStreamMonitor {
 
                 // Отправляем welcome announcement, так как стрим уже идёт
                 console.error(`📣 Отправляем welcome announcement...`);
-                await this.sendWelcomeAnnouncement();
+                // await this.sendWelcomeAnnouncement();
 
                 // Запускаем повтор welcome announcement
-                this.startWelcomeAnnouncementInterval();
+                // this.startWelcomeAnnouncementInterval();
 
                 // Запускаем ротацию ссылок
                 this.startLinkRotation();
@@ -414,10 +456,23 @@ export class TwitchStreamMonitor {
 
     /**
      * Отправляет приветственное announcement (выделенное объявление) в чат
+     * @param force - если true, отправляет независимо от времени последней отправки
      */
-    private async sendWelcomeAnnouncement(): Promise<void> {
+    private async sendWelcomeAnnouncement(force: boolean = false): Promise<void> {
         if (!this.accessToken || !this.clientId || !this.broadcasterId || !this.moderatorId) {
             console.error('⚠️ Нет данных для отправки announcement');
+            return;
+        }
+
+        // Проверяем, прошло ли достаточно времени с последней отправки
+        const now = Date.now();
+        const lastSent = this.announcementState.lastWelcomeAnnouncementAt;
+        const timeSinceLastSent = lastSent ? now - lastSent : Infinity;
+        const minInterval = ANNOUNCEMENT_REPEAT_INTERVAL_MS * 0.9; // 90% от интервала (защита от погрешности)
+
+        if (!force && lastSent && timeSinceLastSent < minInterval) {
+            const remainingMins = Math.ceil((minInterval - timeSinceLastSent) / 60000);
+            console.log(`⏳ Welcome announcement пропущен: прошло ${Math.floor(timeSinceLastSent / 60000)} мин, осталось ~${remainingMins} мин`);
             return;
         }
 
@@ -446,6 +501,10 @@ export class TwitchStreamMonitor {
                 throw new Error(`Ошибка отправки announcement: ${announcementRes.status} ${errorText}`);
             }
 
+            // Сохраняем время отправки
+            this.announcementState.lastWelcomeAnnouncementAt = now;
+            saveAnnouncementState(this.announcementState);
+
             console.log('✅ Announcement отправлен! (цвет: фиолетовый)');
             console.log('💡 Закрепите вручную: клик на сообщение → Pin Message');
 
@@ -456,6 +515,7 @@ export class TwitchStreamMonitor {
 
     /**
      * Запускает повтор welcome announcement каждые N минут
+     * Учитывает время последней отправки для синхронизации
      */
     private startWelcomeAnnouncementInterval(): void {
         // Останавливаем предыдущий интервал, если был
@@ -463,17 +523,50 @@ export class TwitchStreamMonitor {
 
         const mins = ANNOUNCEMENT_REPEAT_INTERVAL_MS / 60000;
         const hours = mins / 60;
-        console.log(`🔁 Welcome announcement каждые ${mins} мин (${hours}ч)`);
+        
+        // Вычисляем когда следующая отправка
+        const now = Date.now();
+        const lastSent = this.announcementState.lastWelcomeAnnouncementAt;
+        let initialDelay = ANNOUNCEMENT_REPEAT_INTERVAL_MS;
 
-        this.welcomeInterval = setInterval(async () => {
+        if (lastSent) {
+            const timeSinceLastSent = now - lastSent;
+            const remaining = ANNOUNCEMENT_REPEAT_INTERVAL_MS - timeSinceLastSent;
+            
+            if (remaining > 0) {
+                initialDelay = remaining;
+                console.log(`🔁 Welcome announcement: последняя отправка ${Math.floor(timeSinceLastSent / 60000)} мин назад, следующая через ${Math.ceil(remaining / 60000)} мин`);
+            } else {
+                // Время уже прошло, отправляем сразу
+                initialDelay = 0;
+                console.log(`🔁 Welcome announcement: пора отправить (прошло ${Math.floor(timeSinceLastSent / 60000)} мин)`);
+            }
+        } else {
+            console.log(`🔁 Welcome announcement каждые ${mins} мин (${hours}ч)`);
+        }
+
+        // Первый вызов через вычисленную задержку, потом каждые N минут
+        const runAnnouncement = async () => {
             console.log('🔄 Повтор welcome announcement...');
-            await this.sendWelcomeAnnouncement();
+            await this.sendWelcomeAnnouncement(true); // force=true для интервала
 
             // Сбрасываем ротацию ссылок после welcome
             console.log('🔄 Сброс ротации ссылок после welcome...');
             this.stopLinkRotation();
             this.startLinkRotation();
-        }, ANNOUNCEMENT_REPEAT_INTERVAL_MS);
+        };
+
+        if (initialDelay === 0) {
+            // Сразу отправляем и запускаем интервал
+            runAnnouncement();
+            this.welcomeInterval = setInterval(runAnnouncement, ANNOUNCEMENT_REPEAT_INTERVAL_MS);
+        } else {
+            // Ждём оставшееся время, потом отправляем и запускаем интервал
+            setTimeout(async () => {
+                await runAnnouncement();
+                this.welcomeInterval = setInterval(runAnnouncement, ANNOUNCEMENT_REPEAT_INTERVAL_MS);
+            }, initialDelay);
+        }
     }
 
     /**
@@ -489,12 +582,33 @@ export class TwitchStreamMonitor {
 
     /**
      * Запускает ротацию ссылок (через 15 минут после начала, затем каждые 15 минут)
+     * Учитывает время последней отправки для синхронизации
      */
     private startLinkRotation(): void {
         this.stopLinkRotation();
 
         const mins = LINK_ROTATION_INTERVAL_MS / 60000;
-        console.log(`🔄 Ротация ссылок запустится через ${mins} мин, затем каждые ${mins} мин`);
+        
+        // Вычисляем когда следующая отправка
+        const now = Date.now();
+        const lastSent = this.announcementState.lastLinkAnnouncementAt;
+        let initialDelay = LINK_ROTATION_INTERVAL_MS;
+
+        if (lastSent) {
+            const timeSinceLastSent = now - lastSent;
+            const remaining = LINK_ROTATION_INTERVAL_MS - timeSinceLastSent;
+            
+            if (remaining > 0) {
+                initialDelay = remaining;
+                console.log(`🔄 Ротация ссылок: последняя отправка ${Math.floor(timeSinceLastSent / 60000)} мин назад, следующая через ${Math.ceil(remaining / 60000)} мин`);
+            } else {
+                // Время уже прошло, отправляем сразу
+                initialDelay = 1000; // небольшая задержка
+                console.log(`🔄 Ротация ссылок: пора отправить (прошло ${Math.floor(timeSinceLastSent / 60000)} мин)`);
+            }
+        } else {
+            console.log(`🔄 Ротация ссылок запустится через ${mins} мин, затем каждые ${mins} мин`);
+        }
 
         this.linkRotationTimeout = setTimeout(() => {
             this.sendNextLinkAnnouncement();
@@ -502,7 +616,7 @@ export class TwitchStreamMonitor {
             this.linkRotationInterval = setInterval(() => {
                 this.sendNextLinkAnnouncement();
             }, LINK_ROTATION_INTERVAL_MS);
-        }, LINK_ROTATION_INTERVAL_MS);
+        }, initialDelay);
     }
 
     /**
@@ -570,6 +684,11 @@ export class TwitchStreamMonitor {
 
             // Переходим к следующей ссылке
             this.currentLinkIndex = (this.currentLinkIndex + 1) % LINK_ANNOUNCEMENTS.length;
+
+            // Сохраняем состояние
+            this.announcementState.lastLinkAnnouncementAt = Date.now();
+            this.announcementState.currentLinkIndex = this.currentLinkIndex;
+            saveAnnouncementState(this.announcementState);
 
         } catch (error: any) {
             console.error('❌ Ошибка при отправке link announcement:', error.message || error);
