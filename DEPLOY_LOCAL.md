@@ -69,9 +69,25 @@ git push
 
 ### 2. На сервере
 
+**Первый запуск (или после удаления из PM2):**
+```bash
+cd /root/stream-bot
+git pull origin main
+npm install
+npm run build:telegram
+npm run build:twitch
+pm2 start ecosystem.config.js
+pm2 save
+```
+
 **Обновить оба бота:**
 ```bash
-/root/stream-bot/update.sh
+cd /root/stream-bot
+git pull origin main
+npm install
+npm run build:telegram
+npm run build:twitch
+pm2 restart all
 ```
 
 **Обновить только Telegram бот:**

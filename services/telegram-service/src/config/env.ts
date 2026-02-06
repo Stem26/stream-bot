@@ -1,5 +1,6 @@
 import * as dotenv from 'dotenv';
 import * as path from 'path';
+import * as fs from 'fs';
 import { AppConfig } from '../types/config';
 
 const NODE_ENV = process.env.NODE_ENV || 'development';
@@ -7,10 +8,14 @@ const IS_LOCAL = NODE_ENV === 'development';
 
 // Путь к корню репозитория (работает и из src/, и из dist/)
 // __dirname:
-// - src:  services/telegram-service/src/config
-// - dist: services/telegram-service/dist/src/config
-// Нужно подняться до корня репо: .../services/ -> .../<repo_root>
-const MONOREPO_ROOT = path.resolve(__dirname, '../../../../');
+// - src:  services/telegram-service/src/config (4 уровня до корня)
+// - dist: services/telegram-service/dist/src/config (5 уровней до корня)
+// Определяем корень проверкой наличия package.json
+let MONOREPO_ROOT = path.resolve(__dirname, '../../../../');
+if (!fs.existsSync(path.join(MONOREPO_ROOT, 'package.json'))) {
+  // Если не нашли package.json, значит мы в dist/, поднимаемся ещё выше
+  MONOREPO_ROOT = path.resolve(__dirname, '../../../../../');
+}
 
 // Определяем какой .env файл загружать из корня монорепы
 const envFile = IS_LOCAL ? '.env.local' : '.env';
