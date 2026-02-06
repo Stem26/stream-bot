@@ -10,7 +10,7 @@ const IS_LOCAL = NODE_ENV === 'development';
 // - src:  services/telegram-service/src/config
 // - dist: services/telegram-service/dist/src/config
 // Нужно подняться до корня репо: .../services/ -> .../<repo_root>
-const MONOREPO_ROOT = path.resolve(__dirname, '../../../../../');
+const MONOREPO_ROOT = path.resolve(__dirname, '../../../../');
 
 // Определяем какой .env файл загружать из корня монорепы
 const envFile = IS_LOCAL ? '.env.local' : '.env';

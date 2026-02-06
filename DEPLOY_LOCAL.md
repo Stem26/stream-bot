@@ -31,7 +31,9 @@ pm2 start telegram-bot      # Запустить
 
 **Запустить Telegram бот:**
 ```bash
+cd D:\Projects\stream-bot
 npm run dev:telegram
+
 ```
 
 **Запустить Twitch бот:**
