@@ -50,7 +50,9 @@ async function main() {
     // 9. Запускаем бота
     console.log('🎉 Бот полностью настроен!');
     console.log('🚀 Запуск Telegram бота...');
-    await bot.launch();
+    await bot.launch({
+      dropPendingUpdates: true  // Пропускаем все старые сообщения, накопленные пока бот был выключен
+    });
 
     // 10. Настраиваем graceful shutdown
     const shutdown = async (signal: string) => {
