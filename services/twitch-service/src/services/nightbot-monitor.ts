@@ -536,6 +536,15 @@ export class NightBotMonitor {
     private async handleVanishCommand(channel: string, user: string, msg: any) {
         console.log(`👻 Команда !vanish от ${user} в ${channel}`);
 
+        // Импортируем STREAMER_USERNAME из config
+        const { STREAMER_USERNAME } = require('../config/env');
+        
+        // Стример не может банить сам себя
+        if (STREAMER_USERNAME && user.toLowerCase() === STREAMER_USERNAME.toLowerCase()) {
+            console.log(`⚠️ Стример ${user} попытался использовать !vanish - игнорируем`);
+            return;
+        }
+
         try {
             await this.timeoutUser(user, 1, 'Vanish');
         } catch (error: any) {

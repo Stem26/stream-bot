@@ -1,4 +1,5 @@
 import { loadTwitchPlayers, saveTwitchPlayers, TwitchPlayerData } from '../storage/twitch-players';
+import { STREAMER_USERNAME } from '../config/env';
 
 type DuelQueueEntry = {
   username: string;
@@ -12,6 +13,9 @@ const DEFAULT_POINTS = 1000;
 const DUEL_WIN_POINTS = 25;
 const DUEL_TIMEOUT_MS = 5 * 60 * 1000;
 const DUEL_COOLDOWN_MS = 60 * 1000;
+
+// Пользователи без cooldown и timeout (стример)
+const DUEL_EXEMPT_USERS = new Set([STREAMER_USERNAME?.toLowerCase()].filter(Boolean));
 
 function ensurePlayer(players: Map<string, TwitchPlayerData>, twitchUsername: string): TwitchPlayerData {
   const normalized = twitchUsername.toLowerCase();
@@ -53,16 +57,23 @@ export function processTwitchDuelCommand(
   const normalized = twitchUsername.toLowerCase();
   const player = ensurePlayer(players, twitchUsername);
 
-  const lastDuelAt = duelCooldownByChannel.get(channel);
+  // Проверяем exempt от cooldown
+  const isExempt = DUEL_EXEMPT_USERS.has(normalized);
 
-  if (lastDuelAt && now - lastDuelAt < DUEL_COOLDOWN_MS) {
-    const secondsLeft = Math.ceil((DUEL_COOLDOWN_MS - (now - lastDuelAt)) / 1000);
-    return {
-      response: `Револьверы ещё не остыли подожди ${secondsLeft} сек.`
-    };
+  // Проверяем глобальный cooldown дуэлей (если пользователь не exempt)
+  if (!isExempt) {
+    const lastDuelAt = duelCooldownByChannel.get(channel);
+
+    if (lastDuelAt && now - lastDuelAt < DUEL_COOLDOWN_MS) {
+      const secondsLeft = Math.ceil((DUEL_COOLDOWN_MS - (now - lastDuelAt)) / 1000);
+      return {
+        response: `Револьверы ещё не остыли подожди ${secondsLeft} сек.`
+      };
+    }
   }
 
-  if (player.duelTimeoutUntil && now < player.duelTimeoutUntil) {
+  // Проверяем личный timeout игрока (если пользователь не exempt)
+  if (!isExempt && player.duelTimeoutUntil && now < player.duelTimeoutUntil) {
     const minutesLeft = Math.ceil((player.duelTimeoutUntil - now) / 60000);
     return {
       response: `@${twitchUsername}, ты в таймауте ещё ${minutesLeft} мин.`
@@ -91,14 +102,24 @@ export function processTwitchDuelCommand(
   const winner = winnerIsCurrent ? twitchUsername : waiting.displayName;
   const loser = winnerIsCurrent ? waiting.displayName : twitchUsername;
 
+  // Определяем exempt статус обоих игроков
+  const currentIsExempt = DUEL_EXEMPT_USERS.has(normalized);
+  const opponentIsExempt = DUEL_EXEMPT_USERS.has(waiting.username);
+
   if (winnerIsCurrent) {
     player.points = (player.points ?? DEFAULT_POINTS) + DUEL_WIN_POINTS;
     opponentPlayer.points = (opponentPlayer.points ?? DEFAULT_POINTS) - DUEL_WIN_POINTS;
-    opponentPlayer.duelTimeoutUntil = now + DUEL_TIMEOUT_MS;
+    // Не ставим timeout если проигравший - exempt пользователь
+    if (!opponentIsExempt) {
+      opponentPlayer.duelTimeoutUntil = now + DUEL_TIMEOUT_MS;
+    }
   } else {
     opponentPlayer.points = (opponentPlayer.points ?? DEFAULT_POINTS) + DUEL_WIN_POINTS;
     player.points = (player.points ?? DEFAULT_POINTS) - DUEL_WIN_POINTS;
-    player.duelTimeoutUntil = now + DUEL_TIMEOUT_MS;
+    // Не ставим timeout если проигравший - exempt пользователь
+    if (!currentIsExempt) {
+      player.duelTimeoutUntil = now + DUEL_TIMEOUT_MS;
+    }
   }
 
   duelQueueByChannel.delete(channel);
