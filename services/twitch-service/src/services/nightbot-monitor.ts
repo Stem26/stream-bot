@@ -17,7 +17,7 @@ const BOT_BLACKLIST = new Set([
     'streamlabs',
     'moobot',
     'fossabot',
-    'kunila666_bot',
+    'kunilika666',
     'wizebot',
     'botrix',
     'coebot',
