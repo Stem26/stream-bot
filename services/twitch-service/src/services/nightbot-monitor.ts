@@ -17,7 +17,6 @@ const BOT_BLACKLIST = new Set([
     'streamlabs',
     'moobot',
     'fossabot',
-    'kunilika666',
     'wizebot',
     'botrix',
     'coebot',
@@ -195,11 +194,12 @@ export class NightBotMonitor {
                 console.log(`✅ Получено ${allChatters.length} зрителей из Twitch API за ${pageCount} запросов`);
 
                 // Фильтруем ботов (Set.has() = O(1) vs Array.includes() = O(n))
+                const filteredBots = allChatters.filter(user => BOT_BLACKLIST.has(user.toLowerCase()));
                 const filteredChatters = allChatters.filter(user => !BOT_BLACKLIST.has(user.toLowerCase()));
                 const botsFiltered = allChatters.length - filteredChatters.length;
 
                 if (botsFiltered > 0) {
-                    console.log(`🤖 Отфильтровано ботов: ${botsFiltered} (осталось: ${filteredChatters.length} зрителей)`);
+                    console.log(`🤖 Отфильтровано ботов: ${botsFiltered} (${filteredBots.join(', ')}) - осталось: ${filteredChatters.length} зрителей`);
                 }
 
                 // Сохраняем в кеш с timestamp создания

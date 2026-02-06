@@ -88,6 +88,7 @@ npm install
 npm run build:telegram
 npm run build:twitch
 pm2 restart all
+pm2 logs telegram-bot --lines 50
 ```
 
 **Обновить только Telegram бот:**
