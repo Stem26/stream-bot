@@ -41,6 +41,9 @@ export function loadConfig(): AppConfig {
     allowedAdmins: process.env.ALLOWED_ADMINS 
       ? process.env.ALLOWED_ADMINS.split(',').map(id => parseInt(id.trim())) 
       : [],
+    streamerUserId: process.env.STREAMER_USER_ID 
+      ? parseInt(process.env.STREAMER_USER_ID.trim())
+      : 1087968824, // Дефолтный ID стримера (можно переопределить через .env)
     nodeEnv: NODE_ENV,
     isLocal: IS_LOCAL
   };
@@ -54,4 +57,7 @@ export const CHANNEL_ID = process.env.CHANNEL_ID;
 export const ALLOWED_ADMINS = process.env.ALLOWED_ADMINS
   ? process.env.ALLOWED_ADMINS.split(',').map(id => parseInt(id.trim()))
   : [];
+export const STREAMER_USER_ID = process.env.STREAMER_USER_ID 
+  ? parseInt(process.env.STREAMER_USER_ID.trim())
+  : 1087968824; // Дефолтный ID стримера
 export { NODE_ENV, IS_LOCAL };

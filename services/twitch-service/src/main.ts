@@ -41,6 +41,12 @@ async function main() {
         config.twitch.clientId
     );
 
+    // Связываем streamMonitor с chatClient для отправки приветственных сообщений
+    streamMonitor.setChatSender(
+        (channel, message) => nightBotMonitor.sendMessage(channel, message),
+        config.twitch.channel
+    );
+
     console.log('✅ Twitch сервис запущен');
 }
 

@@ -13,6 +13,7 @@ export interface AppConfig {
     refreshToken?: string;
   };
   allowedAdmins: number[];
+  streamerUsername?: string; // Username стримера для особой механики в играх
   nodeEnv: string;
   isLocal: boolean;
 }

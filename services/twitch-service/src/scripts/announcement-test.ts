@@ -1,11 +1,28 @@
 import * as dotenv from 'dotenv';
 import * as path from 'path';
+import * as fs from 'fs';
+import { ChatClient } from '@twurple/chat';
+import { StaticAuthProvider } from '@twurple/auth';
 
 const NODE_ENV = process.env.NODE_ENV || 'development';
 const IS_LOCAL = NODE_ENV === 'development';
-const envFile = IS_LOCAL ? '.env.local' : '.env';
 
-dotenv.config({ path: path.resolve(process.cwd(), envFile) });
+// Определяем корень монорепы (работает и из src/, и из dist/)
+// __dirname:
+// - src:  services/twitch-service/src/scripts (4 уровня до корня)
+// - dist: services/twitch-service/dist/src/scripts (5 уровней до корня)
+let MONOREPO_ROOT = path.resolve(__dirname, '../../../../');
+if (!fs.existsSync(path.join(MONOREPO_ROOT, 'package.json'))) {
+  // Если не нашли package.json, значит мы в dist/, поднимаемся ещё выше
+  MONOREPO_ROOT = path.resolve(__dirname, '../../../../../');
+}
+
+const envFile = IS_LOCAL ? '.env.local' : '.env';
+const envPath = path.resolve(MONOREPO_ROOT, envFile);
+
+console.log(`[ENV] Загрузка конфигурации из: ${envPath} (NODE_ENV=${NODE_ENV})`);
+
+dotenv.config({ path: envPath });
 
 async function main() {
   const accessToken = process.env.TWITCH_ACCESS_TOKEN;
@@ -17,63 +34,35 @@ async function main() {
     process.exit(1);
   }
 
-  const message = process.argv.slice(2).join(' ').trim() || '📣 Тестовое announcement';
+  const message = process.argv.slice(2).join(' ').trim() || '📣 Тестовое сообщение';
 
   console.log(`[ENV] ${envFile} (NODE_ENV=${NODE_ENV})`);
+  console.log(`[Канал] ${channelName}`);
+  console.log(`[Сообщение] ${message}`);
 
-  const userRes = await fetch(`https://api.twitch.tv/helix/users?login=${channelName}`, {
-    headers: {
-      'Authorization': `Bearer ${accessToken}`,
-      'Client-Id': clientId
-    }
-  });
+  // Создаём ChatClient для отправки обычного сообщения
+  const authProvider = new StaticAuthProvider(clientId, accessToken);
+  const chatClient = new ChatClient({ authProvider, channels: [channelName] });
 
-  if (!userRes.ok) {
-    throw new Error(`Ошибка получения broadcaster_id: ${userRes.status} ${await userRes.text()}`);
-  }
+  console.log('🔌 Подключение к Twitch чату...');
 
-  const userData = await userRes.json() as { data: Array<{ id: string }> };
-  if (!userData.data[0]) {
-    throw new Error(`Канал ${channelName} не найден`);
-  }
+  await chatClient.connect();
 
-  const broadcasterId = userData.data[0].id;
+  console.log('✅ Подключено к чату');
+  console.log('📤 Отправка сообщения...');
 
-  const validateRes = await fetch('https://id.twitch.tv/oauth2/validate', {
-    headers: { 'Authorization': `OAuth ${accessToken}` }
-  });
+  // Отправляем обычное текстовое сообщение в чат
+  await chatClient.say(channelName, message);
 
-  if (!validateRes.ok) {
-    throw new Error(`Token validate failed: ${await validateRes.text()}`);
-  }
+  console.log('✅ Тестовое сообщение отправлено');
 
-  const validateData = await validateRes.json() as { user_id: string };
-  const moderatorId = validateData.user_id;
-
-  const announcementRes = await fetch(
-    `https://api.twitch.tv/helix/chat/announcements?broadcaster_id=${broadcasterId}&moderator_id=${moderatorId}`,
-    {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Client-Id': clientId,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        message,
-        color: 'purple'
-      })
-    }
-  );
-
-  if (!announcementRes.ok) {
-    throw new Error(`Ошибка отправки announcement: ${announcementRes.status} ${await announcementRes.text()}`);
-  }
-
-  console.log('✅ Тестовое announcement отправлено');
+  // Отключаемся
+  await chatClient.quit();
+  
+  process.exit(0);
 }
 
 main().catch((err) => {
-  console.error('❌ Ошибка тестового announcement:', err);
+  console.error('❌ Ошибка отправки сообщения:', err);
   process.exit(1);
 });

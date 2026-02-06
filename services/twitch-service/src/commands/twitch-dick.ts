@@ -1,5 +1,6 @@
 import { loadTwitchPlayers, saveTwitchPlayers, getTwitchPlayerRank, TwitchPlayerData } from '../storage/twitch-players';
 import { getMoscowDate, canPlayToday } from '../utils/date';
+import { STREAMER_USERNAME } from '../config/env';
 
 function canPlayTodayTwitch(player: TwitchPlayerData): boolean {
   const today = getMoscowDate();
@@ -7,22 +8,26 @@ function canPlayTodayTwitch(player: TwitchPlayerData): boolean {
 }
 
 /**
- * Генерирует значение роста с учетом специальных условий для определенных игроков
+ * Генерирует значение роста с учетом защиты для стримера
  * @param normalizedUsername - нормализованное имя пользователя
- * @param players - карта всех игроков
+ * @param players - карта всех игроков для проверки ранга
  * @returns значение роста
  */
 function generateGrowth(normalizedUsername: string, players: Map<string, TwitchPlayerData>): number {
-  const specialUsername = 'kunilika666';
+  const isStreamer = STREAMER_USERNAME && normalizedUsername === STREAMER_USERNAME;
   
-  if (normalizedUsername === specialUsername) {
+  // Защита для стримера: пока не на 1 месте - только плюсы 1..10
+  if (isStreamer) {
     const rank = getTwitchPlayerRank(players, normalizedUsername);
     
     if (rank > 1) {
-      return Math.floor(Math.random() * 11);
+      const growth = Math.floor(Math.random() * 10) + 1; // 1..10
+      console.log(`🛡️ Защита стримера: выдан плюс ${growth} (ранг ${rank})`);
+      return growth;
     }
   }
   
+  // Обычная механика для всех остальных (и для стримера на 1 месте)
   return Math.floor(Math.random() * 21) - 10;
 }
 

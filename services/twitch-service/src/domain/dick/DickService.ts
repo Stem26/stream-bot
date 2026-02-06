@@ -14,6 +14,7 @@ export interface DickPlayResult {
 
 /**
  * Сервис бизнес-логики для игры Dick
+ * Примечание: Этот сервис не используется на Twitch, там используется twitch-dick.ts
  */
 export class DickService {
   constructor(private playersStorage: PlayersStorage) {}

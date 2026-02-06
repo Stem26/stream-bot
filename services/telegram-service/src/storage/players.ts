@@ -12,6 +12,7 @@ export interface PlayerData {
   lastFurryDate?: string;
   lastFutureDate?: string;
   futureAttemptsToday?: number;
+  lastGrowth?: number; // Последний прирост для механики компенсации
 }
 
 // Файл для хранения данных игроков

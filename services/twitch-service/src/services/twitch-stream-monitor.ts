@@ -90,12 +90,24 @@ export class TwitchStreamMonitor {
     private broadcasterId: string = '';
     private moderatorId: string = '';
 
+    // Для отправки обычных сообщений в чат
+    private chatSender: ((channel: string, message: string) => Promise<void>) | null = null;
+    private channelName: string = '';
+
     constructor(telegram: Telegram) {
         this.telegram = telegram;
         // Загружаем состояние при создании
         this.announcementState = loadAnnouncementState();
         this.currentLinkIndex = this.announcementState.currentLinkIndex;
         console.log('📋 Загружено состояние announcements:', this.announcementState);
+    }
+
+    /**
+     * Устанавливает функцию для отправки сообщений в Twitch чат
+     */
+    setChatSender(sender: (channel: string, message: string) => Promise<void>, channelName: string): void {
+        this.chatSender = sender;
+        this.channelName = channelName;
     }
 
     /**
@@ -158,11 +170,11 @@ export class TwitchStreamMonitor {
                 console.error(`🔴 Стрим начался на канале ${event.broadcasterDisplayName}!`);
                 this.isStreamOnline = true;
 
-                // Отправляем приветственный announcement (все ссылки)
-                // await this.sendWelcomeAnnouncement();
+                // Отправляем приветственное сообщение (все ссылки)
+                await this.sendWelcomeMessage();
 
-                // Запускаем повтор welcome announcement каждый час
-                // this.startWelcomeAnnouncementInterval();
+                // Запускаем повтор welcome сообщения каждый час
+                this.startWelcomeMessageInterval();
 
                 // Запускаем ротацию отдельных ссылок через 15 минут
                 this.startLinkRotation();
@@ -189,7 +201,7 @@ export class TwitchStreamMonitor {
                 }
 
                 // Останавливаем все интервалы
-                // this.stopWelcomeAnnouncementInterval();
+                this.stopWelcomeMessageInterval();
                 this.stopLinkRotation();
 
                 const result = this.stopViewerCountTracking();
@@ -226,12 +238,12 @@ export class TwitchStreamMonitor {
                 // Устанавливаем флаг, что стрим онлайн
                 this.isStreamOnline = true;
 
-                // Отправляем welcome announcement, так как стрим уже идёт
-                console.error(`📣 Отправляем welcome announcement...`);
-                // await this.sendWelcomeAnnouncement();
+                // Отправляем welcome сообщение, так как стрим уже идёт
+                console.error(`📣 Отправляем welcome сообщение...`);
+                await this.sendWelcomeMessage();
 
-                // Запускаем повтор welcome announcement
-                // this.startWelcomeAnnouncementInterval();
+                // Запускаем повтор welcome сообщения
+                this.startWelcomeMessageInterval();
 
                 // Запускаем ротацию ссылок
                 this.startLinkRotation();
@@ -455,12 +467,12 @@ export class TwitchStreamMonitor {
     }
 
     /**
-     * Отправляет приветственное announcement (выделенное объявление) в чат
+     * Отправляет приветственное сообщение (обычный текст) в чат
      * @param force - если true, отправляет независимо от времени последней отправки
      */
-    private async sendWelcomeAnnouncement(force: boolean = false): Promise<void> {
-        if (!this.accessToken || !this.clientId || !this.broadcasterId || !this.moderatorId) {
-            console.error('⚠️ Нет данных для отправки announcement');
+    private async sendWelcomeMessage(force: boolean = false): Promise<void> {
+        if (!this.chatSender || !this.channelName) {
+            console.error('⚠️ Chat sender не установлен, пропускаем приветственное сообщение');
             return;
         }
 
@@ -472,54 +484,34 @@ export class TwitchStreamMonitor {
 
         if (!force && lastSent && timeSinceLastSent < minInterval) {
             const remainingMins = Math.ceil((minInterval - timeSinceLastSent) / 60000);
-            console.log(`⏳ Welcome announcement пропущен: прошло ${Math.floor(timeSinceLastSent / 60000)} мин, осталось ~${remainingMins} мин`);
+            console.log(`⏳ Welcome сообщение пропущено: прошло ${Math.floor(timeSinceLastSent / 60000)} мин, осталось ~${remainingMins} мин`);
             return;
         }
 
         try {
-            console.log('📣 Отправка приветственного announcement...');
+            console.log('📣 Отправка приветственного сообщения в чат...');
 
-            // Отправляем announcement - выделенное цветное сообщение
-            const announcementRes = await fetch(
-                `https://api.twitch.tv/helix/chat/announcements?broadcaster_id=${this.broadcasterId}&moderator_id=${this.moderatorId}`,
-                {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${this.accessToken}`,
-                        'Client-Id': this.clientId,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        message: STREAM_WELCOME_MESSAGE,
-                        color: 'purple' // blue, green, orange, purple, primary
-                    })
-                }
-            );
-
-            if (!announcementRes.ok) {
-                const errorText = await announcementRes.text();
-                throw new Error(`Ошибка отправки announcement: ${announcementRes.status} ${errorText}`);
-            }
+            // Отправляем обычное текстовое сообщение в чат
+            await this.chatSender(this.channelName, STREAM_WELCOME_MESSAGE);
 
             // Сохраняем время отправки
             this.announcementState.lastWelcomeAnnouncementAt = now;
             saveAnnouncementState(this.announcementState);
 
-            console.log('✅ Announcement отправлен! (цвет: фиолетовый)');
-            console.log('💡 Закрепите вручную: клик на сообщение → Pin Message');
+            console.log('✅ Приветственное сообщение отправлено в чат!');
 
         } catch (error: any) {
-            console.error('❌ Ошибка при отправке announcement:', error.message || error);
+            console.error('❌ Ошибка при отправке приветственного сообщения:', error.message || error);
         }
     }
 
     /**
-     * Запускает повтор welcome announcement каждые N минут
+     * Запускает повтор welcome сообщения каждые N минут
      * Учитывает время последней отправки для синхронизации
      */
-    private startWelcomeAnnouncementInterval(): void {
+    private startWelcomeMessageInterval(): void {
         // Останавливаем предыдущий интервал, если был
-        this.stopWelcomeAnnouncementInterval();
+        this.stopWelcomeMessageInterval();
 
         const mins = ANNOUNCEMENT_REPEAT_INTERVAL_MS / 60000;
         const hours = mins / 60;
@@ -535,20 +527,20 @@ export class TwitchStreamMonitor {
             
             if (remaining > 0) {
                 initialDelay = remaining;
-                console.log(`🔁 Welcome announcement: последняя отправка ${Math.floor(timeSinceLastSent / 60000)} мин назад, следующая через ${Math.ceil(remaining / 60000)} мин`);
+                console.log(`🔁 Welcome сообщение: последняя отправка ${Math.floor(timeSinceLastSent / 60000)} мин назад, следующая через ${Math.ceil(remaining / 60000)} мин`);
             } else {
                 // Время уже прошло, отправляем сразу
                 initialDelay = 0;
-                console.log(`🔁 Welcome announcement: пора отправить (прошло ${Math.floor(timeSinceLastSent / 60000)} мин)`);
+                console.log(`🔁 Welcome сообщение: пора отправить (прошло ${Math.floor(timeSinceLastSent / 60000)} мин)`);
             }
         } else {
-            console.log(`🔁 Welcome announcement каждые ${mins} мин (${hours}ч)`);
+            console.log(`🔁 Welcome сообщение каждые ${mins} мин (${hours}ч)`);
         }
 
         // Первый вызов через вычисленную задержку, потом каждые N минут
-        const runAnnouncement = async () => {
-            console.log('🔄 Повтор welcome announcement...');
-            await this.sendWelcomeAnnouncement(true); // force=true для интервала
+        const runMessage = async () => {
+            console.log('🔄 Повтор welcome сообщения...');
+            await this.sendWelcomeMessage(true); // force=true для интервала
 
             // Сбрасываем ротацию ссылок после welcome
             console.log('🔄 Сброс ротации ссылок после welcome...');
@@ -558,25 +550,25 @@ export class TwitchStreamMonitor {
 
         if (initialDelay === 0) {
             // Сразу отправляем и запускаем интервал
-            runAnnouncement();
-            this.welcomeInterval = setInterval(runAnnouncement, ANNOUNCEMENT_REPEAT_INTERVAL_MS);
+            runMessage();
+            this.welcomeInterval = setInterval(runMessage, ANNOUNCEMENT_REPEAT_INTERVAL_MS);
         } else {
             // Ждём оставшееся время, потом отправляем и запускаем интервал
             setTimeout(async () => {
-                await runAnnouncement();
-                this.welcomeInterval = setInterval(runAnnouncement, ANNOUNCEMENT_REPEAT_INTERVAL_MS);
+                await runMessage();
+                this.welcomeInterval = setInterval(runMessage, ANNOUNCEMENT_REPEAT_INTERVAL_MS);
             }, initialDelay);
         }
     }
 
     /**
-     * Останавливает повтор welcome announcement
+     * Останавливает повтор welcome сообщения
      */
-    private stopWelcomeAnnouncementInterval(): void {
+    private stopWelcomeMessageInterval(): void {
         if (this.welcomeInterval) {
             clearInterval(this.welcomeInterval);
             this.welcomeInterval = null;
-            console.log('⏹️ Повтор announcement остановлен');
+            console.log('⏹️ Повтор welcome сообщения остановлен');
         }
     }
 
@@ -702,7 +694,7 @@ export class TwitchStreamMonitor {
         try {
             this.isStreamOnline = false;
             this.stopViewerCountTracking();
-            this.stopWelcomeAnnouncementInterval();
+            this.stopWelcomeMessageInterval();
             this.stopLinkRotation();
 
             if (this.listener) {

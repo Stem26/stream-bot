@@ -22,7 +22,7 @@ async function main() {
     }
 
     // 2. Инициализируем сервисы (DI)
-    const services = initServices();
+    const services = initServices(config);
 
     // 3. Создаем экземпляр бота с DI
     console.log('🤖 Создание экземпляра бота...');

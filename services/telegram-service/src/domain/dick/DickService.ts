@@ -16,13 +16,38 @@ export interface DickPlayResult {
  * Сервис бизнес-логики для игры Dick
  */
 export class DickService {
-  constructor(private playersStorage: PlayersStorage) {}
+  private streamerUserId?: number;
+
+  constructor(private playersStorage: PlayersStorage, streamerUserId?: number) {
+    this.streamerUserId = streamerUserId;
+  }
 
   /**
-   * Рассчитать случайный рост (-10 до +10)
+   * Рассчитать случайный рост (-10 до +10) с учётом защиты для стримера
    */
-  private calculateGrowth(): number {
-    return Math.floor(Math.random() * 21) - 10;
+  private calculateGrowth(userId: number, player?: Player): number {
+    let growth = Math.floor(Math.random() * 21) - 10;
+    const isStreamer = this.streamerUserId && userId === this.streamerUserId;
+
+    // Защита для стримера
+    if (isStreamer) {
+      // Вариант 2: Защита от жёсткого минуса
+      if (growth < -5) {
+        growth = Math.floor(growth / 2);
+        console.log(`🛡️ Защита стримера: минус смягчён с ${growth * 2} до ${growth}`);
+      }
+
+      // Вариант 3: Компенсация после неудачи
+      if (player && player.lastGrowth && player.lastGrowth < 0) {
+        if (Math.random() < 0.5) {
+          const bonus = Math.floor(Math.random() * 3) + 1; // +1..+3
+          growth += bonus;
+          console.log(`🎁 Компенсация стримеру после неудачи: +${bonus} (было ${growth - bonus}, стало ${growth})`);
+        }
+      }
+    }
+
+    return growth;
   }
 
   /**
@@ -47,14 +72,15 @@ export class DickService {
 
     // ===== Первая игра =====
     if (isFirstTime) {
-      const growth = this.calculateGrowth();
+      const growth = this.calculateGrowth(userId);
       player = {
         userId,
         username,
         firstName,
         size: growth,
         lastUsed: now,
-        lastUsedDate: today
+        lastUsedDate: today,
+        lastGrowth: growth
       };
       this.playersStorage.set(userId, player);
 
@@ -69,12 +95,13 @@ export class DickService {
 
     // ===== Можно играть =====
     if (canPlay && player) {
-      const growth = this.calculateGrowth();
+      const growth = this.calculateGrowth(userId, player);
       player.size += growth;
       player.lastUsed = now;
       player.lastUsedDate = today;
       player.username = username;
       player.firstName = firstName;
+      player.lastGrowth = growth;
       this.playersStorage.set(userId, player);
 
       const growthText = this.formatGrowthText(growth);

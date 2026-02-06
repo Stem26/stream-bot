@@ -64,6 +64,8 @@ export function loadConfig(): AppConfig {
     allowedAdmins: process.env.ALLOWED_ADMINS 
       ? process.env.ALLOWED_ADMINS.split(',').map(id => parseInt(id.trim())) 
       : [],
+    streamerUsername: process.env.STREAMER_USERNAME?.trim().toLowerCase() 
+      || 'kunilika666', // Дефолтный username стримера (можно переопределить через .env)
     nodeEnv: NODE_ENV,
     isLocal: IS_LOCAL
   };
@@ -81,4 +83,6 @@ export const TWITCH_REFRESH_TOKEN = process.env.TWITCH_REFRESH_TOKEN;
 export const ALLOWED_ADMINS = process.env.ALLOWED_ADMINS
   ? process.env.ALLOWED_ADMINS.split(',').map(id => parseInt(id.trim()))
   : [];
+export const STREAMER_USERNAME = process.env.STREAMER_USERNAME?.trim().toLowerCase() 
+  || 'kunilika666'; // Дефолтный username стримера
 export { NODE_ENV, IS_LOCAL };

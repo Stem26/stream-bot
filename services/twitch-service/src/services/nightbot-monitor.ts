@@ -353,6 +353,48 @@ export class NightBotMonitor {
                 }
             });
 
+            // Отслеживаем ритуалы (первое сообщение нового зрителя)
+            this.chatClient.onRitual((channel, user, ritualInfo, msg) => {
+                console.log(`🎉 Ritual событие: ${ritualInfo.ritualName} от ${user}`);
+                
+                if (ritualInfo.ritualName === 'new_chatter') {
+                    console.log(`👋 Новый зритель: ${user} - ${ritualInfo.message || ''}`);
+                }
+            });
+
+            // Отслеживаем серии просмотров (watch streaks) через низкоуровневый IRC
+            // @twurple пока не имеет специального обработчика для viewermilestone
+            this.chatClient.irc.onAnyMessage((ircMessage) => {
+                if (ircMessage.command === 'USERNOTICE') {
+                    const msgId = ircMessage.tags.get('msg-id');
+                    
+                    if (msgId === 'viewermilestone') {
+                        const category = ircMessage.tags.get('msg-param-category');
+                        
+                        if (category === 'watch-streak') {
+                            const username = ircMessage.tags.get('login') || ircMessage.tags.get('display-name') || 'Unknown';
+                            const streakCount = ircMessage.tags.get('msg-param-value');
+                            const systemMsg = ircMessage.tags.get('system-msg')?.replace(/\\s/g, ' ') || '';
+                            const channelPoints = ircMessage.tags.get('msg-param-copoReward');
+                            
+                            console.log(`🔥 Watch Streak! ${username} смотрит ${streakCount}-й стрим подряд!`);
+                            console.log(`   Системное сообщение: ${systemMsg}`);
+                            console.log(`   Награда: ${channelPoints} channel points`);
+                            
+                            // TODO: Раскомментировать после проверки логов
+                            // if (parseInt(streakCount || '0') >= 5) {
+                            //     const channel = ircMessage.params.channel;
+                            //     if (channel) {
+                            //         this.sendMessage(channel, `🔥 Новая серия просмотров! ${username} смотрит ${streakCount}-й стрим подряд!`).catch(err => {
+                            //             console.error('Ошибка отправки сообщения о watch streak:', err);
+                            //         });
+                            //     }
+                            // }
+                        }
+                    }
+                }
+            });
+
             return true;
         } catch (error: any) {
             console.error('❌ Ошибка подключения к Twitch чату:', error);
