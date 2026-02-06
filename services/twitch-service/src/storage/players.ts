@@ -14,8 +14,23 @@ export interface PlayerData {
   futureAttemptsToday?: number;
 }
 
+// Определяем корень монорепозитория
+const MONOREPO_ROOT = (() => {
+  let root = process.cwd();
+  if (fs.existsSync(path.join(root, 'package.json'))) {
+    return root;
+  }
+  root = path.resolve(process.cwd(), '../..');
+  if (fs.existsSync(path.join(root, 'package.json'))) {
+    return root;
+  }
+  return process.cwd();
+})();
+
 // Файл для хранения данных игроков
-const PLAYERS_FILE = path.join(process.cwd(), 'players.json');
+const PLAYERS_FILE = path.join(MONOREPO_ROOT, 'players.json');
+
+console.log(`[PLAYERS] Путь к файлу: ${PLAYERS_FILE}`);
 
 // Функция для загрузки данных игроков
 export function loadPlayers(): Map<number, PlayerData> {

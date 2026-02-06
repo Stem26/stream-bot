@@ -15,7 +15,25 @@ export interface PlayerData {
 }
 
 // Файл для хранения данных игроков
-const PLAYERS_FILE = path.join(process.cwd(), 'players.json');
+// Сохраняем в корне монорепозитория независимо от cwd
+const MONOREPO_ROOT = (() => {
+  // Сначала пробуем найти package.json в текущей директории
+  let root = process.cwd();
+  if (fs.existsSync(path.join(root, 'package.json'))) {
+    return root;
+  }
+  // Если не нашли, поднимаемся вверх (для случая когда cwd = services/telegram-service)
+  root = path.resolve(process.cwd(), '../..');
+  if (fs.existsSync(path.join(root, 'package.json'))) {
+    return root;
+  }
+  // Если всё ещё не нашли, используем текущую директорию
+  return process.cwd();
+})();
+
+const PLAYERS_FILE = path.join(MONOREPO_ROOT, 'players.json');
+
+console.log(`[PLAYERS] Путь к файлу: ${PLAYERS_FILE}`);
 
 // Функция для загрузки данных игроков
 export function loadPlayers(): Map<number, PlayerData> {

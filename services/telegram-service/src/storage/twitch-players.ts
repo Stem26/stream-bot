@@ -8,7 +8,22 @@ export interface TwitchPlayerData {
   lastUsedDate?: string;
 }
 
-const TWITCH_PLAYERS_FILE = path.join(process.cwd(), 'twitch-players.json');
+// Определяем корень монорепозитория
+const MONOREPO_ROOT = (() => {
+  let root = process.cwd();
+  if (fs.existsSync(path.join(root, 'package.json'))) {
+    return root;
+  }
+  root = path.resolve(process.cwd(), '../..');
+  if (fs.existsSync(path.join(root, 'package.json'))) {
+    return root;
+  }
+  return process.cwd();
+})();
+
+const TWITCH_PLAYERS_FILE = path.join(MONOREPO_ROOT, 'twitch-players.json');
+
+console.log(`[TWITCH-PLAYERS] Путь к файлу: ${TWITCH_PLAYERS_FILE}`);
 
 // Функция для загрузки данных Twitch игроков
 export function loadTwitchPlayers(): Map<string, TwitchPlayerData> {

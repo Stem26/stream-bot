@@ -2,8 +2,21 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { CHANNEL_ID } from '../config/env';
 
+// Определяем корень монорепозитория
+const MONOREPO_ROOT = (() => {
+  let root = process.cwd();
+  if (fs.existsSync(path.join(root, 'package.json'))) {
+    return root;
+  }
+  root = path.resolve(process.cwd(), '../..');
+  if (fs.existsSync(path.join(root, 'package.json'))) {
+    return root;
+  }
+  return process.cwd();
+})();
+
 // Файл для хранения ID канала (если не указан в .env)
-const CHANNEL_FILE = path.join(process.cwd(), 'channel_id.txt');
+const CHANNEL_FILE = path.join(MONOREPO_ROOT, 'channel_id.txt');
 
 // Функция для получения ID канала
 export function getChannelId(): string | null {

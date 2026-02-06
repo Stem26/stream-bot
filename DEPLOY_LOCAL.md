@@ -94,9 +94,10 @@ pm2 restart all
 ```bash
 cd /root/stream-bot
 git pull origin main
-npm install
+npm i
 npm run build:telegram
 pm2 restart telegram-bot
+pm2 logs telegram-bot --lines 20
 ```
 
 **Обновить только Twitch бот:**
