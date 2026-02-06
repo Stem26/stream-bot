@@ -337,9 +337,9 @@ export class NightBotMonitor {
                 const trimmedMessage = message.trim().toLowerCase();
                 console.log(`📨 ${user}: ${message}`);
 
-                // if (IS_LOCAL) {
-                //     return;
-                // }
+                if (IS_LOCAL) {
+                    return;
+                }
 
                 // Проверяем, есть ли команда в мапе
                 const commandHandler = this.commands.get(trimmedMessage);
