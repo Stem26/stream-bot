@@ -5,8 +5,12 @@ import { AppConfig } from '../types/config';
 const NODE_ENV = process.env.NODE_ENV || 'development';
 const IS_LOCAL = NODE_ENV === 'development';
 
-// Путь к корню монорепозитория (относительно этого файла: config -> src -> twitch-service -> services -> root)
-const MONOREPO_ROOT = path.resolve(__dirname, '../../../../');
+// Путь к корню репозитория (работает и из src/, и из dist/)
+// __dirname:
+// - src:  services/twitch-service/src/config
+// - dist: services/twitch-service/dist/src/config
+// Нужно подняться до корня репо: .../services/ -> .../<repo_root>
+const MONOREPO_ROOT = path.resolve(__dirname, '../../../../../');
 
 // Определяем какой .env файл загружать из корня монорепы
 const envFile = IS_LOCAL ? '.env.local' : '.env';
