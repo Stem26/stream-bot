@@ -6,7 +6,7 @@ import { processTwitchBottomDickCommand } from '../commands/twitch-bottomDick';
 import { processTwitchDuelCommand } from '../commands/twitch-duel';
 import { processTwitchRatCommand, processTwitchCutieCommand, addActiveUser, setChattersAPIFunction } from '../commands/twitch-rat';
 import { processTwitchPointsCommand, processTwitchTopPointsCommand } from '../commands/twitch-points';
-import { ENABLE_CHAT_COMMANDS, ENABLE_WATCH_STREAK_MESSAGES } from '../config/features';
+import { ENABLE_BOT_FEATURES } from '../config/features';
 
 type CommandHandler = (channel: string, user: string, message: string, msg: any) => void | Promise<void>;
 
@@ -310,8 +310,8 @@ export class NightBotMonitor {
 
             await new Promise(resolve => setTimeout(resolve, 2000));
             console.log('✅ Чат готов к работе!');
-            if (!ENABLE_CHAT_COMMANDS) {
-                console.log('🧪 Команды чата отключены (ENABLE_CHAT_COMMANDS=false)');
+            if (!ENABLE_BOT_FEATURES) {
+                console.log('🧪 Все функции бота отключены (ENABLE_BOT_FEATURES=false)');
             }
 
             // Warming up: предзагружаем список зрителей для быстрого первого !крыса
@@ -338,7 +338,7 @@ export class NightBotMonitor {
                 console.log(`📨 ${user}: ${message}`);
 
                 //Игнорировать команды если они отключены
-                if (!ENABLE_CHAT_COMMANDS) {
+                if (!ENABLE_BOT_FEATURES) {
                     return;
                 }
 
@@ -412,9 +412,9 @@ export class NightBotMonitor {
                         if (category === 'watch-streak') {
                             console.log(`🔥 Watch Streak! ${username} смотрит ${value}-й стрим подряд!`);
                             
-                            // Проверяем, включена ли функция благодарностей за watch streak
-                            if (!ENABLE_WATCH_STREAK_MESSAGES) {
-                                console.log('⚠️ Благодарности за watch streak отключены (ENABLE_WATCH_STREAK_MESSAGES=false)');
+                            // Проверяем, включены ли функции бота
+                            if (!ENABLE_BOT_FEATURES) {
+                                console.log('⚠️ Благодарности за watch streak отключены (ENABLE_BOT_FEATURES=false)');
                                 return;
                             }
                             

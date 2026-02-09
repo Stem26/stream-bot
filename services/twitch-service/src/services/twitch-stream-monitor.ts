@@ -4,7 +4,7 @@ import {EventSubWsListener} from '@twurple/eventsub-ws';
 import type {Telegram} from 'telegraf';
 import * as fs from 'fs';
 import * as path from 'path';
-import { ENABLE_WELCOME_MESSAGES, ENABLE_LINK_ROTATION, ENABLE_FOLLOW_MESSAGES } from '../config/features';
+import { ENABLE_BOT_FEATURES } from '../config/features';
 
 // Файл для хранения состояния announcement'ов (в корне монорепы)
 const ANNOUNCEMENT_STATE_FILE = path.resolve(__dirname, '../../../../../announcement-state.json');
@@ -213,9 +213,9 @@ export class TwitchStreamMonitor {
             this.listener.onChannelFollow(user.id, this.moderatorId, async (event) => {
                 console.log(`💜 Новый фоловер: ${event.userDisplayName} (@${event.userName})`);
                 
-                // Проверяем, включена ли функция благодарностей за Follow
-                if (!ENABLE_FOLLOW_MESSAGES) {
-                    console.log('⚠️ Благодарности за Follow отключены (ENABLE_FOLLOW_MESSAGES=false)');
+                // Проверяем, включены ли функции бота
+                if (!ENABLE_BOT_FEATURES) {
+                    console.log('⚠️ Благодарности за Follow отключены (ENABLE_BOT_FEATURES=false)');
                     return;
                 }
 
@@ -494,8 +494,8 @@ export class TwitchStreamMonitor {
      * @param force - если true, отправляет независимо от времени последней отправки
      */
     private async sendWelcomeMessage(force: boolean = false): Promise<void> {
-        if (!ENABLE_WELCOME_MESSAGES) {
-            console.log('⚠️ Welcome сообщения отключены (ENABLE_WELCOME_MESSAGES=false)');
+        if (!ENABLE_BOT_FEATURES) {
+            console.log('⚠️ Welcome сообщения отключены (ENABLE_BOT_FEATURES=false)');
             return;
         }
 
@@ -671,8 +671,8 @@ export class TwitchStreamMonitor {
      * Отправляет следующий announcement из ротации ссылок
      */
     private async sendNextLinkAnnouncement(): Promise<void> {
-        if (!ENABLE_LINK_ROTATION) {
-            console.log('⚠️ Ротация ссылок отключена (ENABLE_LINK_ROTATION=false)');
+        if (!ENABLE_BOT_FEATURES) {
+            console.log('⚠️ Ротация ссылок отключена (ENABLE_BOT_FEATURES=false)');
             return;
         }
 
