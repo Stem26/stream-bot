@@ -71,7 +71,9 @@ export class NightBotMonitor {
         ['!дуэль', (ch, u, m, msg) => void this.handleDuelCommand(ch, u, m, msg)],
         ['!крыса', (ch, u, m, msg) => void this.handleRatCommand(ch, u, m, msg)],
         ['!милашка', (ch, u, m, msg) => void this.handleCutieCommand(ch, u, m, msg)],
-        ['!vanish', (ch, u, m, msg) => void this.handleVanishCommand(ch, u, msg)]
+        ['!vanish', (ch, u, m, msg) => void this.handleVanishCommand(ch, u, msg)],
+        ['!игры', (ch, u, m, msg) => void this.handleGamesCommand(ch, u, msg)],
+        ['!help', (ch, u, m, msg) => void this.handleGamesCommand(ch, u, msg)]
     ]);
 
     /**
@@ -625,6 +627,35 @@ export class NightBotMonitor {
         );
 
         console.log(`✅ Таймаут выдан: ${username} на ${durationSeconds} сек.`);
+    }
+
+    /**
+     * Обработка команды !игры (!команды, !help) из чата
+     * Отправляет список всех доступных команд
+     */
+    private async handleGamesCommand(channel: string, user: string, msg: any) {
+        console.log(`📋 Команда !игры от ${user} в ${channel}`);
+
+        const commandsList = [
+            '!dick - вырастить письку',
+            '!top_dick - топ самых длинных',
+            '!bottom_dick - топ самых коротких',
+            '!очки (!points) - проверить свои очки',
+            '!топ_очки (!top_points) - топ по очкам',
+            '!дуэль - (ставка 25 очков)',
+            '!крыса - выбрать случайную крысу из чата',
+            '!милашка - выбрать случайную милашку из чата',
+            '!vanish - скрыть свои сообщения (1 сек таймаут)'
+        ];
+
+        const response = `📋 Доступные команды: ${commandsList.join(' • ')}`;
+
+        try {
+            await this.sendMessage(channel, response);
+            console.log(`✅ Список команд отправлен в чат`);
+        } catch (error) {
+            console.error('❌ Ошибка при отправке списка команд:', error);
+        }
     }
 
     /**

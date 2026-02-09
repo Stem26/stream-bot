@@ -115,11 +115,20 @@ export function processTwitchDuelCommand(
     };
   }
 
-  const winnerIsCurrent = Math.random() < 0.5;
+  const currentIsExempt = DUEL_EXEMPT_USERS.has(normalized);
+  
+  let winnerIsCurrent: boolean;
+  if (currentIsExempt && !opponentIsExempt) {
+    // Текущий игрок - стример, он побеждает
+    winnerIsCurrent = true;
+  } else if (!currentIsExempt && opponentIsExempt) {
+    winnerIsCurrent = false;
+  } else {
+    winnerIsCurrent = Math.random() < 0.5;
+  }
+  
   const winner = winnerIsCurrent ? twitchUsername : waiting.displayName;
   const loser = winnerIsCurrent ? waiting.displayName : twitchUsername;
-
-  const currentIsExempt = DUEL_EXEMPT_USERS.has(normalized);
 
   if (winnerIsCurrent) {
     player.points = (player.points ?? DEFAULT_POINTS) + DUEL_WIN_POINTS;
