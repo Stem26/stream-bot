@@ -542,18 +542,15 @@ export class TwitchStreamMonitor {
             console.log('🔄 Повтор welcome сообщения...');
             await this.sendWelcomeMessage(true); // force=true для интервала
 
-            // Сбрасываем ротацию ссылок после welcome
-            console.log('🔄 Сброс ротации ссылок после welcome...');
+            console.log('🔄 Сброс таймера ротации ссылок (следующая ссылка через 15 мин)...');
             this.stopLinkRotation();
-            this.startLinkRotation();
+            this.startLinkRotation(true);
         };
 
         if (initialDelay === 0) {
-            // Сразу отправляем и запускаем интервал
             runMessage();
             this.welcomeInterval = setInterval(runMessage, ANNOUNCEMENT_REPEAT_INTERVAL_MS);
         } else {
-            // Ждём оставшееся время, потом отправляем и запускаем интервал
             setTimeout(async () => {
                 await runMessage();
                 this.welcomeInterval = setInterval(runMessage, ANNOUNCEMENT_REPEAT_INTERVAL_MS);
@@ -575,8 +572,9 @@ export class TwitchStreamMonitor {
     /**
      * Запускает ротацию ссылок (через 15 минут после начала, затем каждые 15 минут)
      * Учитывает время последней отправки для синхронизации
+     * @param force - если true, игнорирует lastLinkAnnouncementAt и запускает с полной задержкой
      */
-    private startLinkRotation(): void {
+    private startLinkRotation(force: boolean = false): void {
         this.stopLinkRotation();
 
         const mins = LINK_ROTATION_INTERVAL_MS / 60000;
@@ -586,7 +584,11 @@ export class TwitchStreamMonitor {
         const lastSent = this.announcementState.lastLinkAnnouncementAt;
         let initialDelay = LINK_ROTATION_INTERVAL_MS;
 
-        if (lastSent) {
+        // Если force=true, всегда используем полный интервал (игнорируем lastSent)
+        if (force) {
+            initialDelay = LINK_ROTATION_INTERVAL_MS;
+            console.log(`🔄 Ротация ссылок: принудительный сброс, следующая через ${mins} мин`);
+        } else if (lastSent) {
             const timeSinceLastSent = now - lastSent;
             const remaining = LINK_ROTATION_INTERVAL_MS - timeSinceLastSent;
             

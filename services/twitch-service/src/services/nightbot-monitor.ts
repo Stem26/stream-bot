@@ -337,6 +337,7 @@ export class NightBotMonitor {
                 const trimmedMessage = message.trim().toLowerCase();
                 console.log(`📨 ${user}: ${message}`);
 
+                //Игнорировать команды при локальном запуске
                 if (IS_LOCAL) {
                     return;
                 }
