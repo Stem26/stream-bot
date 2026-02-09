@@ -80,6 +80,13 @@ export function processTwitchDuelCommand(
     };
   }
 
+  // Проверяем минимальное количество очков (если пользователь не exempt)
+  if (!isExempt && (player.points ?? DEFAULT_POINTS) < DUEL_WIN_POINTS) {
+    return {
+      response: `@${twitchUsername}, у тебя недостаточно очков для дуэли (минимум ${DUEL_WIN_POINTS}).`
+    };
+  }
+
   const waiting = duelQueueByChannel.get(channel);
 
   if (!waiting) {
@@ -98,13 +105,21 @@ export function processTwitchDuelCommand(
 
   const opponentPlayer = ensurePlayer(players, waiting.displayName);
 
+  const opponentIsExempt = DUEL_EXEMPT_USERS.has(waiting.username);
+  if (!opponentIsExempt && (opponentPlayer.points ?? DEFAULT_POINTS) < DUEL_WIN_POINTS) {
+    duelQueueByChannel.delete(channel);
+    duelQueueByChannel.set(channel, { username: normalized, displayName: twitchUsername, joinedAt: now });
+    saveTwitchPlayers(players);
+    return {
+      response: `@${waiting.displayName} вылетел из очереди (мало очков). @${twitchUsername}, ты теперь в очереди на дуэль!`
+    };
+  }
+
   const winnerIsCurrent = Math.random() < 0.5;
   const winner = winnerIsCurrent ? twitchUsername : waiting.displayName;
   const loser = winnerIsCurrent ? waiting.displayName : twitchUsername;
 
-  // Определяем exempt статус обоих игроков
   const currentIsExempt = DUEL_EXEMPT_USERS.has(normalized);
-  const opponentIsExempt = DUEL_EXEMPT_USERS.has(waiting.username);
 
   if (winnerIsCurrent) {
     player.points = (player.points ?? DEFAULT_POINTS) + DUEL_WIN_POINTS;

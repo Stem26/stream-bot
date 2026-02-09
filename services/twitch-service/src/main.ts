@@ -48,6 +48,29 @@ async function main() {
     );
 
     console.log('✅ Twitch сервис запущен');
+
+    // Graceful shutdown
+    const shutdown = async (signal: string) => {
+        console.log(`\n⚠️ Получен сигнал ${signal}, завершаем работу...`);
+        
+        try {
+            console.log('🛑 Отключаем NightBot мониторинг...');
+            await nightBotMonitor.disconnect();
+            
+            console.log('🛑 Отключаем Stream мониторинг...');
+            await streamMonitor.disconnect();
+            
+            console.log('✅ Все соединения закрыты');
+            process.exit(0);
+        } catch (error) {
+            console.error('❌ Ошибка при завершении:', error);
+            process.exit(1);
+        }
+    };
+
+    process.on('SIGTERM', () => shutdown('SIGTERM'));
+    process.on('SIGINT', () => shutdown('SIGINT'));
+    process.on('SIGHUP', () => shutdown('SIGHUP'));
 }
 
 main().catch((err) => {

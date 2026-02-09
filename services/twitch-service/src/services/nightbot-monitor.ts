@@ -7,6 +7,7 @@ import { processTwitchDuelCommand } from '../commands/twitch-duel';
 import { processTwitchRatCommand, processTwitchCutieCommand, addActiveUser, setChattersAPIFunction } from '../commands/twitch-rat';
 import { processTwitchPointsCommand, processTwitchTopPointsCommand } from '../commands/twitch-points';
 import { ENABLE_BOT_FEATURES } from '../config/features';
+import { IS_LOCAL } from '../config/env';
 
 type CommandHandler = (channel: string, user: string, message: string, msg: any) => void | Promise<void>;
 
@@ -415,6 +416,12 @@ export class NightBotMonitor {
                             // Проверяем, включены ли функции бота
                             if (!ENABLE_BOT_FEATURES) {
                                 console.log('⚠️ Благодарности за watch streak отключены (ENABLE_BOT_FEATURES=false)');
+                                return;
+                            }
+                            
+                            // Локально не отправляем сообщения в чат (чтобы не дублировать с сервером)
+                            if (IS_LOCAL) {
+                                console.log('⚠️ Локальный режим: сообщение о watch streak не отправлено (отправит сервер)');
                                 return;
                             }
                             

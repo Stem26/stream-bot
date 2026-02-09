@@ -5,6 +5,7 @@ import type {Telegram} from 'telegraf';
 import * as fs from 'fs';
 import * as path from 'path';
 import { ENABLE_BOT_FEATURES } from '../config/features';
+import { IS_LOCAL } from '../config/env';
 
 // Файл для хранения состояния announcement'ов (в корне монорепы)
 const ANNOUNCEMENT_STATE_FILE = path.resolve(__dirname, '../../../../../announcement-state.json');
@@ -45,12 +46,14 @@ const STREAM_WELCOME_MESSAGE =
     '📸Boosty (запретные фото): https://boosty.to/kunilika911 ───────────────── ' +
     '😻Discord (тут я мурчу): https://discord.gg/zrNsn4vAw2 ───────────────── ' +
     '💖Donation (шанс, что приду): https://donatex.gg/donate/kunilika666 ───────────────── ' +
-    '🔮Telegram (тайная жизнь): https://t.me/+V96KfRWs17AxNzM9';
+    '🔮Telegram (тайная жизнь): http://t.me/+rSBrR1FyQqBhZmU1 ───────────────── ' +
+    '🎁Fetta (исполни желание): https://fetta.app/u/kunilika666';
 
 const LINK_ANNOUNCEMENTS = [
     {message: '💖Donation (шанс, что приду): https://donatex.gg/donate/kunilika666', color: 'orange' as const},
     {message: '📸Boosty (запретные фото): https://boosty.to/kunilika911', color: 'purple' as const},
-    {message: '🔮Telegram (тайная жизнь): https://t.me/+V96KfRWs17AxNzM9', color: 'blue' as const}
+    {message: '🔮Telegram (тайная жизнь): http://t.me/+rSBrR1FyQqBhZmU1', color: 'blue' as const},
+    {message: '🎁Fetta (исполни желание): https://fetta.app/u/kunilika666', color: 'green' as const}
 ];
 
 const ANNOUNCEMENT_REPEAT_INTERVAL_MS = 60 * 60 * 1000;
@@ -125,6 +128,14 @@ export class TwitchStreamMonitor {
         clientId: string,
         telegramChannelId?: string
     ): Promise<boolean> {
+        // Локально не подключаемся к EventSub, чтобы не создавать дублирующиеся подписки
+        // и не мешать серверу. Локально достаточно только чат-бота для тестирования команд.
+        if (IS_LOCAL) {
+            console.log('⚠️ Локальный режим: TwitchStreamMonitor не подключается к EventSub');
+            console.log('   (это предотвращает дублирование подписок и конфликты с сервером)');
+            return true;
+        }
+
         if (this.listener) {
             console.error('⚠️ TwitchStreamMonitor уже подключён');
             return true;
@@ -155,6 +166,10 @@ export class TwitchStreamMonitor {
                 const validateData = await validateRes.json() as { user_id: string };
                 this.moderatorId = validateData.user_id;
             }
+
+            // Очищаем старые EventSub подписки перед созданием новых
+            console.log('🧹 Проверяем и очищаем старые EventSub подписки...');
+            await this.cleanupOldSubscriptions();
 
             this.listener = new EventSubWsListener({apiClient: this.apiClient});
 
@@ -219,6 +234,12 @@ export class TwitchStreamMonitor {
                     return;
                 }
 
+                // Локально не отправляем сообщения в чат (чтобы не дублировать с сервером)
+                if (IS_LOCAL) {
+                    console.log('⚠️ Локальный режим: благодарность за Follow не отправлена (отправит сервер)');
+                    return;
+                }
+
                 // Отправляем благодарность в чат
                 if (this.chatSender && this.channelName) {
                     try {
@@ -240,6 +261,69 @@ export class TwitchStreamMonitor {
         } catch (error) {
             console.error('❌ Ошибка подключения к Twitch EventSub:', error);
             return false;
+        }
+    }
+
+    /**
+     * Очистка старых EventSub подписок
+     */
+    private async cleanupOldSubscriptions(): Promise<void> {
+        if (!this.accessToken || !this.clientId) {
+            console.log('⚠️ Нет токенов для очистки подписок');
+            return;
+        }
+
+        try {
+            // Получаем список всех активных подписок
+            const response = await fetch('https://api.twitch.tv/helix/eventsub/subscriptions', {
+                headers: {
+                    'Authorization': `Bearer ${this.accessToken}`,
+                    'Client-Id': this.clientId
+                }
+            });
+
+            if (!response.ok) {
+                console.log(`⚠️ Не удалось получить список подписок: ${response.status}`);
+                return;
+            }
+
+            const data = await response.json() as { data: Array<{ id: string; type: string; status: string; transport: { method: string } }> };
+            const subscriptions = data.data || [];
+
+            if (subscriptions.length === 0) {
+                console.log('✅ Нет активных подписок для очистки');
+                return;
+            }
+
+            console.log(`📋 Найдено подписок: ${subscriptions.length}`);
+
+            // Удаляем все WebSocket подписки
+            const websocketSubs = subscriptions.filter(sub => sub.transport.method === 'websocket');
+            console.log(`🧹 Удаляем ${websocketSubs.length} WebSocket подписок...`);
+
+            for (const sub of websocketSubs) {
+                try {
+                    const deleteResponse = await fetch(`https://api.twitch.tv/helix/eventsub/subscriptions?id=${sub.id}`, {
+                        method: 'DELETE',
+                        headers: {
+                            'Authorization': `Bearer ${this.accessToken}`,
+                            'Client-Id': this.clientId
+                        }
+                    });
+
+                    if (deleteResponse.ok) {
+                        console.log(`✅ Удалена подписка: ${sub.type} (${sub.id})`);
+                    } else {
+                        console.log(`⚠️ Не удалось удалить подписку ${sub.id}: ${deleteResponse.status}`);
+                    }
+                } catch (error) {
+                    console.error(`❌ Ошибка при удалении подписки ${sub.id}:`, error);
+                }
+            }
+
+            console.log('✅ Очистка подписок завершена');
+        } catch (error) {
+            console.error('❌ Ошибка при очистке подписок:', error);
         }
     }
 
@@ -499,6 +583,12 @@ export class TwitchStreamMonitor {
             return;
         }
 
+        // Локально не отправляем сообщения в чат (чтобы не дублировать с сервером)
+        if (IS_LOCAL) {
+            console.log('⚠️ Локальный режим: welcome сообщение не отправлено (отправит сервер)');
+            return;
+        }
+
         if (!this.chatSender || !this.channelName) {
             console.error('⚠️ Chat sender не установлен, пропускаем приветственное сообщение');
             return;
@@ -673,6 +763,12 @@ export class TwitchStreamMonitor {
     private async sendNextLinkAnnouncement(): Promise<void> {
         if (!ENABLE_BOT_FEATURES) {
             console.log('⚠️ Ротация ссылок отключена (ENABLE_BOT_FEATURES=false)');
+            return;
+        }
+
+        // Локально не отправляем announcements (чтобы не дублировать с сервером)
+        if (IS_LOCAL) {
+            console.log('⚠️ Локальный режим: link announcement не отправлен (отправит сервер)');
             return;
         }
 
