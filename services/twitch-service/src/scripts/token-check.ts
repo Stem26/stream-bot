@@ -1,11 +1,20 @@
 import * as dotenv from 'dotenv';
 import * as path from 'path';
+import * as fs from 'fs';
 
 const NODE_ENV = process.env.NODE_ENV || 'development';
 const IS_LOCAL = NODE_ENV === 'development';
-const envFile = IS_LOCAL ? '.env.local' : '.env';
 
-dotenv.config({ path: path.resolve(process.cwd(), envFile) });
+// Путь к корню монорепы (аналогично env.ts)
+let MONOREPO_ROOT = path.resolve(__dirname, '../../../../');
+if (!fs.existsSync(path.join(MONOREPO_ROOT, 'package.json'))) {
+  MONOREPO_ROOT = path.resolve(__dirname, '../../../../../');
+}
+
+const envFile = IS_LOCAL ? '.env.local' : '.env';
+const envPath = path.resolve(MONOREPO_ROOT, envFile);
+
+dotenv.config({ path: envPath });
 
 async function main() {
   const accessToken = process.env.TWITCH_ACCESS_TOKEN;

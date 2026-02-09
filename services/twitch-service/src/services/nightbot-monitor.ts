@@ -6,7 +6,7 @@ import { processTwitchBottomDickCommand } from '../commands/twitch-bottomDick';
 import { processTwitchDuelCommand } from '../commands/twitch-duel';
 import { processTwitchRatCommand, processTwitchCutieCommand, addActiveUser, setChattersAPIFunction } from '../commands/twitch-rat';
 import { processTwitchPointsCommand, processTwitchTopPointsCommand } from '../commands/twitch-points';
-import { IS_LOCAL } from '../config/env';
+import { ENABLE_CHAT_COMMANDS, ENABLE_WATCH_STREAK_MESSAGES } from '../config/features';
 
 type CommandHandler = (channel: string, user: string, message: string, msg: any) => void | Promise<void>;
 
@@ -310,8 +310,8 @@ export class NightBotMonitor {
 
             await new Promise(resolve => setTimeout(resolve, 2000));
             console.log('✅ Чат готов к работе!');
-            if (IS_LOCAL) {
-                console.log('🧪 Локальный режим: команды чата отключены');
+            if (!ENABLE_CHAT_COMMANDS) {
+                console.log('🧪 Команды чата отключены (ENABLE_CHAT_COMMANDS=false)');
             }
 
             // Warming up: предзагружаем список зрителей для быстрого первого !крыса
@@ -337,16 +337,16 @@ export class NightBotMonitor {
                 const trimmedMessage = message.trim().toLowerCase();
                 console.log(`📨 ${user}: ${message}`);
 
-                //Игнорировать команды при локальном запуске
-                if (IS_LOCAL) {
+                //Игнорировать команды если они отключены
+                if (!ENABLE_CHAT_COMMANDS) {
                     return;
                 }
 
                 // Проверяем, есть ли команда в мапе
                 const commandHandler = this.commands.get(trimmedMessage);
                 if (commandHandler) {
-                    // В dev режиме команды работают всегда, в prod только когда стрим онлайн
-                    if (!IS_LOCAL && !this.isStreamOnlineCheck()) {
+                    // Команды работают только когда стрим онлайн
+                    if (!this.isStreamOnlineCheck()) {
                         console.log(`⚠️ Команда ${trimmedMessage} проигнорирована: стрим оффлайн`);
                         return;
                     }
@@ -370,28 +370,66 @@ export class NightBotMonitor {
                     const msgId = ircMessage.tags.get('msg-id');
                     
                     if (msgId === 'viewermilestone') {
+                        console.log('🎯 VIEWERMILESTONE событие обнаружено!');
+                        console.log('='.repeat(80));
+                        
+                        // Полный дамп всего объекта ircMessage
+                        console.log('📦 ПОЛНЫЙ ОБЪЕКТ ircMessage:');
+                        
+                        // 1. Выводим все ключи объекта
+                        console.log('🔑 Ключи объекта:', Object.keys(ircMessage));
+                        console.log('🔑 Все свойства:', Object.getOwnPropertyNames(ircMessage));
+                        
+                        // 2. console.dir для глубокого просмотра
+                        console.log('🔍 Глубокий просмотр объекта:');
+                        console.dir(ircMessage, { depth: null, colors: true });
+                        
+                        // 3. Пытаемся сериализовать в JSON
+                        try {
+                            console.log('📋 JSON представление:');
+                            console.log(JSON.stringify({
+                                command: ircMessage.command,
+                                prefix: ircMessage.prefix,
+                                tags: Object.fromEntries(ircMessage.tags.entries()),
+                            }, null, 2));
+                        } catch (e) {
+                            console.log('⚠️ Не удалось сериализовать в JSON:', e);
+                        }
+                        
+                        console.log('='.repeat(80));
+                        
                         const category = ircMessage.tags.get('msg-param-category');
+                        const username = ircMessage.tags.get('login') || ircMessage.tags.get('display-name') || 'Unknown';
+                        const displayName = ircMessage.tags.get('display-name') || username;
+                        const value = ircMessage.tags.get('msg-param-value');
+                        const systemMsg = ircMessage.tags.get('system-msg')?.replace(/\\s/g, ' ') || '';
+                        
+                        console.log(`👤 Пользователь: ${username}`);
+                        console.log(`📊 Категория: ${category}`);
+                        console.log(`🔢 Значение: ${value}`);
+                        console.log(`💬 Системное сообщение: ${systemMsg}`);
                         
                         if (category === 'watch-streak') {
-                            const username = ircMessage.tags.get('login') || ircMessage.tags.get('display-name') || 'Unknown';
-                            const streakCount = ircMessage.tags.get('msg-param-value');
-                            const systemMsg = ircMessage.tags.get('system-msg')?.replace(/\\s/g, ' ') || '';
-                            const channelPoints = ircMessage.tags.get('msg-param-copoReward');
+                            console.log(`🔥 Watch Streak! ${username} смотрит ${value}-й стрим подряд!`);
                             
-                            console.log(`🔥 Watch Streak! ${username} смотрит ${streakCount}-й стрим подряд!`);
-                            console.log(`   Системное сообщение: ${systemMsg}`);
-                            console.log(`   Награда: ${channelPoints} channel points`);
+                            // Проверяем, включена ли функция благодарностей за watch streak
+                            if (!ENABLE_WATCH_STREAK_MESSAGES) {
+                                console.log('⚠️ Благодарности за watch streak отключены (ENABLE_WATCH_STREAK_MESSAGES=false)');
+                                return;
+                            }
                             
-                            // TODO: Раскомментировать после проверки логов
-                            // if (parseInt(streakCount || '0') >= 5) {
-                            //     const channel = ircMessage.params.channel;
-                            //     if (channel) {
-                            //         this.sendMessage(channel, `🔥 Новая серия просмотров! ${username} смотрит ${streakCount}-й стрим подряд!`).catch(err => {
-                            //             console.error('Ошибка отправки сообщения о watch streak:', err);
-                            //         });
-                            //     }
-                            // }
+                            // Отправляем благодарность в чат
+                            const channel = (ircMessage as any).channel;
+                            if (channel && value) {
+                                this.sendMessage(channel, `${displayName} спасибо за ${value} подряд ❤️`).catch(err => {
+                                    console.error('Ошибка отправки сообщения о watch streak:', err);
+                                });
+                            } else {
+                                console.error('⚠️ Не удалось определить канал или значение из ircMessage');
+                            }
                         }
+                        
+                        console.log('='.repeat(80));
                     }
                 }
             });
@@ -670,6 +708,7 @@ export class NightBotMonitor {
         this.getChatters(this.channelName)
             .then(chatters => {
                 console.log(`✅ Warming up завершён: ${chatters.length} зрителей в кеше`);
+                console.log(`👥 Зрители в кеше: ${chatters.join(', ')}`); //узнать какие зрители подключены
             })
             .catch(error => {
                 console.log(`⚠️ Warming up не удался (не критично):`, error.message);

@@ -4,6 +4,7 @@ import {EventSubWsListener} from '@twurple/eventsub-ws';
 import type {Telegram} from 'telegraf';
 import * as fs from 'fs';
 import * as path from 'path';
+import { ENABLE_WELCOME_MESSAGES, ENABLE_LINK_ROTATION, ENABLE_FOLLOW_MESSAGES } from '../config/features';
 
 // Файл для хранения состояния announcement'ов (в корне монорепы)
 const ANNOUNCEMENT_STATE_FILE = path.resolve(__dirname, '../../../../../announcement-state.json');
@@ -208,6 +209,28 @@ export class TwitchStreamMonitor {
                 await this.handleStreamOffline(event, telegramChannelId, result);
             });
 
+            // Подписываемся на событие Follow (когда пользователь нажимает "Отслеживать")
+            this.listener.onChannelFollow(user.id, this.moderatorId, async (event) => {
+                console.log(`💜 Новый фоловер: ${event.userDisplayName} (@${event.userName})`);
+                
+                // Проверяем, включена ли функция благодарностей за Follow
+                if (!ENABLE_FOLLOW_MESSAGES) {
+                    console.log('⚠️ Благодарности за Follow отключены (ENABLE_FOLLOW_MESSAGES=false)');
+                    return;
+                }
+
+                // Отправляем благодарность в чат
+                if (this.chatSender && this.channelName) {
+                    try {
+                        await this.chatSender(this.channelName, `${event.userDisplayName} спасибо за подписку ❤️`);
+                        console.log(`✅ Отправлена благодарность за Follow: ${event.userDisplayName}`);
+                    } catch (error) {
+                        console.error('❌ Ошибка отправки благодарности за Follow:', error);
+                    }
+                } else {
+                    console.error('⚠️ Chat sender не установлен для отправки благодарности за Follow');
+                }
+            });
 
             console.error(`✅ Мониторинг стримов запущен для канала: ${channelName}`);
 
@@ -471,6 +494,11 @@ export class TwitchStreamMonitor {
      * @param force - если true, отправляет независимо от времени последней отправки
      */
     private async sendWelcomeMessage(force: boolean = false): Promise<void> {
+        if (!ENABLE_WELCOME_MESSAGES) {
+            console.log('⚠️ Welcome сообщения отключены (ENABLE_WELCOME_MESSAGES=false)');
+            return;
+        }
+
         if (!this.chatSender || !this.channelName) {
             console.error('⚠️ Chat sender не установлен, пропускаем приветственное сообщение');
             return;
@@ -643,6 +671,11 @@ export class TwitchStreamMonitor {
      * Отправляет следующий announcement из ротации ссылок
      */
     private async sendNextLinkAnnouncement(): Promise<void> {
+        if (!ENABLE_LINK_ROTATION) {
+            console.log('⚠️ Ротация ссылок отключена (ENABLE_LINK_ROTATION=false)');
+            return;
+        }
+
         if (!this.accessToken || !this.clientId || !this.broadcasterId || !this.moderatorId) {
             console.error('⚠️ Нет данных для отправки link announcement');
             return;
