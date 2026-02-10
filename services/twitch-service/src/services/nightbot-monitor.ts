@@ -6,7 +6,7 @@ import { processTwitchBottomDickCommand } from '../commands/twitch-bottomDick';
 import { processTwitchDuelCommand } from '../commands/twitch-duel';
 import { processTwitchRatCommand, processTwitchCutieCommand, addActiveUser, setChattersAPIFunction } from '../commands/twitch-rat';
 import { processTwitchPointsCommand, processTwitchTopPointsCommand } from '../commands/twitch-points';
-import { ENABLE_BOT_FEATURES } from '../config/features';
+import { ENABLE_BOT_FEATURES, ALLOW_LOCAL_COMMANDS } from '../config/features';
 import { IS_LOCAL } from '../config/env';
 
 type CommandHandler = (channel: string, user: string, message: string, msg: any) => void | Promise<void>;
@@ -328,7 +328,16 @@ export class NightBotMonitor {
             await new Promise(resolve => setTimeout(resolve, 2000));
             console.log('✅ Чат готов к работе!');
             if (!ENABLE_BOT_FEATURES) {
-                console.log('🧪 Все функции бота отключены (ENABLE_BOT_FEATURES=false)');
+                console.log('🔇 Все функции бота отключены (ENABLE_BOT_FEATURES=false) - только мониторинг');
+            } else if (IS_LOCAL && !ALLOW_LOCAL_COMMANDS) {
+                console.log('✅ Сообщения в чат включены (ENABLE_BOT_FEATURES=true)');
+                console.log('🔒 Команды заблокированы локально (для теста: ALLOW_LOCAL_COMMANDS=true)');
+            } else if (IS_LOCAL && ALLOW_LOCAL_COMMANDS) {
+                console.log('⚠️⚠️⚠️ РЕЖИМ ТЕСТИРОВАНИЯ КОМАНД ЛОКАЛЬНО ⚠️⚠️⚠️');
+                console.log('⚠️ УБЕДИСЬ ЧТО НА СЕРВЕРЕ ENABLE_BOT_FEATURES=false!');
+                console.log('⚠️ Иначе команды будут дублироваться!');
+            } else {
+                console.log('✅ Функции бота включены (ENABLE_BOT_FEATURES=true)');
             }
 
             // Warming up: предзагружаем список зрителей для быстрого первого !крыса
@@ -354,8 +363,20 @@ export class NightBotMonitor {
                 const trimmedMessage = message.trim().toLowerCase();
                 console.log(`📨 ${user}: ${message}`);
 
-                //Игнорировать команды если они отключены
+                // Игнорировать команды если они отключены
                 if (!ENABLE_BOT_FEATURES) {
+                    if (this.commands.has(trimmedMessage)) {
+                        console.log(`🔇 Команды отключены (ENABLE_BOT_FEATURES=false): ${trimmedMessage} не выполнена`);
+                    }
+                    return;
+                }
+
+                // Локально команды блокируются ПО УМОЛЧАНИЮ (защита от дублирования)
+                // Для теста команд нужно явно включить ALLOW_LOCAL_COMMANDS=true
+                if (IS_LOCAL && !ALLOW_LOCAL_COMMANDS) {
+                    if (this.commands.has(trimmedMessage)) {
+                        console.log(`🔒 Локально команды заблокированы (для теста добавь ALLOW_LOCAL_COMMANDS=true в .env.local)`);
+                    }
                     return;
                 }
 
@@ -363,10 +384,17 @@ export class NightBotMonitor {
                 const commandHandler = this.commands.get(trimmedMessage);
                 if (commandHandler) {
                     // Команды работают только когда стрим онлайн
-                    if (!this.isStreamOnlineCheck()) {
+                    // Локально можем тестировать и в оффлайне (если ENABLE_BOT_FEATURES=true)
+                    if (!this.isStreamOnlineCheck() && !IS_LOCAL) {
                         console.log(`⚠️ Команда ${trimmedMessage} проигнорирована: стрим оффлайн`);
                         return;
                     }
+                    
+                    // Локально показываем что тестируем в оффлайне
+                    if (IS_LOCAL && !this.isStreamOnlineCheck()) {
+                        console.log(`🧪 ТЕСТ в оффлайне: выполняем команду ${trimmedMessage}`);
+                    }
+                    
                     commandHandler(channel, user, message, msg);
                 }
             });
@@ -431,13 +459,7 @@ export class NightBotMonitor {
                             
                             // Проверяем, включены ли функции бота
                             if (!ENABLE_BOT_FEATURES) {
-                                console.log('⚠️ Благодарности за watch streak отключены (ENABLE_BOT_FEATURES=false)');
-                                return;
-                            }
-                            
-                            // Локально не отправляем сообщения в чат (чтобы не дублировать с сервером)
-                            if (IS_LOCAL) {
-                                console.log('⚠️ Локальный режим: сообщение о watch streak не отправлено (отправит сервер)');
+                                console.log('🔇 Благодарности за watch streak отключены (ENABLE_BOT_FEATURES=false)');
                                 return;
                             }
                             

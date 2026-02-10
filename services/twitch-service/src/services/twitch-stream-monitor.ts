@@ -128,14 +128,6 @@ export class TwitchStreamMonitor {
         clientId: string,
         telegramChannelId?: string
     ): Promise<boolean> {
-        // Локально не подключаемся к EventSub, чтобы не создавать дублирующиеся подписки
-        // и не мешать серверу. Локально достаточно только чат-бота для тестирования команд.
-        if (IS_LOCAL) {
-            console.log('⚠️ Локальный режим: TwitchStreamMonitor не подключается к EventSub');
-            console.log('   (это предотвращает дублирование подписок и конфликты с сервером)');
-            return true;
-        }
-
         if (this.listener) {
             console.error('⚠️ TwitchStreamMonitor уже подключён');
             return true;
@@ -174,6 +166,7 @@ export class TwitchStreamMonitor {
             this.listener = new EventSubWsListener({apiClient: this.apiClient});
 
             await this.listener.start();
+            console.log('✅ EventSub WebSocket подключен');
 
             // Подписываемся на событие начала стрима
             this.listener.onStreamOnline(user.id, async (event) => {
@@ -230,13 +223,7 @@ export class TwitchStreamMonitor {
                 
                 // Проверяем, включены ли функции бота
                 if (!ENABLE_BOT_FEATURES) {
-                    console.log('⚠️ Благодарности за Follow отключены (ENABLE_BOT_FEATURES=false)');
-                    return;
-                }
-
-                // Локально не отправляем сообщения в чат (чтобы не дублировать с сервером)
-                if (IS_LOCAL) {
-                    console.log('⚠️ Локальный режим: благодарность за Follow не отправлена (отправит сервер)');
+                    console.log('🔇 Благодарности за Follow отключены (ENABLE_BOT_FEATURES=false)');
                     return;
                 }
 
@@ -253,6 +240,10 @@ export class TwitchStreamMonitor {
                 }
             });
 
+            console.log('📋 Подписки EventSub зарегистрированы:');
+            console.log('   • stream.online');
+            console.log('   • stream.offline');
+            console.log('   • channel.follow');
             console.error(`✅ Мониторинг стримов запущен для канала: ${channelName}`);
 
             await this.checkCurrentStreamStatus(user.id);
@@ -577,13 +568,7 @@ export class TwitchStreamMonitor {
      */
     private async sendWelcomeMessage(force: boolean = false): Promise<void> {
         if (!ENABLE_BOT_FEATURES) {
-            console.log('⚠️ Welcome сообщения отключены (ENABLE_BOT_FEATURES=false)');
-            return;
-        }
-
-        // Локально не отправляем сообщения в чат (чтобы не дублировать с сервером)
-        if (IS_LOCAL) {
-            console.log('⚠️ Локальный режим: welcome сообщение не отправлено (отправит сервер)');
+            console.log('🔇 Welcome сообщения отключены (ENABLE_BOT_FEATURES=false)');
             return;
         }
 
@@ -765,13 +750,7 @@ export class TwitchStreamMonitor {
      */
     private async sendNextLinkAnnouncement(): Promise<void> {
         if (!ENABLE_BOT_FEATURES) {
-            console.log('⚠️ Ротация ссылок отключена (ENABLE_BOT_FEATURES=false)');
-            return;
-        }
-
-        // Локально не отправляем announcements (чтобы не дублировать с сервером)
-        if (IS_LOCAL) {
-            console.log('⚠️ Локальный режим: link announcement не отправлен (отправит сервер)');
+            console.log('🔇 Ротация ссылок отключена (ENABLE_BOT_FEATURES=false)');
             return;
         }
 
