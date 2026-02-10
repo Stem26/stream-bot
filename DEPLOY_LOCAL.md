@@ -124,4 +124,5 @@ npm run twitch:announcement:test "@Kunilika666 милый стример"
 # Прод канал ID: -1001983402471
 # Команды: /dick /top_dick /bottomdick
 # Twitch: !dick !top_dick !bottomdick !vanish
+# ssh -v -N -D 127.0.0.1:1080 root@194.87.55.131
 ```
