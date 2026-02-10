@@ -872,14 +872,14 @@ export class TwitchStreamMonitor {
                 this.currentStreamStats.viewerCounts.push(actualViewers);
                 
                 if (chattersCount) {
-                    console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-                    console.error('📊 СИНХРОНИЗАЦИЯ ДВУХ API:');
-                    console.error(`   🔵 Viewers API (streams):  ${viewersAPI}`);
-                    console.error(`   🟢 Chatters API (chat):    ${chattersCount}`);
-                    console.error(`   ✅ Записываем в статистику: ${actualViewers} (максимум)`);
-                    console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+                    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+                    console.log('📊 СИНХРОНИЗАЦИЯ ДВУХ API:');
+                    console.log(`Viewers API (streams):  ${viewersAPI}`);
+                    console.log(`Chatters API (chat):    ${chattersCount}`);
+                    console.log(`Записываем в статистику: ${actualViewers} (максимум)`);
+                    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
                 } else {
-                    console.error(`📊 Регулярный замер viewers API: ${actualViewers}`);
+                    console.log(`📊 Регулярный замер viewers API: ${actualViewers}`);
                 }
             }
         } catch (error) {

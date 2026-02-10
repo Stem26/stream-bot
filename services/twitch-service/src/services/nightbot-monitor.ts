@@ -214,7 +214,6 @@ export class NightBotMonitor {
                 if (this.syncViewersCallback) {
                     try {
                         await this.syncViewersCallback(filteredChatters.length);
-                        console.log(`🔄 Синхронизация: сравниваем viewers API с chatters (${filteredChatters.length})`);
                     } catch (error) {
                         console.error('⚠️ Ошибка синхронизации viewers:', error);
                     }
