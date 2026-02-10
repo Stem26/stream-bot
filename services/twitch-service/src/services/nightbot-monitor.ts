@@ -43,6 +43,7 @@ export class NightBotMonitor {
     private accessToken: string = '';
     private clientId: string = '';
     private isStreamOnlineCheck: () => boolean = () => true;
+    private syncViewersCallback: ((chattersCount?: number) => Promise<void>) | null = null;
 
     private dickQueue: Promise<void> = Promise.resolve();
 
@@ -51,6 +52,9 @@ export class NightBotMonitor {
     private readonly CHATTERS_CACHE_TTL_MS = 60 * 1000; // 60 секунд
     // Inflight promise для предотвращения параллельных запросов к API
     private chattersFetchPromise: Promise<string[]> | null = null;
+    // Периодический опрос chatters для синхронизации viewers (каждую минуту)
+    private chattersSyncInterval: NodeJS.Timeout | null = null;
+    private readonly CHATTERS_SYNC_INTERVAL_MS = 60 * 1000; // 60 секунд (синхронно с viewers)
 
     // Мапа команд для чистого роутинга
     private readonly commands = new Map<string, CommandHandler>([
@@ -203,6 +207,17 @@ export class NightBotMonitor {
 
                 if (botsFiltered > 0) {
                     console.log(`🤖 Отфильтровано ботов: ${botsFiltered} (${filteredBots.join(', ')}) - осталось: ${filteredChatters.length} зрителей`);
+                }
+
+                // Синхронизируем viewers: опрашиваем оба API и берём максимальное значение
+                // Это даёт самую точную оценку, так как разные API обновляются с разной скоростью
+                if (this.syncViewersCallback) {
+                    try {
+                        await this.syncViewersCallback(filteredChatters.length);
+                        console.log(`🔄 Синхронизация: сравниваем viewers API с chatters (${filteredChatters.length})`);
+                    } catch (error) {
+                        console.error('⚠️ Ошибка синхронизации viewers:', error);
+                    }
                 }
 
                 // Сохраняем в кеш с timestamp создания
@@ -727,6 +742,15 @@ export class NightBotMonitor {
     }
 
     /**
+     * Устанавливает callback для синхронизации viewers при запросе chatters
+     * @param callback - функция для синхронизированного запроса viewers (принимает количество chatters)
+     */
+    setSyncViewersCallback(callback: (chattersCount?: number) => Promise<void>): void {
+        this.syncViewersCallback = callback;
+        console.log('✅ Установлена функция синхронизации viewers');
+    }
+
+    /**
      * Очистить кеш зрителей чата (полезно при окончании стрима)
      */
     clearChattersCache(): void {
@@ -747,10 +771,46 @@ export class NightBotMonitor {
             .then(chatters => {
                 console.log(`✅ Warming up завершён: ${chatters.length} зрителей в кеше`);
                 console.log(`👥 Зрители в кеше: ${chatters.join(', ')}`); //узнать какие зрители подключены
+                
+                // Запускаем периодический опрос для синхронизации viewers
+                this.startChattersSyncInterval();
             })
             .catch(error => {
                 console.log(`⚠️ Warming up не удался (не критично):`, error.message);
             });
+    }
+
+    /**
+     * Запускает периодический опрос chatters для синхронизации viewers
+     * Опрашивает каждую минуту (синхронно с viewers API)
+     * Результат: max(viewers API, chatters count) для максимальной точности пика
+     */
+    private startChattersSyncInterval(): void {
+        // Останавливаем предыдущий интервал, если был
+        if (this.chattersSyncInterval) {
+            clearInterval(this.chattersSyncInterval);
+        }
+
+        console.log('🔄 Запущена периодическая синхронизация: каждую минуту опрашиваем оба API и берём max');
+
+        this.chattersSyncInterval = setInterval(async () => {
+            try {
+                await this.getChatters(this.channelName);
+            } catch (error) {
+                console.error('⚠️ Ошибка периодического опроса chatters:', error);
+            }
+        }, this.CHATTERS_SYNC_INTERVAL_MS);
+    }
+
+    /**
+     * Останавливает периодический опрос chatters
+     */
+    private stopChattersSyncInterval(): void {
+        if (this.chattersSyncInterval) {
+            clearInterval(this.chattersSyncInterval);
+            this.chattersSyncInterval = null;
+            console.log('⏹️ Остановлена периодическая синхронизация chatters');
+        }
     }
 
     async disconnect() {
@@ -758,6 +818,9 @@ export class NightBotMonitor {
             await this.chatClient.quit();
             console.log('🔌 Отключено от Twitch чата');
         }
+
+        // Останавливаем периодический опрос
+        this.stopChattersSyncInterval();
 
         // Очищаем кеш зрителей и inflight promise
         this.chattersCache.clear();

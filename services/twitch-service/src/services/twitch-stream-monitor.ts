@@ -456,16 +456,15 @@ export class TwitchStreamMonitor {
             broadcasterName
         };
 
-        console.error('📊 Запущено отслеживание количества зрителей (опрос каждую минуту)');
+        console.error('📊 Запущено отслеживание количества зрителей');
         console.error(`⏱️  Время начала стрима: ${startDate.toLocaleString('ru-RU')}`);
-
-        // Запускаем таймер для опроса каждую минуту
-        this.viewerCountInterval = setInterval(async () => {
-            await this.fetchAndRecordViewerCount();
-        }, 60000);
-
-        // Первый опрос сразу
-        this.fetchAndRecordViewerCount();
+        console.error(`💡 Используется синхронизированный опрос:`);
+        console.error(`   - Каждую минуту: chatters API запрашивается фоново`);
+        console.error(`   - При каждом запросе chatters: синхронно запрашивается viewers API`);
+        console.error(`   - В статистику записывается: max(chatters, viewers)`);
+        
+        // Примечание: регулярный опрос viewers больше не нужен, так как он происходит
+        // при каждом опросе chatters (каждую минуту) через синхронизацию
     }
 
     public setOnStreamOfflineCallback(cb: () => void) {
@@ -495,7 +494,6 @@ export class TwitchStreamMonitor {
         console.error(`👤 Канал: ${broadcasterName}`);
         console.error(`⏱️  Длительность: ${stats.duration}`);
         console.error(`👥 Пик зрителей: ${stats.peak}`);
-        console.error(`📊 Всего замеров: ${this.currentStreamStats.viewerCounts.length}`);
         console.error('================================\n');
 
         // Очищаем данные
@@ -842,5 +840,45 @@ export class TwitchStreamMonitor {
      */
     public getStreamStatus(): boolean {
         return this.isStreamOnline;
+    }
+
+    /**
+     * Немедленно запрашивает и записывает текущее количество зрителей
+     * Используется для синхронизации с запросом chatters (более точный пик)
+     * Сравнивает viewers API и chatters, записывает максимальное значение
+     */
+    public async recordViewersNow(chattersCount?: number): Promise<void> {
+        if (!this.isStreamOnline || !this.apiClient || !this.currentStreamStats) {
+            return;
+        }
+
+        try {
+            const stream = await this.apiClient.streams.getStreamByUserId(this.currentStreamStats.broadcasterId);
+            
+            if (stream) {
+                const viewersAPI = stream.viewers;
+                
+                // Берём максимальное значение из двух источников
+                // Viewers API может отставать, chatters обновляется быстрее
+                const actualViewers = chattersCount 
+                    ? Math.max(viewersAPI, chattersCount)
+                    : viewersAPI;
+                
+                this.currentStreamStats.viewerCounts.push(actualViewers);
+                
+                if (chattersCount) {
+                    console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+                    console.error('📊 СИНХРОНИЗАЦИЯ ДВУХ API:');
+                    console.error(`   🔵 Viewers API (streams):  ${viewersAPI}`);
+                    console.error(`   🟢 Chatters API (chat):    ${chattersCount}`);
+                    console.error(`   ✅ Записываем в статистику: ${actualViewers} (максимум)`);
+                    console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+                } else {
+                    console.error(`📊 Регулярный замер viewers API: ${actualViewers}`);
+                }
+            }
+        } catch (error) {
+            console.error('⚠️ Ошибка синхронизированного замера viewers:', error);
+        }
     }
 }
