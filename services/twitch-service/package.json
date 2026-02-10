@@ -12,6 +12,7 @@
     "twitch:announcement:test": "ts-node src/scripts/announcement-test.ts",
     "twitch:token:check": "ts-node src/scripts/token-check.ts",
     "stream:notification:test": "ts-node src/scripts/stream-notification-test.ts",
+    "eventsub:cleanup": "ts-node src/scripts/cleanup-eventsub.ts",
     "watch": "tsc --watch",
     "test": "vitest",
     "test:run": "vitest run"

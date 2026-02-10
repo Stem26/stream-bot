@@ -159,9 +159,8 @@ export class TwitchStreamMonitor {
                 this.moderatorId = validateData.user_id;
             }
 
-            // Очищаем старые EventSub подписки перед созданием новых
-            console.log('🧹 Проверяем и очищаем старые EventSub подписки...');
-            await this.cleanupOldSubscriptions();
+            // НЕ очищаем подписки при запуске - библиотека сама управляет!
+            // Для ручной очистки: npm run eventsub:cleanup
 
             this.listener = new EventSubWsListener({apiClient: this.apiClient});
 
@@ -256,16 +255,89 @@ export class TwitchStreamMonitor {
     }
 
     /**
-     * Очистка старых EventSub подписок
+     * Умная очистка EventSub подписок
+     * Удаляет только неактивные/битые подписки, оставляет рабочие enabled
      */
-    private async cleanupOldSubscriptions(): Promise<void> {
+    private async cleanupBrokenSubscriptions(): Promise<void> {
+        if (!this.accessToken || !this.clientId) {
+            console.log('⚠️ Нет токенов для проверки подписок');
+            return;
+        }
+
+        try {
+            const response = await fetch('https://api.twitch.tv/helix/eventsub/subscriptions', {
+                headers: {
+                    'Authorization': `Bearer ${this.accessToken}`,
+                    'Client-Id': this.clientId
+                }
+            });
+
+            if (!response.ok) {
+                console.log(`⚠️ Не удалось получить список подписок: ${response.status}`);
+                return;
+            }
+
+            const data = await response.json() as { data: Array<{ id: string; type: string; status: string; transport: { method: string } }> };
+            const subscriptions = data.data || [];
+
+            if (subscriptions.length === 0) {
+                console.log('✅ Нет подписок');
+                return;
+            }
+
+            console.log(`📋 Найдено подписок: ${subscriptions.length}`);
+
+            // Удаляем только неактивные WebSocket подписки (не enabled)
+            // Активные (enabled) оставляем - они продолжат работать!
+            const brokenSubs = subscriptions.filter(
+                sub => sub.transport.method === 'websocket' && sub.status !== 'enabled'
+            );
+
+            if (brokenSubs.length === 0) {
+                const activeSubs = subscriptions.filter(sub => sub.status === 'enabled');
+                console.log(`✅ Все подписки активны (${activeSubs.length}), чистка не требуется`);
+                return;
+            }
+
+            console.log(`🧹 Удаляем ${brokenSubs.length} неактивных подписок...`);
+
+            for (const sub of brokenSubs) {
+                try {
+                    const deleteResponse = await fetch(`https://api.twitch.tv/helix/eventsub/subscriptions?id=${sub.id}`, {
+                        method: 'DELETE',
+                        headers: {
+                            'Authorization': `Bearer ${this.accessToken}`,
+                            'Client-Id': this.clientId
+                        }
+                    });
+
+                    if (deleteResponse.ok) {
+                        console.log(`✅ Удалена неактивная: ${sub.type} (status: ${sub.status})`);
+                    } else {
+                        console.log(`⚠️ Ошибка удаления ${sub.id}: ${deleteResponse.status}`);
+                    }
+                } catch (error) {
+                    console.error(`❌ Ошибка при удалении ${sub.id}:`, error);
+                }
+            }
+
+            console.log('✅ Очистка завершена');
+        } catch (error) {
+            console.error('❌ Ошибка при очистке подписок:', error);
+        }
+    }
+
+    /**
+     * ПОЛНАЯ очистка всех EventSub подписок (для ручного использования)
+     * Используй скрипт: npm run eventsub:cleanup
+     */
+    private async cleanupAllSubscriptions(): Promise<void> {
         if (!this.accessToken || !this.clientId) {
             console.log('⚠️ Нет токенов для очистки подписок');
             return;
         }
 
         try {
-            // Получаем список всех активных подписок
             const response = await fetch('https://api.twitch.tv/helix/eventsub/subscriptions', {
                 headers: {
                     'Authorization': `Bearer ${this.accessToken}`,
@@ -288,7 +360,6 @@ export class TwitchStreamMonitor {
 
             console.log(`📋 Найдено подписок: ${subscriptions.length}`);
 
-            // Удаляем все WebSocket подписки
             const websocketSubs = subscriptions.filter(sub => sub.transport.method === 'websocket');
             console.log(`🧹 Удаляем ${websocketSubs.length} WebSocket подписок...`);
 

@@ -417,45 +417,13 @@ export class NightBotMonitor {
                     if (msgId === 'viewermilestone') {
                         console.log('🎯 VIEWERMILESTONE событие обнаружено!');
                         console.log('='.repeat(80));
-                        
-                        // Полный дамп всего объекта ircMessage
-                        console.log('📦 ПОЛНЫЙ ОБЪЕКТ ircMessage:');
-                        
-                        // 1. Выводим все ключи объекта
-                        console.log('🔑 Ключи объекта:', Object.keys(ircMessage));
-                        console.log('🔑 Все свойства:', Object.getOwnPropertyNames(ircMessage));
-                        
-                        // 2. console.dir для глубокого просмотра
-                        console.log('🔍 Глубокий просмотр объекта:');
-                        console.dir(ircMessage, { depth: null, colors: true });
-                        
-                        // 3. Пытаемся сериализовать в JSON
-                        try {
-                            console.log('📋 JSON представление:');
-                            console.log(JSON.stringify({
-                                command: ircMessage.command,
-                                prefix: ircMessage.prefix,
-                                tags: Object.fromEntries(ircMessage.tags.entries()),
-                            }, null, 2));
-                        } catch (e) {
-                            console.log('⚠️ Не удалось сериализовать в JSON:', e);
-                        }
-                        
-                        console.log('='.repeat(80));
-                        
                         const category = ircMessage.tags.get('msg-param-category');
                         const username = ircMessage.tags.get('login') || ircMessage.tags.get('display-name') || 'Unknown';
                         const displayName = ircMessage.tags.get('display-name') || username;
                         const value = ircMessage.tags.get('msg-param-value');
-                        const systemMsg = ircMessage.tags.get('system-msg')?.replace(/\\s/g, ' ') || '';
-                        
-                        console.log(`👤 Пользователь: ${username}`);
-                        console.log(`📊 Категория: ${category}`);
-                        console.log(`🔢 Значение: ${value}`);
-                        console.log(`💬 Системное сообщение: ${systemMsg}`);
                         
                         if (category === 'watch-streak') {
-                            console.log(`🔥 Watch Streak! ${username} смотрит ${value}-й стрим подряд!`);
+                            console.log(`🔥 Watch Streak! ${displayName} смотрит ${value}-й стрим подряд!`);
                             
                             // Проверяем, включены ли функции бота
                             if (!ENABLE_BOT_FEATURES) {

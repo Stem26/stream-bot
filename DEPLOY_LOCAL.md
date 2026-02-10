@@ -109,6 +109,7 @@ git pull origin main
 npm install
 npm run build:twitch
 pm2 restart twitch-bot
+pm2 logs --lines 50
 ```
 
 ---
