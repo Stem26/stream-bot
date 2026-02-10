@@ -60,8 +60,13 @@ export function processTwitchDuelCommand(
   // Проверяем exempt от cooldown
   const isExempt = DUEL_EXEMPT_USERS.has(normalized);
 
+  // Проверяем кто в очереди (чтобы решить, нужен ли cooldown check)
+  const waiting = duelQueueByChannel.get(channel);
+  const waitingIsExempt = waiting ? DUEL_EXEMPT_USERS.has(waiting.username) : false;
+
   // Проверяем глобальный cooldown дуэлей (если пользователь не exempt)
-  if (!isExempt) {
+  // ИСКЛЮЧЕНИЕ: если в очереди стоит exempt пользователь (стример), пропускаем cooldown
+  if (!isExempt && !waitingIsExempt) {
     const lastDuelAt = duelCooldownByChannel.get(channel);
 
     if (lastDuelAt && now - lastDuelAt < DUEL_COOLDOWN_MS) {
@@ -86,8 +91,6 @@ export function processTwitchDuelCommand(
       response: `@${twitchUsername}, у тебя недостаточно очков для дуэли (минимум ${DUEL_WIN_POINTS}).`
     };
   }
-
-  const waiting = duelQueueByChannel.get(channel);
 
   if (!waiting) {
     duelQueueByChannel.set(channel, { username: normalized, displayName: twitchUsername, joinedAt: now });

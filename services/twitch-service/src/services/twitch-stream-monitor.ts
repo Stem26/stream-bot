@@ -159,8 +159,9 @@ export class TwitchStreamMonitor {
                 this.moderatorId = validateData.user_id;
             }
 
-            // НЕ очищаем подписки при запуске - библиотека сама управляет!
-            // Для ручной очистки: npm run eventsub:cleanup
+            // Умная очистка: удаляем только неактивные/битые подписки
+            // Активные (enabled) остаются → не пропускаем события!
+            await this.cleanupBrokenSubscriptions();
 
             this.listener = new EventSubWsListener({apiClient: this.apiClient});
 
@@ -223,6 +224,14 @@ export class TwitchStreamMonitor {
                 // Проверяем, включены ли функции бота
                 if (!ENABLE_BOT_FEATURES) {
                     console.log('🔇 Благодарности за Follow отключены (ENABLE_BOT_FEATURES=false)');
+                    return;
+                }
+                
+                // Локально блокируем отправку (защита от дублирования с сервером)
+                // Импортируем ALLOW_LOCAL_COMMANDS из config/features
+                const { ALLOW_LOCAL_COMMANDS } = require('../config/features');
+                if (IS_LOCAL && !ALLOW_LOCAL_COMMANDS) {
+                    console.log('🔒 Локально благодарности за Follow заблокированы (для теста добавь ALLOW_LOCAL_COMMANDS=true в .env.local)');
                     return;
                 }
 
@@ -642,6 +651,13 @@ export class TwitchStreamMonitor {
             console.log('🔇 Welcome сообщения отключены (ENABLE_BOT_FEATURES=false)');
             return;
         }
+        
+        // Локально блокируем отправку (защита от дублирования с сервером)
+        const { ALLOW_LOCAL_COMMANDS } = require('../config/features');
+        if (IS_LOCAL && !ALLOW_LOCAL_COMMANDS) {
+            console.log('🔒 Локально welcome сообщения заблокированы (для теста добавь ALLOW_LOCAL_COMMANDS=true в .env.local)');
+            return;
+        }
 
         if (!this.chatSender || !this.channelName) {
             console.error('⚠️ Chat sender не установлен, пропускаем приветственное сообщение');
@@ -822,6 +838,13 @@ export class TwitchStreamMonitor {
     private async sendNextLinkAnnouncement(): Promise<void> {
         if (!ENABLE_BOT_FEATURES) {
             console.log('🔇 Ротация ссылок отключена (ENABLE_BOT_FEATURES=false)');
+            return;
+        }
+        
+        // Локально блокируем отправку (защита от дублирования с сервером)
+        const { ALLOW_LOCAL_COMMANDS } = require('../config/features');
+        if (IS_LOCAL && !ALLOW_LOCAL_COMMANDS) {
+            console.log('🔒 Локально ротация ссылок заблокирована (для теста добавь ALLOW_LOCAL_COMMANDS=true в .env.local)');
             return;
         }
 

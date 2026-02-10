@@ -431,6 +431,12 @@ export class NightBotMonitor {
                                 return;
                             }
                             
+                            // Локально блокируем отправку (защита от дублирования с сервером)
+                            if (IS_LOCAL && !ALLOW_LOCAL_COMMANDS) {
+                                console.log('🔒 Локально благодарности за watch streak заблокированы (для теста добавь ALLOW_LOCAL_COMMANDS=true в .env.local)');
+                                return;
+                            }
+                            
                             // Отправляем благодарность в чат
                             const channel = (ircMessage as any).channel;
                             if (channel && value) {
