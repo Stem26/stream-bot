@@ -31,7 +31,7 @@ async function cleanupEventSubSubscriptions() {
         const response = await fetch('https://api.twitch.tv/helix/eventsub/subscriptions', {
             headers: {
                 'Authorization': `Bearer ${TWITCH_ACCESS_TOKEN}`,
-                'Client-Id': TWITCH_CLIENT_ID
+                'Client-Id': TWITCH_CLIENT_ID!
             }
         });
 
@@ -87,7 +87,7 @@ async function cleanupEventSubSubscriptions() {
                         method: 'DELETE',
                         headers: {
                             'Authorization': `Bearer ${TWITCH_ACCESS_TOKEN}`,
-                            'Client-Id': TWITCH_CLIENT_ID
+                            'Client-Id': TWITCH_CLIENT_ID!
                         }
                     }
                 );
