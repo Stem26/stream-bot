@@ -112,6 +112,14 @@ export class TwitchStreamMonitor {
     setChatSender(sender: (channel: string, message: string) => Promise<void>, channelName: string): void {
         this.chatSender = sender;
         this.channelName = channelName;
+        
+        // Если стрим уже онлайн (а chatSender не был установлен раньше), отправляем welcome сообщение
+        if (this.isStreamOnline) {
+            console.log('📣 Chat sender установлен, отправляем отложенное welcome сообщение...');
+            this.sendWelcomeMessage().catch(err => {
+                console.error('❌ Ошибка отправки отложенного welcome:', err);
+            });
+        }
     }
 
     /**
