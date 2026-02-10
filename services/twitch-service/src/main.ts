@@ -30,7 +30,7 @@ async function main() {
     nightBotMonitor.setStreamStatusCheck(() => streamMonitor.getStreamStatus());
 
     // Связываем синхронизацию viewers: при запросе chatters сразу запрашиваем viewers для точности пика
-    nightBotMonitor.setSyncViewersCallback(() => streamMonitor.recordViewersNow());
+    nightBotMonitor.setSyncViewersCallback((chattersCount) => streamMonitor.recordViewersNow(chattersCount));
 
     // Очищаем очередь на дуэли и активных пользователей при окончании стрима
     streamMonitor.setOnStreamOfflineCallback(() => {
