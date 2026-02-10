@@ -751,7 +751,12 @@ export class TwitchStreamMonitor {
         // Сбрасываем индекс, если что-то было активно
         if (hadTimeout || hadInterval) {
             this.currentLinkIndex = 0;
-            console.log('⏹️ Ротация ссылок остановлена');
+            
+            // Сохраняем сброшенный индекс в файл
+            this.announcementState.currentLinkIndex = 0;
+            saveAnnouncementState(this.announcementState);
+            
+            console.log('⏹️ Ротация ссылок остановлена и сброшена в файл');
         }
     }
 
