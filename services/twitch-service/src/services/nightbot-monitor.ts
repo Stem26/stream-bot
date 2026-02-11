@@ -387,6 +387,25 @@ export class NightBotMonitor {
                     return;
                 }
 
+                // Проверяем команду !стоп[число] (например: !стоп5, !стоп10)
+                const stopWithNumberMatch = trimmedMessage.match(/^!стоп(\d+)$/);
+                if (stopWithNumberMatch) {
+                    const targetValue = parseInt(stopWithNumberMatch[1], 10);
+                    
+                    // Проверка что стрим онлайн
+                    if (!this.isStreamOnlineCheck() && !IS_LOCAL) {
+                        console.log(`⚠️ Команда ${trimmedMessage} проигнорирована: стрим оффлайн`);
+                        return;
+                    }
+                    
+                    if (IS_LOCAL && !this.isStreamOnlineCheck()) {
+                        console.log(`🧪 ТЕСТ в оффлайне: выполняем команду ${trimmedMessage}`);
+                    }
+                    
+                    this.handleStopSetCommand(channel, user, targetValue, msg);
+                    return;
+                }
+
                 // Проверяем, есть ли команда в мапе
                 const commandHandler = this.commands.get(trimmedMessage);
                 if (commandHandler) {
@@ -629,6 +648,42 @@ export class NightBotMonitor {
     }
 
     /**
+     * Обработка команды !стоп[число] из чата (например: !стоп5, !стоп10)
+     */
+    private async handleStopSetCommand(channel: string, user: string, targetValue: number, msg: any) {
+        console.log(`🎯 Команда !стоп${targetValue} от ${user} в ${channel}`);
+
+        try {
+            const streamerName = 'kunilika666';
+            
+            if (targetValue < 0 || targetValue > 9999) {
+                const response = `Значение должно быть от 0 до 9999`;
+                await this.sendMessage(channel, response);
+                console.log(`⚠️ Некорректное значение: ${targetValue}`);
+                return;
+            }
+            
+            this.stopCounters.set(streamerName, targetValue);
+            
+            let razWord = 'раз';
+            if (targetValue % 10 === 1 && targetValue % 100 !== 11) {
+                razWord = 'раз';
+            } else if ([2, 3, 4].includes(targetValue % 10) && ![12, 13, 14].includes(targetValue % 100)) {
+                razWord = 'раза';
+            } else {
+                razWord = 'раз';
+            }
+            
+            const response = `Счётчик установлен: kunilika666 остановила стрим ${targetValue} ${razWord}`;
+            
+            await this.sendMessage(channel, response);
+            console.log(`✅ Отправлен ответ в чат: ${response}`);
+        } catch (error) {
+            console.error('❌ Ошибка при обработке команды !стоп[число]:', error);
+        }
+    }
+
+    /**
      * Обработка команды !стопоткат из чата
      * Уменьшает счётчик остановок стрима для kunilika666 (откат ошибочного нажатия)
      */
@@ -812,10 +867,6 @@ export class NightBotMonitor {
             '!дуэль - (ставка 25 очков)',
             '!крыса - выбрать случайную крысу из чата',
             '!милашка - выбрать случайную милашку из чата',
-            '!стоп - остановить стрим (счётчик)',
-            '!стопоткат - откатить остановку',
-            '!стопсброс - сбросить счётчик остановок',
-            '!стопинфо - посмотреть счётчик остановок',
             '!vanish - скрыть свои сообщения (1 сек таймаут)'
         ];
 

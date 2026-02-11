@@ -113,10 +113,9 @@ export class TwitchStreamMonitor {
         this.chatSender = sender;
         this.channelName = channelName;
         
-        // Если стрим уже онлайн (а chatSender не был установлен раньше), отправляем welcome сообщение
         if (this.isStreamOnline) {
-            console.log('📣 Chat sender установлен, отправляем отложенное welcome сообщение...');
-            this.sendWelcomeMessage().catch(err => {
+            console.log('📣 Chat sender установлен, проверяем нужно ли отправить welcome сообщение...');
+            this.sendWelcomeMessage(false).catch(err => {
                 console.error('❌ Ошибка отправки отложенного welcome:', err);
             });
         }
@@ -193,8 +192,8 @@ export class TwitchStreamMonitor {
                 // Запускаем повтор welcome сообщения каждый час
                 this.startWelcomeMessageInterval();
 
-                // Запускаем ротацию отдельных ссылок через 15 минут
-                this.startLinkRotation();
+                // Запускаем ротацию отдельных ссылок через 15 минут (force=true для нового стрима)
+                this.startLinkRotation(true);
 
                 await this.handleStreamOnline(event, telegramChannelId);
 
@@ -424,11 +423,11 @@ export class TwitchStreamMonitor {
                 // Устанавливаем флаг, что стрим онлайн
                 this.isStreamOnline = true;
 
-                // Отправляем welcome сообщение, так как стрим уже идёт
-                console.error(`📣 Отправляем welcome сообщение...`);
-                await this.sendWelcomeMessage();
+                // sendWelcomeMessage проверит время последней отправки
+                console.error(`📣 Проверяем нужно ли отправить welcome сообщение...`);
+                await this.sendWelcomeMessage(false);
 
-                // Запускаем повтор welcome сообщения
+                // Запускаем повтор welcome сообщения (учитывает время последней отправки)
                 this.startWelcomeMessageInterval();
 
                 // Запускаем ротацию ссылок
@@ -725,33 +724,26 @@ export class TwitchStreamMonitor {
                 initialDelay = remaining;
                 console.log(`🔁 Welcome сообщение: последняя отправка ${Math.floor(timeSinceLastSent / 60000)} мин назад, следующая через ${Math.ceil(remaining / 60000)} мин`);
             } else {
-                // Время уже прошло, отправляем сразу
-                initialDelay = 0;
-                console.log(`🔁 Welcome сообщение: пора отправить (прошло ${Math.floor(timeSinceLastSent / 60000)} мин)`);
+                initialDelay = 5000;
+                console.log(`🔁 Welcome сообщение: время прошло (${Math.floor(timeSinceLastSent / 60000)} мин назад), отправка через 5 сек`);
             }
         } else {
             console.log(`🔁 Welcome сообщение каждые ${mins} мин (${hours}ч)`);
         }
 
-        // Первый вызов через вычисленную задержку, потом каждые N минут
         const runMessage = async () => {
             console.log('🔄 Повтор welcome сообщения...');
-            await this.sendWelcomeMessage(true); // force=true для интервала
+            await this.sendWelcomeMessage(true);
 
             console.log('🔄 Сброс таймера ротации ссылок (следующая ссылка через 15 мин)...');
             this.stopLinkRotation();
             this.startLinkRotation(true);
         };
 
-        if (initialDelay === 0) {
-            runMessage();
+        setTimeout(async () => {
+            await runMessage();
             this.welcomeInterval = setInterval(runMessage, ANNOUNCEMENT_REPEAT_INTERVAL_MS);
-        } else {
-            setTimeout(async () => {
-                await runMessage();
-                this.welcomeInterval = setInterval(runMessage, ANNOUNCEMENT_REPEAT_INTERVAL_MS);
-            }, initialDelay);
-        }
+        }, initialDelay);
     }
 
     /**
@@ -789,14 +781,21 @@ export class TwitchStreamMonitor {
             const remaining = LINK_ROTATION_INTERVAL_MS - timeSinceLastSent;
             
             if (remaining > 0) {
+                // Время еще не прошло - используем оставшееся время
                 initialDelay = remaining;
                 console.log(`🔄 Ротация ссылок: последняя отправка ${Math.floor(timeSinceLastSent / 60000)} мин назад, следующая через ${Math.ceil(remaining / 60000)} мин`);
+            } else if (timeSinceLastSent > ANNOUNCEMENT_REPEAT_INTERVAL_MS) {
+                // Прошло больше часа - либо новый стрим, либо бот долго не работал
+                // В обоих случаях ставим полный интервал (15 мин) для корректной ротации
+                initialDelay = LINK_ROTATION_INTERVAL_MS;
+                console.log(`🔄 Ротация ссылок: прошло много времени (${Math.floor(timeSinceLastSent / 60000)} мин), ставим полный интервал ${mins} мин`);
             } else {
-                // Время уже прошло, отправляем сразу
-                initialDelay = 1000; // небольшая задержка
-                console.log(`🔄 Ротация ссылок: пора отправить (прошло ${Math.floor(timeSinceLastSent / 60000)} мин)`);
+                // Прошло меньше часа но больше интервала - переподключение, небольшая задержка
+                initialDelay = 5000; // 5 секунд
+                console.log(`🔄 Ротация ссылок: переподключение, прошло ${Math.floor(timeSinceLastSent / 60000)} мин, отправка через 5 сек`);
             }
         } else {
+            // Первый запуск или после очистки - используем полный интервал
             console.log(`🔄 Ротация ссылок запустится через ${mins} мин, затем каждые ${mins} мин`);
         }
 
