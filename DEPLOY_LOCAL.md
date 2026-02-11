@@ -109,7 +109,7 @@ git pull origin main
 npm install
 npm run build:twitch
 pm2 restart twitch-bot
-pm2 logs --lines 50
+pm2 logs twitch-bot --lines 20
 ```
 
 ---
@@ -125,4 +125,5 @@ npm run twitch:announcement:test "@Kunilika666 милый стример"
 # Команды: /dick /top_dick /bottomdick
 # Twitch: !dick !top_dick !bottomdick !vanish
 # ssh -v -N -D 127.0.0.1:1080 root@194.87.55.131
+# идеи: дуэль может уебать двоих | спасти из маймача
 ```

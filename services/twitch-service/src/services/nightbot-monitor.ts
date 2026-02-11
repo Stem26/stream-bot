@@ -789,6 +789,10 @@ export class NightBotMonitor {
         console.log('🔄 Запущена периодическая синхронизация: каждую минуту опрашиваем оба API и берём max');
 
         this.chattersSyncInterval = setInterval(async () => {
+            if (!this.isStreamOnlineCheck()) {
+                return;
+            }
+
             try {
                 await this.getChatters(this.channelName);
             } catch (error) {
