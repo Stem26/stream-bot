@@ -246,7 +246,7 @@ export class TwitchStreamMonitor {
                 // Отправляем благодарность в чат
                 if (this.chatSender && this.channelName) {
                     try {
-                        await this.chatSender(this.channelName, `${event.userDisplayName} спасибо за  follow❤️`);
+                        await this.chatSender(this.channelName, `${event.userDisplayName} спасибо за follow❤️`);
                         console.log(`✅ Отправлена благодарность за Follow: ${event.userDisplayName}`);
                     } catch (error) {
                         console.error('❌ Ошибка отправки благодарности за Follow:', error);

@@ -47,6 +47,9 @@ export class NightBotMonitor {
 
     private dickQueue: Promise<void> = Promise.resolve();
 
+    // Счётчик команды !стоп (username -> количество остановок)
+    private stopCounters = new Map<string, number>();
+
     // Кеш списка зрителей чата (для команд !крыса, !милашка)
     private chattersCache = new Map<string, { users: string[]; expires: number; createdAt: number }>();
     private readonly CHATTERS_CACHE_TTL_MS = 60 * 1000; // 60 секунд
@@ -76,6 +79,10 @@ export class NightBotMonitor {
         ['!крыса', (ch, u, m, msg) => void this.handleRatCommand(ch, u, m, msg)],
         ['!милашка', (ch, u, m, msg) => void this.handleCutieCommand(ch, u, m, msg)],
         ['!vanish', (ch, u, m, msg) => void this.handleVanishCommand(ch, u, msg)],
+        ['!стоп', (ch, u, m, msg) => void this.handleStopCommand(ch, u, msg)],
+        ['!стопоткат', (ch, u, m, msg) => void this.handleStopRollbackCommand(ch, u, msg)],
+        ['!стопсброс', (ch, u, m, msg) => void this.handleStopResetCommand(ch, u, msg)],
+        ['!стопинфо', (ch, u, m, msg) => void this.handleStopInfoCommand(ch, u, msg)],
         ['!игры', (ch, u, m, msg) => void this.handleGamesCommand(ch, u, msg)],
         ['!help', (ch, u, m, msg) => void this.handleGamesCommand(ch, u, msg)]
     ]);
@@ -588,6 +595,156 @@ export class NightBotMonitor {
     }
 
     /**
+     * Обработка команды !стоп из чата
+     * Увеличивает счётчик остановок стрима для kunilika666 (независимо от того, кто написал команду)
+     */
+    private async handleStopCommand(channel: string, user: string, msg: any) {
+        console.log(`🛑 Команда !стоп от ${user} в ${channel}`);
+
+        try {
+            // Всегда считаем остановки для стримерши
+            const streamerName = 'kunilika666';
+            const currentCount = this.stopCounters.get(streamerName) || 0;
+            const newCount = currentCount + 1;
+            
+            this.stopCounters.set(streamerName, newCount);
+            
+            // Формируем правильное окончание слова "раз"
+            let razWord = 'раз';
+            if (newCount % 10 === 1 && newCount % 100 !== 11) {
+                razWord = 'раз';
+            } else if ([2, 3, 4].includes(newCount % 10) && ![12, 13, 14].includes(newCount % 100)) {
+                razWord = 'раза';
+            } else {
+                razWord = 'раз';
+            }
+            
+            const response = `kunilika666 остановила стрим ${newCount} ${razWord}`;
+            
+            await this.sendMessage(channel, response);
+            console.log(`✅ Отправлен ответ в чат: ${response}`);
+        } catch (error) {
+            console.error('❌ Ошибка при обработке команды !стоп:', error);
+        }
+    }
+
+    /**
+     * Обработка команды !стопоткат из чата
+     * Уменьшает счётчик остановок стрима для kunilika666 (откат ошибочного нажатия)
+     */
+    private async handleStopRollbackCommand(channel: string, user: string, msg: any) {
+        console.log(`↩️ Команда !стопоткат от ${user} в ${channel}`);
+
+        try {
+            // Всегда считаем остановки для стримерши
+            const streamerName = 'kunilika666';
+            const currentCount = this.stopCounters.get(streamerName) || 0;
+            
+            if (currentCount === 0) {
+                const response = `Нет остановок для отката`;
+                await this.sendMessage(channel, response);
+                console.log(`✅ Отправлен ответ в чат: ${response}`);
+                return;
+            }
+            
+            const newCount = currentCount - 1;
+            
+            if (newCount === 0) {
+                this.stopCounters.delete(streamerName);
+            } else {
+                this.stopCounters.set(streamerName, newCount);
+            }
+            
+            // Формируем правильное окончание слова "раз"
+            let razWord = 'раз';
+            if (newCount % 10 === 1 && newCount % 100 !== 11) {
+                razWord = 'раз';
+            } else if ([2, 3, 4].includes(newCount % 10) && ![12, 13, 14].includes(newCount % 100)) {
+                razWord = 'раза';
+            } else {
+                razWord = 'раз';
+            }
+            
+            const response = newCount === 0 
+                ? `Откат выполнен, счётчик сброшен`
+                : `Откат выполнен, kunilika666 остановила стрим ${newCount} ${razWord}`;
+            
+            await this.sendMessage(channel, response);
+            console.log(`✅ Отправлен ответ в чат: ${response}`);
+        } catch (error) {
+            console.error('❌ Ошибка при обработке команды !стопоткат:', error);
+        }
+    }
+
+    /**
+     * Обработка команды !стопсброс из чата
+     * Полностью сбрасывает счётчик остановок для kunilika666
+     */
+    private async handleStopResetCommand(channel: string, user: string, msg: any) {
+        console.log(`🔄 Команда !стопсброс от ${user} в ${channel}`);
+
+        try {
+            // Всегда считаем остановки для стримерши
+            const streamerName = 'kunilika666';
+            const currentCount = this.stopCounters.get(streamerName) || 0;
+            
+            if (currentCount === 0) {
+                const response = `Счётчик остановок уже на нуле`;
+                await this.sendMessage(channel, response);
+                console.log(`✅ Отправлен ответ в чат: ${response}`);
+                return;
+            }
+            
+            this.stopCounters.delete(streamerName);
+            
+            const response = `Счётчик остановок сброшен`;
+            
+            await this.sendMessage(channel, response);
+            console.log(`✅ Отправлен ответ в чат: ${response}`);
+        } catch (error) {
+            console.error('❌ Ошибка при обработке команды !стопсброс:', error);
+        }
+    }
+
+    /**
+     * Обработка команды !стопинфо из чата
+     * Показывает текущее количество остановок kunilika666
+     */
+    private async handleStopInfoCommand(channel: string, user: string, msg: any) {
+        console.log(`ℹ️ Команда !стопинфо от ${user} в ${channel}`);
+
+        try {
+            // Всегда считаем остановки для стримерши
+            const streamerName = 'kunilika666';
+            const currentCount = this.stopCounters.get(streamerName) || 0;
+            
+            if (currentCount === 0) {
+                const response = `kunilika666 ещё не останавливала стрим`;
+                await this.sendMessage(channel, response);
+                console.log(`✅ Отправлен ответ в чат: ${response}`);
+                return;
+            }
+            
+            // Формируем правильное окончание слова "раз"
+            let razWord = 'раз';
+            if (currentCount % 10 === 1 && currentCount % 100 !== 11) {
+                razWord = 'раз';
+            } else if ([2, 3, 4].includes(currentCount % 10) && ![12, 13, 14].includes(currentCount % 100)) {
+                razWord = 'раза';
+            } else {
+                razWord = 'раз';
+            }
+            
+            const response = `kunilika666 остановила стрим ${currentCount} ${razWord}`;
+            
+            await this.sendMessage(channel, response);
+            console.log(`✅ Отправлен ответ в чат: ${response}`);
+        } catch (error) {
+            console.error('❌ Ошибка при обработке команды !стопинфо:', error);
+        }
+    }
+
+    /**
      * Обработка команды !vanish из чата
      * Даёт пользователю символический таймаут на 1 секунду для скрытия сообщений
      */
@@ -655,6 +812,10 @@ export class NightBotMonitor {
             '!дуэль - (ставка 25 очков)',
             '!крыса - выбрать случайную крысу из чата',
             '!милашка - выбрать случайную милашку из чата',
+            '!стоп - остановить стрим (счётчик)',
+            '!стопоткат - откатить остановку',
+            '!стопсброс - сбросить счётчик остановок',
+            '!стопинфо - посмотреть счётчик остановок',
             '!vanish - скрыть свои сообщения (1 сек таймаут)'
         ];
 
@@ -752,6 +913,14 @@ export class NightBotMonitor {
         this.chattersCache.clear();
         this.chattersFetchPromise = null;
         console.log('🧹 Кеш зрителей очищен');
+    }
+
+    /**
+     * Очистить счётчики команды !стоп (вызывается при окончании стрима)
+     */
+    clearStopCounters(): void {
+        this.stopCounters.clear();
+        console.log('🧹 Счётчики !стоп очищены');
     }
 
     /**

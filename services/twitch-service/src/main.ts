@@ -32,10 +32,12 @@ async function main() {
     // Связываем синхронизацию viewers: при запросе chatters сразу запрашиваем viewers для точности пика
     nightBotMonitor.setSyncViewersCallback((chattersCount) => streamMonitor.recordViewersNow(chattersCount));
 
-    // Очищаем очередь на дуэли и активных пользователей при окончании стрима
+    // Очищаем очередь на дуэли, активных пользователей и счётчики при окончании стрима
     streamMonitor.setOnStreamOfflineCallback(() => {
         clearDuelQueue();
         clearActiveUsers(config.twitch.channel);
+        nightBotMonitor.clearChattersCache();
+        nightBotMonitor.clearStopCounters();
     });
 
     await nightBotMonitor.connect(
