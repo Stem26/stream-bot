@@ -17,6 +17,17 @@ const DUEL_COOLDOWN_MS = 60 * 1000;
 // Пользователи без cooldown и timeout (стример)
 const DUEL_EXEMPT_USERS = new Set([STREAMER_USERNAME?.toLowerCase()].filter(Boolean));
 
+// Пользователи, которые могут управлять дуэлями (включать/выключать)
+const DUEL_ADMINS = new Set([
+  STREAMER_USERNAME?.toLowerCase(),
+  'stem261',
+  'remax_7',
+  'violent_osling'
+].filter(Boolean));
+
+// Флаг состояния дуэлей (включены/выключены)
+let duelsEnabled = true;
+
 function ensurePlayer(players: Map<string, TwitchPlayerData>, twitchUsername: string): TwitchPlayerData {
   const normalized = twitchUsername.toLowerCase();
   let player = players.get(normalized);
@@ -52,6 +63,13 @@ export function processTwitchDuelCommand(
     twitchUsername: string,
     channel: string
 ): { response: string; loser?: string } {
+  // Проверяем, включены ли дуэли
+  if (!duelsEnabled) {
+    return {
+      response: '' // Игнорируем команду, ничего не отвечаем
+    };
+  }
+
   const players = loadTwitchPlayers();
   const now = Date.now();
   const normalized = twitchUsername.toLowerCase();
@@ -157,6 +175,37 @@ export function processTwitchDuelCommand(
     response: `@${waiting.displayName} и @${twitchUsername} сошлись в дуэли! Победитель @${winner} (+${DUEL_WIN_POINTS}), проигравший @${loser} (-${DUEL_WIN_POINTS}) и в таймаут на 5 минут.`,
     loser
   };
+}
+
+/**
+ * Проверяет, может ли пользователь управлять дуэлями
+ */
+export function canManageDuels(twitchUsername: string): boolean {
+  return DUEL_ADMINS.has(twitchUsername.toLowerCase());
+}
+
+/**
+ * Отключить дуэли
+ */
+export function disableDuels(twitchUsername: string): boolean {
+  if (!canManageDuels(twitchUsername)) {
+    return false; // Нет прав
+  }
+  duelsEnabled = false;
+  console.log(`🛑 Дуэли отключены пользователем ${twitchUsername}`);
+  return true;
+}
+
+/**
+ * Включить дуэли
+ */
+export function enableDuels(twitchUsername: string): boolean {
+  if (!canManageDuels(twitchUsername)) {
+    return false; // Нет прав
+  }
+  duelsEnabled = true;
+  console.log(`✅ Дуэли включены пользователем ${twitchUsername}`);
+  return true;
 }
 
 /**

@@ -3,7 +3,7 @@ import { StaticAuthProvider } from '@twurple/auth';
 import { processTwitchDickCommand } from '../commands/twitch-dick';
 import { processTwitchTopDickCommand } from '../commands/twitch-topDick';
 import { processTwitchBottomDickCommand } from '../commands/twitch-bottomDick';
-import { processTwitchDuelCommand } from '../commands/twitch-duel';
+import { processTwitchDuelCommand, enableDuels, disableDuels } from '../commands/twitch-duel';
 import { processTwitchRatCommand, processTwitchCutieCommand, addActiveUser, setChattersAPIFunction } from '../commands/twitch-rat';
 import { processTwitchPointsCommand, processTwitchTopPointsCommand } from '../commands/twitch-points';
 import { ENABLE_BOT_FEATURES, ALLOW_LOCAL_COMMANDS } from '../config/features';
@@ -76,6 +76,8 @@ export class NightBotMonitor {
         ['!toppoints', (ch, u, m, msg) => void this.handleTopPointsCommand(ch, u, m, msg)],
         ['!топ_очки', (ch, u, m, msg) => void this.handleTopPointsCommand(ch, u, m, msg)],
         ['!дуэль', (ch, u, m, msg) => void this.handleDuelCommand(ch, u, m, msg)],
+        ['!стоп_дуэль', (ch, u, m, msg) => void this.handleDisableDuelsCommand(ch, u, msg)],
+        ['!старт_дуэль', (ch, u, m, msg) => void this.handleEnableDuelsCommand(ch, u, msg)],
         ['!крыса', (ch, u, m, msg) => void this.handleRatCommand(ch, u, m, msg)],
         ['!милашка', (ch, u, m, msg) => void this.handleCutieCommand(ch, u, m, msg)],
         ['!vanish', (ch, u, m, msg) => void this.handleVanishCommand(ch, u, msg)],
@@ -570,14 +572,48 @@ export class NightBotMonitor {
 
         try {
             const result = processTwitchDuelCommand(user, channel);
-            await this.sendMessage(channel, result.response);
-            console.log(`✅ Отправлен ответ в чат: ${result.response}`);
+            
+            // Если дуэли выключены, response будет пустым - ничего не отправляем
+            if (result.response) {
+                await this.sendMessage(channel, result.response);
+                console.log(`✅ Отправлен ответ в чат: ${result.response}`);
+            }
 
             if (result.loser) {
                 await this.timeoutUser(result.loser, 300, 'Duel');
             }
         } catch (error) {
             console.error('❌ Ошибка при обработке команды !дуэль:', error);
+        }
+    }
+
+    /**
+     * Обработка команды !стоп_дуэль из чата
+     * Отключает дуэли (только для админов, без ответа в чат)
+     */
+    private async handleDisableDuelsCommand(channel: string, user: string, msg: any) {
+        console.log(`🛑 Команда !стоп_дуэль от ${user} в ${channel}`);
+
+        try {
+            disableDuels(user);
+            // Ничего не отправляем в чат
+        } catch (error) {
+            console.error('❌ Ошибка при обработке команды !стоп_дуэль:', error);
+        }
+    }
+
+    /**
+     * Обработка команды !старт_дуэль из чата
+     * Включает дуэли (только для админов, без ответа в чат)
+     */
+    private async handleEnableDuelsCommand(channel: string, user: string, msg: any) {
+        console.log(`✅ Команда !старт_дуэль от ${user} в ${channel}`);
+
+        try {
+            enableDuels(user);
+            // Ничего не отправляем в чат
+        } catch (error) {
+            console.error('❌ Ошибка при обработке команды !старт_дуэль:', error);
         }
     }
 
