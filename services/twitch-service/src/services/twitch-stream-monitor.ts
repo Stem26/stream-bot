@@ -56,8 +56,8 @@ const LINK_ANNOUNCEMENTS = [
     {message: '🎁Fetta (исполни желание): https://fetta.app/u/kunilika666', color: 'green' as const}
 ];
 
-const ANNOUNCEMENT_REPEAT_INTERVAL_MS = 60 * 60 * 1000;
-const LINK_ROTATION_INTERVAL_MS = 15 * 60 * 1000;
+const ANNOUNCEMENT_REPEAT_INTERVAL_MS = 60 * 60 * 1000; // 1 час для welcome
+const LINK_ROTATION_INTERVAL_MS = 13 * 60 * 1000; // 13 минут для ротации
 
 interface StreamStats {
     startTime: Date;
@@ -192,7 +192,7 @@ export class TwitchStreamMonitor {
                 // Запускаем повтор welcome сообщения каждый час
                 this.startWelcomeMessageInterval();
 
-                // Запускаем ротацию отдельных ссылок через 15 минут (force=true для нового стрима)
+                // Запускаем ротацию отдельных ссылок через 13 минут (force=true для нового стрима)
                 this.startLinkRotation(true);
 
                 await this.handleStreamOnline(event, telegramChannelId);
@@ -654,6 +654,12 @@ export class TwitchStreamMonitor {
      * @param force - если true, отправляет независимо от времени последней отправки
      */
     private async sendWelcomeMessage(force: boolean = false): Promise<void> {
+        // Проверяем, что стрим онлайн (защита от отправки оффлайн)
+        if (!this.isStreamOnline) {
+            console.log('⚠️ Стрим оффлайн, пропускаем welcome сообщение');
+            return;
+        }
+        
         if (!ENABLE_BOT_FEATURES) {
             console.log('🔇 Welcome сообщения отключены (ENABLE_BOT_FEATURES=false)');
             return;
@@ -734,10 +740,6 @@ export class TwitchStreamMonitor {
         const runMessage = async () => {
             console.log('🔄 Повтор welcome сообщения...');
             await this.sendWelcomeMessage(true);
-
-            console.log('🔄 Сброс таймера ротации ссылок (следующая ссылка через 15 мин)...');
-            this.stopLinkRotation();
-            this.startLinkRotation(true);
         };
 
         setTimeout(async () => {
@@ -758,45 +760,24 @@ export class TwitchStreamMonitor {
     }
 
     /**
-     * Запускает ротацию ссылок (через 15 минут после начала, затем каждые 15 минут)
-     * Учитывает время последней отправки для синхронизации
+     * Запускает ротацию ссылок (через 13 минут после начала, затем каждые 13 минут)
+     * При запуске стрима используется force=true для полного сброса
      * @param force - если true, игнорирует lastLinkAnnouncementAt и запускает с полной задержкой
      */
     private startLinkRotation(force: boolean = false): void {
         this.stopLinkRotation();
 
         const mins = LINK_ROTATION_INTERVAL_MS / 60000;
-        
-        // Вычисляем когда следующая отправка
-        const now = Date.now();
-        const lastSent = this.announcementState.lastLinkAnnouncementAt;
         let initialDelay = LINK_ROTATION_INTERVAL_MS;
 
-        // Если force=true, всегда используем полный интервал (игнорируем lastSent)
+        // Если force=true (старт стрима), всегда используем полный интервал
         if (force) {
             initialDelay = LINK_ROTATION_INTERVAL_MS;
-            console.log(`🔄 Ротация ссылок: принудительный сброс, следующая через ${mins} мин`);
-        } else if (lastSent) {
-            const timeSinceLastSent = now - lastSent;
-            const remaining = LINK_ROTATION_INTERVAL_MS - timeSinceLastSent;
-            
-            if (remaining > 0) {
-                // Время еще не прошло - используем оставшееся время
-                initialDelay = remaining;
-                console.log(`🔄 Ротация ссылок: последняя отправка ${Math.floor(timeSinceLastSent / 60000)} мин назад, следующая через ${Math.ceil(remaining / 60000)} мин`);
-            } else if (timeSinceLastSent > ANNOUNCEMENT_REPEAT_INTERVAL_MS) {
-                // Прошло больше часа - либо новый стрим, либо бот долго не работал
-                // В обоих случаях ставим полный интервал (15 мин) для корректной ротации
-                initialDelay = LINK_ROTATION_INTERVAL_MS;
-                console.log(`🔄 Ротация ссылок: прошло много времени (${Math.floor(timeSinceLastSent / 60000)} мин), ставим полный интервал ${mins} мин`);
-            } else {
-                // Прошло меньше часа но больше интервала - переподключение, небольшая задержка
-                initialDelay = 5000; // 5 секунд
-                console.log(`🔄 Ротация ссылок: переподключение, прошло ${Math.floor(timeSinceLastSent / 60000)} мин, отправка через 5 сек`);
-            }
+            console.log(`🔄 Ротация ссылок: старт стрима, первая через ${mins} мин, затем каждые ${mins} мин`);
         } else {
-            // Первый запуск или после очистки - используем полный интервал
-            console.log(`🔄 Ротация ссылок запустится через ${mins} мин, затем каждые ${mins} мин`);
+            // При переподключении бота во время стрима - тоже используем полный интервал
+            // Это предотвращает спам ссылками
+            console.log(`🔄 Ротация ссылок: переподключение, следующая через ${mins} мин`);
         }
 
         this.linkRotationTimeout = setTimeout(() => {
@@ -815,13 +796,13 @@ export class TwitchStreamMonitor {
         const hadTimeout = !!this.linkRotationTimeout;
         const hadInterval = !!this.linkRotationInterval;
 
-        // Очищаем timeout (первая отправка через 15 минут)
+        // Очищаем timeout (первая отправка через 13 минут)
         if (this.linkRotationTimeout) {
             clearTimeout(this.linkRotationTimeout);
             this.linkRotationTimeout = null;
         }
 
-        // Очищаем interval (повторы каждые 15 минут)
+        // Очищаем interval (повторы каждые 13 минут)
         if (this.linkRotationInterval) {
             clearInterval(this.linkRotationInterval);
             this.linkRotationInterval = null;
@@ -843,6 +824,12 @@ export class TwitchStreamMonitor {
      * Отправляет следующий announcement из ротации ссылок
      */
     private async sendNextLinkAnnouncement(): Promise<void> {
+        // Проверяем, что стрим онлайн (защита от отправки оффлайн)
+        if (!this.isStreamOnline) {
+            console.log('⚠️ Стрим оффлайн, пропускаем ротацию ссылок');
+            return;
+        }
+        
         if (!ENABLE_BOT_FEATURES) {
             console.log('🔇 Ротация ссылок отключена (ENABLE_BOT_FEATURES=false)');
             return;
