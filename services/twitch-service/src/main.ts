@@ -38,6 +38,7 @@ async function main() {
         clearActiveUsers(config.twitch.channel);
         nightBotMonitor.clearChattersCache();
         nightBotMonitor.clearStopCounters();
+        nightBotMonitor.clearDeathCounters();
     });
 
     await nightBotMonitor.connect(

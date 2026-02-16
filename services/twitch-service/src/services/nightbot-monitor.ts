@@ -50,6 +50,9 @@ export class NightBotMonitor {
     // Счётчик команды !стоп (username -> количество остановок)
     private stopCounters = new Map<string, number>();
 
+    // Счётчик команды !смерть (username -> количество смертей в игре)
+    private deathCounters = new Map<string, number>();
+
     // Кеш списка зрителей чата (для команд !крыса, !милашка)
     private chattersCache = new Map<string, { users: string[]; expires: number; createdAt: number }>();
     private readonly CHATTERS_CACHE_TTL_MS = 60 * 1000; // 60 секунд
@@ -85,6 +88,10 @@ export class NightBotMonitor {
         ['!стопоткат', (ch, u, m, msg) => void this.handleStopRollbackCommand(ch, u, msg)],
         ['!стопсброс', (ch, u, m, msg) => void this.handleStopResetCommand(ch, u, msg)],
         ['!стопинфо', (ch, u, m, msg) => void this.handleStopInfoCommand(ch, u, msg)],
+        ['!смерть', (ch, u, m, msg) => void this.handleDeathCommand(ch, u, msg)],
+        ['!смертьоткат', (ch, u, m, msg) => void this.handleDeathRollbackCommand(ch, u, msg)],
+        ['!смертьсброс', (ch, u, m, msg) => void this.handleDeathResetCommand(ch, u, msg)],
+        ['!смертьинфо', (ch, u, m, msg) => void this.handleDeathInfoCommand(ch, u, msg)],
         ['!игры', (ch, u, m, msg) => void this.handleGamesCommand(ch, u, msg)],
         ['!help', (ch, u, m, msg) => void this.handleGamesCommand(ch, u, msg)]
     ]);
@@ -408,6 +415,25 @@ export class NightBotMonitor {
                     return;
                 }
 
+                // Проверяем команду !смерть[число] (например: !смерть5, !смерть10)
+                const deathWithNumberMatch = trimmedMessage.match(/^!смерть(\d+)$/);
+                if (deathWithNumberMatch) {
+                    const targetValue = parseInt(deathWithNumberMatch[1], 10);
+                    
+                    // Проверка что стрим онлайн
+                    if (!this.isStreamOnlineCheck() && !IS_LOCAL) {
+                        console.log(`⚠️ Команда ${trimmedMessage} проигнорирована: стрим оффлайн`);
+                        return;
+                    }
+                    
+                    if (IS_LOCAL && !this.isStreamOnlineCheck()) {
+                        console.log(`🧪 ТЕСТ в оффлайне: выполняем команду ${trimmedMessage}`);
+                    }
+                    
+                    this.handleDeathSetCommand(channel, user, targetValue, msg);
+                    return;
+                }
+
                 // Проверяем, есть ли команда в мапе
                 const commandHandler = this.commands.get(trimmedMessage);
                 if (commandHandler) {
@@ -579,7 +605,12 @@ export class NightBotMonitor {
                 console.log(`✅ Отправлен ответ в чат: ${result.response}`);
             }
 
-            if (result.loser) {
+            // Если оба проиграли - даём таймаут обоим
+            if (result.bothLost && result.loser && result.loser2) {
+                await this.timeoutUser(result.loser, 300, 'Duel - Both Lost');
+                await this.timeoutUser(result.loser2, 300, 'Duel - Both Lost');
+            } else if (result.loser) {
+                // Обычная дуэль - таймаут только проигравшему
                 await this.timeoutUser(result.loser, 300, 'Duel');
             }
         } catch (error) {
@@ -836,6 +867,192 @@ export class NightBotMonitor {
     }
 
     /**
+     * Обработка команды !смерть из чата
+     * Увеличивает счётчик смертей в игре для kunilika666 (независимо от того, кто написал команду)
+     */
+    private async handleDeathCommand(channel: string, user: string, msg: any) {
+        console.log(`💀 Команда !смерть от ${user} в ${channel}`);
+
+        try {
+            // Всегда считаем смерти для стримерши
+            const streamerName = 'kunilika666';
+            const currentCount = this.deathCounters.get(streamerName) || 0;
+            const newCount = currentCount + 1;
+            
+            this.deathCounters.set(streamerName, newCount);
+            
+            // Формируем правильное окончание слова "раз"
+            let razWord = 'раз';
+            if (newCount % 10 === 1 && newCount % 100 !== 11) {
+                razWord = 'раз';
+            } else if ([2, 3, 4].includes(newCount % 10) && ![12, 13, 14].includes(newCount % 100)) {
+                razWord = 'раза';
+            } else {
+                razWord = 'раз';
+            }
+            
+            const response = `kunilika666 умерла ${newCount} ${razWord}`;
+            
+            await this.sendMessage(channel, response);
+            console.log(`✅ Отправлен ответ в чат: ${response}`);
+        } catch (error) {
+            console.error('❌ Ошибка при обработке команды !смерть:', error);
+        }
+    }
+
+    /**
+     * Обработка команды !смерть[число] из чата (например: !смерть5, !смерть10)
+     */
+    private async handleDeathSetCommand(channel: string, user: string, targetValue: number, msg: any) {
+        console.log(`🎯 Команда !смерть${targetValue} от ${user} в ${channel}`);
+
+        try {
+            const streamerName = 'kunilika666';
+            
+            if (targetValue < 0 || targetValue > 9999) {
+                const response = `Значение должно быть от 0 до 9999`;
+                await this.sendMessage(channel, response);
+                console.log(`⚠️ Некорректное значение: ${targetValue}`);
+                return;
+            }
+            
+            this.deathCounters.set(streamerName, targetValue);
+            
+            let razWord = 'раз';
+            if (targetValue % 10 === 1 && targetValue % 100 !== 11) {
+                razWord = 'раз';
+            } else if ([2, 3, 4].includes(targetValue % 10) && ![12, 13, 14].includes(targetValue % 100)) {
+                razWord = 'раза';
+            } else {
+                razWord = 'раз';
+            }
+            
+            const response = `Счётчик установлен: kunilika666 умерла ${targetValue} ${razWord}`;
+            
+            await this.sendMessage(channel, response);
+            console.log(`✅ Отправлен ответ в чат: ${response}`);
+        } catch (error) {
+            console.error('❌ Ошибка при обработке команды !смерть[число]:', error);
+        }
+    }
+
+    /**
+     * Обработка команды !смертьоткат из чата
+     * Уменьшает счётчик смертей для kunilika666 (откат ошибочного нажатия)
+     */
+    private async handleDeathRollbackCommand(channel: string, user: string, msg: any) {
+        console.log(`↩️ Команда !смертьоткат от ${user} в ${channel}`);
+
+        try {
+            // Всегда считаем смерти для стримерши
+            const streamerName = 'kunilika666';
+            const currentCount = this.deathCounters.get(streamerName) || 0;
+            
+            if (currentCount === 0) {
+                const response = `Нет смертей для отката`;
+                await this.sendMessage(channel, response);
+                console.log(`✅ Отправлен ответ в чат: ${response}`);
+                return;
+            }
+            
+            const newCount = currentCount - 1;
+            
+            if (newCount === 0) {
+                this.deathCounters.delete(streamerName);
+            } else {
+                this.deathCounters.set(streamerName, newCount);
+            }
+            
+            // Формируем правильное окончание слова "раз"
+            let razWord = 'раз';
+            if (newCount % 10 === 1 && newCount % 100 !== 11) {
+                razWord = 'раз';
+            } else if ([2, 3, 4].includes(newCount % 10) && ![12, 13, 14].includes(newCount % 100)) {
+                razWord = 'раза';
+            } else {
+                razWord = 'раз';
+            }
+            
+            const response = newCount === 0 
+                ? `Откат выполнен, счётчик сброшен`
+                : `Откат выполнен, kunilika666 умерла ${newCount} ${razWord}`;
+            
+            await this.sendMessage(channel, response);
+            console.log(`✅ Отправлен ответ в чат: ${response}`);
+        } catch (error) {
+            console.error('❌ Ошибка при обработке команды !смертьоткат:', error);
+        }
+    }
+
+    /**
+     * Обработка команды !смертьсброс из чата
+     * Полностью сбрасывает счётчик смертей для kunilika666
+     */
+    private async handleDeathResetCommand(channel: string, user: string, msg: any) {
+        console.log(`🔄 Команда !смертьсброс от ${user} в ${channel}`);
+
+        try {
+            // Всегда считаем смерти для стримерши
+            const streamerName = 'kunilika666';
+            const currentCount = this.deathCounters.get(streamerName) || 0;
+            
+            if (currentCount === 0) {
+                const response = `Счётчик смертей уже на нуле`;
+                await this.sendMessage(channel, response);
+                console.log(`✅ Отправлен ответ в чат: ${response}`);
+                return;
+            }
+            
+            this.deathCounters.delete(streamerName);
+            
+            const response = `Счётчик смертей сброшен`;
+            
+            await this.sendMessage(channel, response);
+            console.log(`✅ Отправлен ответ в чат: ${response}`);
+        } catch (error) {
+            console.error('❌ Ошибка при обработке команды !смертьсброс:', error);
+        }
+    }
+
+    /**
+     * Обработка команды !смертьинфо из чата
+     * Показывает текущее количество смертей kunilika666
+     */
+    private async handleDeathInfoCommand(channel: string, user: string, msg: any) {
+        console.log(`ℹ️ Команда !смертьинфо от ${user} в ${channel}`);
+
+        try {
+            // Всегда считаем смерти для стримерши
+            const streamerName = 'kunilika666';
+            const currentCount = this.deathCounters.get(streamerName) || 0;
+            
+            if (currentCount === 0) {
+                const response = `kunilika666 ещё не умирала`;
+                await this.sendMessage(channel, response);
+                console.log(`✅ Отправлен ответ в чат: ${response}`);
+                return;
+            }
+            
+            // Формируем правильное окончание слова "раз"
+            let razWord = 'раз';
+            if (currentCount % 10 === 1 && currentCount % 100 !== 11) {
+                razWord = 'раз';
+            } else if ([2, 3, 4].includes(currentCount % 10) && ![12, 13, 14].includes(currentCount % 100)) {
+                razWord = 'раза';
+            } else {
+                razWord = 'раз';
+            }
+            
+            const response = `kunilika666 умерла ${currentCount} ${razWord}`;
+            
+            await this.sendMessage(channel, response);
+            console.log(`✅ Отправлен ответ в чат: ${response}`);
+        } catch (error) {
+            console.error('❌ Ошибка при обработке команды !смертьинфо:', error);
+        }
+    }
+
+    /**
      * Обработка команды !vanish из чата
      * Даёт пользователю символический таймаут на 1 секунду для скрытия сообщений
      */
@@ -1008,6 +1225,14 @@ export class NightBotMonitor {
     clearStopCounters(): void {
         this.stopCounters.clear();
         console.log('🧹 Счётчики !стоп очищены');
+    }
+
+    /**
+     * Очистить счётчики команды !смерть (вызывается при окончании стрима)
+     */
+    clearDeathCounters(): void {
+        this.deathCounters.clear();
+        console.log('🧹 Счётчики !смерть очищены');
     }
 
     /**
