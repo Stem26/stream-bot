@@ -77,6 +77,10 @@ interface StopTrackingResult {
 export class TwitchStreamMonitor {
     private apiClient: ApiClient | null = null;
     private listener: EventSubWsListener | null = null;
+    private static sharedListener: EventSubWsListener | null = null;
+    private static listenerStarted: boolean = false;
+    private static subscriptionsInitialized: boolean = false;
+    private static startPromise: Promise<void> | null = null;
     private telegram: Telegram;
     private currentStreamStats: StreamStats | null = null;
     private viewerCountInterval: NodeJS.Timeout | null = null;
@@ -104,6 +108,42 @@ export class TwitchStreamMonitor {
         this.announcementState = loadAnnouncementState();
         this.currentLinkIndex = this.announcementState.currentLinkIndex;
         console.log('📋 Загружено состояние announcements:', this.announcementState);
+        
+        // Закрывает WebSocket транспорт корректно → нет ghost sessions
+        // Регистрируем обработчики только один раз (startPromise — самый надёжный lifecycle маркер)
+        if (!TwitchStreamMonitor.startPromise) {
+            process.once('SIGINT', async () => {
+                console.log('🛑 SIGINT — закрываем EventSub');
+                if (TwitchStreamMonitor.sharedListener) {
+                    try {
+                        await TwitchStreamMonitor.sharedListener.stop();
+                        TwitchStreamMonitor.sharedListener = null;
+                        TwitchStreamMonitor.listenerStarted = false;
+                        TwitchStreamMonitor.subscriptionsInitialized = false;
+                        TwitchStreamMonitor.startPromise = null;
+                        console.log('✅ EventSub listener остановлен (SIGINT)');
+                    } catch (error) {
+                        console.error('❌ Ошибка остановки listener (SIGINT):', error);
+                    }
+                }
+            });
+
+            process.once('SIGTERM', async () => {
+                console.log('🛑 SIGTERM — закрываем EventSub');
+                if (TwitchStreamMonitor.sharedListener) {
+                    try {
+                        await TwitchStreamMonitor.sharedListener.stop();
+                        TwitchStreamMonitor.sharedListener = null;
+                        TwitchStreamMonitor.listenerStarted = false;
+                        TwitchStreamMonitor.subscriptionsInitialized = false;
+                        TwitchStreamMonitor.startPromise = null;
+                        console.log('✅ EventSub listener остановлен (SIGTERM)');
+                    } catch (error) {
+                        console.error('❌ Ошибка остановки listener (SIGTERM):', error);
+                    }
+                }
+            });
+        }
     }
 
     /**
@@ -135,9 +175,11 @@ export class TwitchStreamMonitor {
         clientId: string,
         telegramChannelId?: string
     ): Promise<boolean> {
-        if (this.listener) {
-            console.error('⚠️ TwitchStreamMonitor уже подключён');
-            return true;
+        // если singleton listener уже существует, реюзим его
+        // НЕ делаем early return — нужно инициализировать apiClient, broadcasterId и т.д.
+        if (TwitchStreamMonitor.sharedListener) {
+            this.listener = TwitchStreamMonitor.sharedListener;
+            console.log('♻️ Singleton listener уже существует, реюзим');
         }
 
         try {
@@ -166,17 +208,41 @@ export class TwitchStreamMonitor {
                 this.moderatorId = validateData.user_id;
             }
 
-            // Умная очистка: удаляем только неактивные/битые подписки
-            // Активные (enabled) остаются → не пропускаем события!
-            await this.cleanupBrokenSubscriptions();
+            // используем singleton listener
+            // Twurple WS listener САМ управляет lifecycle подписок
+            // Ручной cleanup через API создаёт проблемы — WebSocket транспорты остаются висеть
+            // Один listener = один WebSocket транспорт НАВСЕГДА
+            if (!TwitchStreamMonitor.sharedListener) {
+                TwitchStreamMonitor.sharedListener = new EventSubWsListener({
+                    apiClient: this.apiClient
+                });
+                console.log('🆕 EventSubWsListener создан (singleton)');
+            }
+            
+            this.listener = TwitchStreamMonitor.sharedListener;
 
-            this.listener = new EventSubWsListener({apiClient: this.apiClient});
+            // стартуем listener только ОДИН раз за жизнь процесса
+            // Promise lock защищает от race condition при параллельном connect()
+            if (!TwitchStreamMonitor.listenerStarted) {
+                if (!TwitchStreamMonitor.startPromise) {
+                    TwitchStreamMonitor.startPromise = (async () => {
+                        await this.listener!.start();
+                        TwitchStreamMonitor.listenerStarted = true;
+                        console.log('✅ EventSub WebSocket подключен');
+                    })();
+                }
+                
+                // Ждём завершения Promise (даже если создан другим параллельным connect())
+                await TwitchStreamMonitor.startPromise;
+            } else {
+                console.log('♻️ EventSub listener уже запущен, реюзим singleton');
+            }
 
-            await this.listener.start();
-            console.log('✅ EventSub WebSocket подключен');
-
-            // Подписываемся на событие начала стрима
-            this.listener.onStreamOnline(user.id, async (event) => {
+            // регистрируем подписки только ОДИН раз за жизнь процесса
+            // Флаг static — иначе при new TwitchStreamMonitor() добавятся повторно
+            if (!TwitchStreamMonitor.subscriptionsInitialized) {
+                // Подписываемся на событие начала стрима
+                this.listener.onStreamOnline(user.id, async (event) => {
                 // Защита от дублей (если уже обработали через checkCurrentStreamStatus)
                 if (this.isStreamOnline) {
                     console.error(`⚠️ Стрим уже онлайн, пропускаем дубль события`);
@@ -255,10 +321,15 @@ export class TwitchStreamMonitor {
                 }
             });
 
-            console.log('📋 Подписки EventSub зарегистрированы:');
-            console.log('   • stream.online');
-            console.log('   • stream.offline');
-            console.log('   • channel.follow');
+                TwitchStreamMonitor.subscriptionsInitialized = true;
+                console.log('📋 Подписки EventSub зарегистрированы:');
+                console.log('   • stream.online');
+                console.log('   • stream.offline');
+                console.log('   • channel.follow');
+            } else {
+                console.log('♻️ Подписки уже зарегистрированы, пропускаем');
+            }
+            
             console.error(`✅ Мониторинг стримов запущен для канала: ${channelName}`);
 
             await this.checkCurrentStreamStatus(user.id);
@@ -267,141 +338,6 @@ export class TwitchStreamMonitor {
         } catch (error) {
             console.error('❌ Ошибка подключения к Twitch EventSub:', error);
             return false;
-        }
-    }
-
-    /**
-     * Умная очистка EventSub подписок
-     * Удаляет только неактивные/битые подписки, оставляет рабочие enabled
-     */
-    private async cleanupBrokenSubscriptions(): Promise<void> {
-        if (!this.accessToken || !this.clientId) {
-            console.log('⚠️ Нет токенов для проверки подписок');
-            return;
-        }
-
-        try {
-            const response = await fetch('https://api.twitch.tv/helix/eventsub/subscriptions', {
-                headers: {
-                    'Authorization': `Bearer ${this.accessToken}`,
-                    'Client-Id': this.clientId
-                }
-            });
-
-            if (!response.ok) {
-                console.log(`⚠️ Не удалось получить список подписок: ${response.status}`);
-                return;
-            }
-
-            const data = await response.json() as { data: Array<{ id: string; type: string; status: string; transport: { method: string } }> };
-            const subscriptions = data.data || [];
-
-            if (subscriptions.length === 0) {
-                console.log('✅ Нет подписок');
-                return;
-            }
-
-            console.log(`📋 Найдено подписок: ${subscriptions.length}`);
-
-            // Удаляем только неактивные WebSocket подписки (не enabled)
-            // Активные (enabled) оставляем - они продолжат работать!
-            const brokenSubs = subscriptions.filter(
-                sub => sub.transport.method === 'websocket' && sub.status !== 'enabled'
-            );
-
-            if (brokenSubs.length === 0) {
-                const activeSubs = subscriptions.filter(sub => sub.status === 'enabled');
-                console.log(`✅ Все подписки активны (${activeSubs.length}), чистка не требуется`);
-                return;
-            }
-
-            console.log(`🧹 Удаляем ${brokenSubs.length} неактивных подписок...`);
-
-            for (const sub of brokenSubs) {
-                try {
-                    const deleteResponse = await fetch(`https://api.twitch.tv/helix/eventsub/subscriptions?id=${sub.id}`, {
-                        method: 'DELETE',
-                        headers: {
-                            'Authorization': `Bearer ${this.accessToken}`,
-                            'Client-Id': this.clientId
-                        }
-                    });
-
-                    if (deleteResponse.ok) {
-                        console.log(`✅ Удалена неактивная: ${sub.type} (status: ${sub.status})`);
-                    } else {
-                        console.log(`⚠️ Ошибка удаления ${sub.id}: ${deleteResponse.status}`);
-                    }
-                } catch (error) {
-                    console.error(`❌ Ошибка при удалении ${sub.id}:`, error);
-                }
-            }
-
-            console.log('✅ Очистка завершена');
-        } catch (error) {
-            console.error('❌ Ошибка при очистке подписок:', error);
-        }
-    }
-
-    /**
-     * ПОЛНАЯ очистка всех EventSub подписок (для ручного использования)
-     * Используй скрипт: npm run eventsub:cleanup
-     */
-    private async cleanupAllSubscriptions(): Promise<void> {
-        if (!this.accessToken || !this.clientId) {
-            console.log('⚠️ Нет токенов для очистки подписок');
-            return;
-        }
-
-        try {
-            const response = await fetch('https://api.twitch.tv/helix/eventsub/subscriptions', {
-                headers: {
-                    'Authorization': `Bearer ${this.accessToken}`,
-                    'Client-Id': this.clientId
-                }
-            });
-
-            if (!response.ok) {
-                console.log(`⚠️ Не удалось получить список подписок: ${response.status}`);
-                return;
-            }
-
-            const data = await response.json() as { data: Array<{ id: string; type: string; status: string; transport: { method: string } }> };
-            const subscriptions = data.data || [];
-
-            if (subscriptions.length === 0) {
-                console.log('✅ Нет активных подписок для очистки');
-                return;
-            }
-
-            console.log(`📋 Найдено подписок: ${subscriptions.length}`);
-
-            const websocketSubs = subscriptions.filter(sub => sub.transport.method === 'websocket');
-            console.log(`🧹 Удаляем ${websocketSubs.length} WebSocket подписок...`);
-
-            for (const sub of websocketSubs) {
-                try {
-                    const deleteResponse = await fetch(`https://api.twitch.tv/helix/eventsub/subscriptions?id=${sub.id}`, {
-                        method: 'DELETE',
-                        headers: {
-                            'Authorization': `Bearer ${this.accessToken}`,
-                            'Client-Id': this.clientId
-                        }
-                    });
-
-                    if (deleteResponse.ok) {
-                        console.log(`✅ Удалена подписка: ${sub.type} (${sub.id})`);
-                    } else {
-                        console.log(`⚠️ Не удалось удалить подписку ${sub.id}: ${deleteResponse.status}`);
-                    }
-                } catch (error) {
-                    console.error(`❌ Ошибка при удалении подписки ${sub.id}:`, error);
-                }
-            }
-
-            console.log('✅ Очистка подписок завершена');
-        } catch (error) {
-            console.error('❌ Ошибка при очистке подписок:', error);
         }
     }
 
@@ -889,7 +825,8 @@ export class TwitchStreamMonitor {
     }
 
     /**
-     * Отключение от EventSub
+     * Отключение от EventSub (graceful shutdown)
+     * ВНИМАНИЕ: это закроет singleton listener для ВСЕГО процесса
      */
     async disconnect(): Promise<void> {
         try {
@@ -898,9 +835,14 @@ export class TwitchStreamMonitor {
             this.stopWelcomeMessageInterval();
             this.stopLinkRotation();
 
-            if (this.listener) {
-                await this.listener.stop();
-                console.error('🛑 Отключено от Twitch EventSub');
+            // Останавливаем singleton listener (один раз на весь процесс)
+            if (TwitchStreamMonitor.sharedListener) {
+                await TwitchStreamMonitor.sharedListener.stop();
+                TwitchStreamMonitor.sharedListener = null;
+                TwitchStreamMonitor.listenerStarted = false;
+                TwitchStreamMonitor.subscriptionsInitialized = false;
+                TwitchStreamMonitor.startPromise = null;
+                console.error('🛑 Отключено от Twitch EventSub (singleton)');
             }
         } catch (error) {
             console.error('❌ Ошибка при отключении от Twitch EventSub:', error);

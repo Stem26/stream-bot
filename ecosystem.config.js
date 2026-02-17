@@ -23,6 +23,7 @@ module.exports = {
         NODE_ENV: 'production'
       },
       instances: 1,
+      exec_mode: 'fork', // 🔥 КРИТИЧЕСКИ ВАЖНО: EventSub WS несовместим с cluster mode
       autorestart: true,
       watch: false,
       max_memory_restart: '500M',
