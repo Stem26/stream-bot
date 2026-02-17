@@ -8,6 +8,44 @@ import { processTwitchRatCommand, processTwitchCutieCommand, addActiveUser, setC
 import { processTwitchPointsCommand, processTwitchTopPointsCommand } from '../commands/twitch-points';
 import { ENABLE_BOT_FEATURES, ALLOW_LOCAL_COMMANDS } from '../config/features';
 import { IS_LOCAL } from '../config/env';
+import * as fs from 'fs';
+import * as path from 'path';
+
+// Файл для хранения состояния счётчиков (в корне монорепы)
+const COUNTERS_STATE_FILE = path.resolve(__dirname, '../../../../../counters-state.json');
+
+interface CountersState {
+    stopCounters: Record<string, number>;
+    deathCounters: Record<string, number>;
+}
+
+/**
+ * Загружает состояние счётчиков из файла
+ */
+function loadCountersState(): CountersState {
+    try {
+        if (fs.existsSync(COUNTERS_STATE_FILE)) {
+            const data = fs.readFileSync(COUNTERS_STATE_FILE, 'utf-8');
+            const parsed = JSON.parse(data);
+            console.log('📋 Загружено состояние счётчиков:', parsed);
+            return parsed;
+        }
+    } catch (error) {
+        console.error('⚠️ Ошибка загрузки состояния счётчиков:', error);
+    }
+    return {stopCounters: {}, deathCounters: {}};
+}
+
+/**
+ * Сохраняет состояние счётчиков в файл
+ */
+function saveCountersState(state: CountersState): void {
+    try {
+        fs.writeFileSync(COUNTERS_STATE_FILE, JSON.stringify(state, null, 2));
+    } catch (error) {
+        console.error('⚠️ Ошибка сохранения состояния счётчиков:', error);
+    }
+}
 
 type CommandHandler = (channel: string, user: string, message: string, msg: any) => void | Promise<void>;
 
@@ -53,6 +91,10 @@ export class NightBotMonitor {
     // Счётчик команды !смерть (username -> количество смертей в игре)
     private deathCounters = new Map<string, number>();
 
+    // Кеш User ID для предотвращения повторных запросов к helix/users (username -> userId)
+    // Критично для !vanish и !дуэль - без кеша каждый вызов = API запрос
+    private userIdCache = new Map<string, string>();
+
     // Кеш списка зрителей чата (для команд !крыса, !милашка)
     private chattersCache = new Map<string, { users: string[]; expires: number; createdAt: number }>();
     private readonly CHATTERS_CACHE_TTL_MS = 60 * 1000; // 60 секунд
@@ -96,6 +138,36 @@ export class NightBotMonitor {
         ['!help', (ch, u, m, msg) => void this.handleGamesCommand(ch, u, msg)]
     ]);
 
+    constructor() {
+        // Загружаем состояние счётчиков при создании
+        const countersState = loadCountersState();
+
+        // Восстанавливаем stopCounters из файла
+        for (const [username, count] of Object.entries(countersState.stopCounters)) {
+            this.stopCounters.set(username, count);
+        }
+
+        // Восстанавливаем deathCounters из файла
+        for (const [username, count] of Object.entries(countersState.deathCounters)) {
+            this.deathCounters.set(username, count);
+        }
+
+        console.log('📋 Загружены счётчики из файла:');
+        console.log(`   !стоп: ${this.stopCounters.size} записей`);
+        console.log(`   !смерть: ${this.deathCounters.size} записей`);
+    }
+
+    /**
+     * Сохраняет текущее состояние счётчиков в файл
+     */
+    private saveCounters(): void {
+        const state: CountersState = {
+            stopCounters: Object.fromEntries(this.stopCounters),
+            deathCounters: Object.fromEntries(this.deathCounters)
+        };
+        saveCountersState(state);
+    }
+
     /**
      * Helper для Helix API запросов с retry логикой (exponential backoff)
      * @param url - URL для запроса
@@ -129,8 +201,23 @@ export class NightBotMonitor {
                 lastError = error as Error;
                 const status = (error as any).status;
                 
-                // Не делаем retry на 4xx ошибках (клиентские ошибки, бессмысленно повторять)
-                if (status && status >= 400 && status < 500) {
+                // КРИТИЧНО: 429 Rate Limit НЕ должен попадать в общий блок 4xx
+                // 429 нужно ОБЯЗАТЕЛЬНО ретраить, иначе бот ломается при burst нагрузке
+                if (status === 429) {
+                    // Увеличенная задержка для rate limit: 3s, 6s, 9s...
+                    // Критичные сценарии:
+                    // - burst timeoutUser (20 !vanish подряд)
+                    // - burst chatters pagination
+                    // - burst users lookup (массовые дуэли)
+                    const delayMs = 3000 * (attempt + 1);
+                    console.log(`⛔ Rate limit Twitch (429), retry через ${delayMs}мс (попытка ${attempt + 1}/${maxRetries})`);
+                    await new Promise(resolve => setTimeout(resolve, delayMs));
+                    continue;
+                }
+                
+                // Не делаем retry на остальных 4xx ошибках (клиентские ошибки, бессмысленно повторять)
+                // ВАЖНО: status !== 429 явно исключает rate limit из этой проверки
+                if (status && status >= 400 && status < 500 && status !== 429) {
                     throw lastError;
                 }
                 
@@ -139,7 +226,7 @@ export class NightBotMonitor {
                     throw lastError;
                 }
 
-                // Exponential backoff: 1s, 2s, 4s, 8s...
+                // Exponential backoff для 5xx и network errors: 1s, 2s, 4s, 8s...
                 const delayMs = 1000 * Math.pow(2, attempt);
                 console.log(`⚠️ Helix API ошибка (попытка ${attempt + 1}/${maxRetries}), повтор через ${delayMs}мс:`, lastError.message);
                 
@@ -245,7 +332,7 @@ export class NightBotMonitor {
                 return filteredChatters;
             } catch (error) {
                 console.error('❌ Ошибка получения списка зрителей:', error);
-                
+
                 // Stale-While-Revalidate: если API упал, используем старый кеш (даже истёкший)
                 const staleCache = this.chattersCache.get(normalized);
                 if (staleCache) {
@@ -253,7 +340,7 @@ export class NightBotMonitor {
                     console.log(`⚠️ API недоступен, используем устаревший кеш: ${staleCache.users.length} пользователей (возраст: ${staleAge}с)`);
                     return staleCache.users;
                 }
-                
+
                 // Только если кеша вообще нет - пробрасываем ошибку для fallback на activeUsers
                 console.error('❌ Кеш отсутствует, fallback на activeUsers');
                 throw error;
@@ -295,7 +382,7 @@ export class NightBotMonitor {
             this.broadcasterId = helixData.data[0].id;
 
             const validateRes = await fetch('https://id.twitch.tv/oauth2/validate', {
-                headers: { 'Authorization': `OAuth ${accessToken}` }
+                headers: {'Authorization': `OAuth ${accessToken}`}
             });
 
             if (!validateRes.ok) {
@@ -357,7 +444,9 @@ export class NightBotMonitor {
             }
 
             // Warming up: предзагружаем список зрителей для быстрого первого !крыса
-            this.warmupChattersCache();
+            if (this.isStreamOnlineCheck()) {
+                this.warmupChattersCache();
+            }
 
             this.chatClient.onMessage((channel, user, message, msg) => {
                 const username = user.toLowerCase();
@@ -400,17 +489,17 @@ export class NightBotMonitor {
                 const stopWithNumberMatch = trimmedMessage.match(/^!стоп(\d+)$/);
                 if (stopWithNumberMatch) {
                     const targetValue = parseInt(stopWithNumberMatch[1], 10);
-                    
+
                     // Проверка что стрим онлайн
                     if (!this.isStreamOnlineCheck() && !IS_LOCAL) {
                         console.log(`⚠️ Команда ${trimmedMessage} проигнорирована: стрим оффлайн`);
                         return;
                     }
-                    
+
                     if (IS_LOCAL && !this.isStreamOnlineCheck()) {
                         console.log(`🧪 ТЕСТ в оффлайне: выполняем команду ${trimmedMessage}`);
                     }
-                    
+
                     this.handleStopSetCommand(channel, user, targetValue, msg);
                     return;
                 }
@@ -419,17 +508,17 @@ export class NightBotMonitor {
                 const deathWithNumberMatch = trimmedMessage.match(/^!смерть(\d+)$/);
                 if (deathWithNumberMatch) {
                     const targetValue = parseInt(deathWithNumberMatch[1], 10);
-                    
+
                     // Проверка что стрим онлайн
                     if (!this.isStreamOnlineCheck() && !IS_LOCAL) {
                         console.log(`⚠️ Команда ${trimmedMessage} проигнорирована: стрим оффлайн`);
                         return;
                     }
-                    
+
                     if (IS_LOCAL && !this.isStreamOnlineCheck()) {
                         console.log(`🧪 ТЕСТ в оффлайне: выполняем команду ${trimmedMessage}`);
                     }
-                    
+
                     this.handleDeathSetCommand(channel, user, targetValue, msg);
                     return;
                 }
@@ -443,12 +532,12 @@ export class NightBotMonitor {
                         console.log(`⚠️ Команда ${trimmedMessage} проигнорирована: стрим оффлайн`);
                         return;
                     }
-                    
+
                     // Локально показываем что тестируем в оффлайне
                     if (IS_LOCAL && !this.isStreamOnlineCheck()) {
                         console.log(`🧪 ТЕСТ в оффлайне: выполняем команду ${trimmedMessage}`);
                     }
-                    
+
                     commandHandler(channel, user, message, msg);
                 }
             });
@@ -456,7 +545,7 @@ export class NightBotMonitor {
             // Отслеживаем ритуалы (первое сообщение нового зрителя)
             this.chatClient.onRitual((channel, user, ritualInfo, msg) => {
                 console.log(`🎉 Ritual событие: ${ritualInfo.ritualName} от ${user}`);
-                
+
                 if (ritualInfo.ritualName === 'new_chatter') {
                     console.log(`👋 Новый зритель: ${user} - ${ritualInfo.message || ''}`);
                 }
@@ -467,7 +556,7 @@ export class NightBotMonitor {
             this.chatClient.irc.onAnyMessage((ircMessage) => {
                 if (ircMessage.command === 'USERNOTICE') {
                     const msgId = ircMessage.tags.get('msg-id');
-                    
+
                     if (msgId === 'viewermilestone') {
                         console.log('🎯 VIEWERMILESTONE событие обнаружено!');
                         console.log('='.repeat(80));
@@ -475,22 +564,22 @@ export class NightBotMonitor {
                         const username = ircMessage.tags.get('login') || ircMessage.tags.get('display-name') || 'Unknown';
                         const displayName = ircMessage.tags.get('display-name') || username;
                         const value = ircMessage.tags.get('msg-param-value');
-                        
+
                         if (category === 'watch-streak') {
                             console.log(`🔥 Watch Streak! ${displayName} смотрит ${value}-й стрим подряд!`);
-                            
+
                             // Проверяем, включены ли функции бота
                             if (!ENABLE_BOT_FEATURES) {
                                 console.log('🔇 Благодарности за watch streak отключены (ENABLE_BOT_FEATURES=false)');
                                 return;
                             }
-                            
+
                             // Локально блокируем отправку (защита от дублирования с сервером)
                             if (IS_LOCAL && !ALLOW_LOCAL_COMMANDS) {
                                 console.log('🔒 Локально благодарности за watch streak заблокированы (для теста добавь ALLOW_LOCAL_COMMANDS=true в .env.local)');
                                 return;
                             }
-                            
+
                             // Отправляем благодарность в чат
                             const channel = (ircMessage as any).channel;
                             if (channel && value) {
@@ -501,7 +590,7 @@ export class NightBotMonitor {
                                 console.error('⚠️ Не удалось определить канал или значение из ircMessage');
                             }
                         }
-                        
+
                         console.log('='.repeat(80));
                     }
                 }
@@ -598,7 +687,7 @@ export class NightBotMonitor {
 
         try {
             const result = processTwitchDuelCommand(user, channel);
-            
+
             // Если дуэли выключены, response будет пустым - ничего не отправляем
             if (result.response) {
                 await this.sendMessage(channel, result.response);
@@ -692,9 +781,10 @@ export class NightBotMonitor {
             const streamerName = 'kunilika666';
             const currentCount = this.stopCounters.get(streamerName) || 0;
             const newCount = currentCount + 1;
-            
+
             this.stopCounters.set(streamerName, newCount);
-            
+            this.saveCounters();
+
             // Формируем правильное окончание слова "раз"
             let razWord = 'раз';
             if (newCount % 10 === 1 && newCount % 100 !== 11) {
@@ -704,9 +794,9 @@ export class NightBotMonitor {
             } else {
                 razWord = 'раз';
             }
-            
+
             const response = `kunilika666 остановила стрим ${newCount} ${razWord}`;
-            
+
             await this.sendMessage(channel, response);
             console.log(`✅ Отправлен ответ в чат: ${response}`);
         } catch (error) {
@@ -722,16 +812,17 @@ export class NightBotMonitor {
 
         try {
             const streamerName = 'kunilika666';
-            
+
             if (targetValue < 0 || targetValue > 9999) {
                 const response = `Значение должно быть от 0 до 9999`;
                 await this.sendMessage(channel, response);
                 console.log(`⚠️ Некорректное значение: ${targetValue}`);
                 return;
             }
-            
+
             this.stopCounters.set(streamerName, targetValue);
-            
+            this.saveCounters();
+
             let razWord = 'раз';
             if (targetValue % 10 === 1 && targetValue % 100 !== 11) {
                 razWord = 'раз';
@@ -740,9 +831,9 @@ export class NightBotMonitor {
             } else {
                 razWord = 'раз';
             }
-            
+
             const response = `Счётчик установлен: kunilika666 остановила стрим ${targetValue} ${razWord}`;
-            
+
             await this.sendMessage(channel, response);
             console.log(`✅ Отправлен ответ в чат: ${response}`);
         } catch (error) {
@@ -761,22 +852,23 @@ export class NightBotMonitor {
             // Всегда считаем остановки для стримерши
             const streamerName = 'kunilika666';
             const currentCount = this.stopCounters.get(streamerName) || 0;
-            
+
             if (currentCount === 0) {
                 const response = `Нет остановок для отката`;
                 await this.sendMessage(channel, response);
                 console.log(`✅ Отправлен ответ в чат: ${response}`);
                 return;
             }
-            
+
             const newCount = currentCount - 1;
-            
+
             if (newCount === 0) {
                 this.stopCounters.delete(streamerName);
             } else {
                 this.stopCounters.set(streamerName, newCount);
             }
-            
+            this.saveCounters();
+
             // Формируем правильное окончание слова "раз"
             let razWord = 'раз';
             if (newCount % 10 === 1 && newCount % 100 !== 11) {
@@ -786,11 +878,11 @@ export class NightBotMonitor {
             } else {
                 razWord = 'раз';
             }
-            
-            const response = newCount === 0 
+
+            const response = newCount === 0
                 ? `Откат выполнен, счётчик сброшен`
                 : `Откат выполнен, kunilika666 остановила стрим ${newCount} ${razWord}`;
-            
+
             await this.sendMessage(channel, response);
             console.log(`✅ Отправлен ответ в чат: ${response}`);
         } catch (error) {
@@ -809,18 +901,19 @@ export class NightBotMonitor {
             // Всегда считаем остановки для стримерши
             const streamerName = 'kunilika666';
             const currentCount = this.stopCounters.get(streamerName) || 0;
-            
+
             if (currentCount === 0) {
                 const response = `Счётчик остановок уже на нуле`;
                 await this.sendMessage(channel, response);
                 console.log(`✅ Отправлен ответ в чат: ${response}`);
                 return;
             }
-            
+
             this.stopCounters.delete(streamerName);
-            
+            this.saveCounters();
+
             const response = `Счётчик остановок сброшен`;
-            
+
             await this.sendMessage(channel, response);
             console.log(`✅ Отправлен ответ в чат: ${response}`);
         } catch (error) {
@@ -839,14 +932,14 @@ export class NightBotMonitor {
             // Всегда считаем остановки для стримерши
             const streamerName = 'kunilika666';
             const currentCount = this.stopCounters.get(streamerName) || 0;
-            
+
             if (currentCount === 0) {
                 const response = `kunilika666 ещё не останавливала стрим`;
                 await this.sendMessage(channel, response);
                 console.log(`✅ Отправлен ответ в чат: ${response}`);
                 return;
             }
-            
+
             // Формируем правильное окончание слова "раз"
             let razWord = 'раз';
             if (currentCount % 10 === 1 && currentCount % 100 !== 11) {
@@ -856,9 +949,9 @@ export class NightBotMonitor {
             } else {
                 razWord = 'раз';
             }
-            
+
             const response = `kunilika666 остановила стрим ${currentCount} ${razWord}`;
-            
+
             await this.sendMessage(channel, response);
             console.log(`✅ Отправлен ответ в чат: ${response}`);
         } catch (error) {
@@ -878,9 +971,10 @@ export class NightBotMonitor {
             const streamerName = 'kunilika666';
             const currentCount = this.deathCounters.get(streamerName) || 0;
             const newCount = currentCount + 1;
-            
+
             this.deathCounters.set(streamerName, newCount);
-            
+            this.saveCounters();
+
             // Формируем правильное окончание слова "раз"
             let razWord = 'раз';
             if (newCount % 10 === 1 && newCount % 100 !== 11) {
@@ -890,9 +984,9 @@ export class NightBotMonitor {
             } else {
                 razWord = 'раз';
             }
-            
+
             const response = `kunilika666 умерла ${newCount} ${razWord}`;
-            
+
             await this.sendMessage(channel, response);
             console.log(`✅ Отправлен ответ в чат: ${response}`);
         } catch (error) {
@@ -908,16 +1002,17 @@ export class NightBotMonitor {
 
         try {
             const streamerName = 'kunilika666';
-            
+
             if (targetValue < 0 || targetValue > 9999) {
                 const response = `Значение должно быть от 0 до 9999`;
                 await this.sendMessage(channel, response);
                 console.log(`⚠️ Некорректное значение: ${targetValue}`);
                 return;
             }
-            
+
             this.deathCounters.set(streamerName, targetValue);
-            
+            this.saveCounters();
+
             let razWord = 'раз';
             if (targetValue % 10 === 1 && targetValue % 100 !== 11) {
                 razWord = 'раз';
@@ -926,9 +1021,9 @@ export class NightBotMonitor {
             } else {
                 razWord = 'раз';
             }
-            
+
             const response = `Счётчик установлен: kunilika666 умерла ${targetValue} ${razWord}`;
-            
+
             await this.sendMessage(channel, response);
             console.log(`✅ Отправлен ответ в чат: ${response}`);
         } catch (error) {
@@ -947,22 +1042,23 @@ export class NightBotMonitor {
             // Всегда считаем смерти для стримерши
             const streamerName = 'kunilika666';
             const currentCount = this.deathCounters.get(streamerName) || 0;
-            
+
             if (currentCount === 0) {
                 const response = `Нет смертей для отката`;
                 await this.sendMessage(channel, response);
                 console.log(`✅ Отправлен ответ в чат: ${response}`);
                 return;
             }
-            
+
             const newCount = currentCount - 1;
-            
+
             if (newCount === 0) {
                 this.deathCounters.delete(streamerName);
             } else {
                 this.deathCounters.set(streamerName, newCount);
             }
-            
+            this.saveCounters();
+
             // Формируем правильное окончание слова "раз"
             let razWord = 'раз';
             if (newCount % 10 === 1 && newCount % 100 !== 11) {
@@ -972,11 +1068,11 @@ export class NightBotMonitor {
             } else {
                 razWord = 'раз';
             }
-            
-            const response = newCount === 0 
+
+            const response = newCount === 0
                 ? `Откат выполнен, счётчик сброшен`
                 : `Откат выполнен, kunilika666 умерла ${newCount} ${razWord}`;
-            
+
             await this.sendMessage(channel, response);
             console.log(`✅ Отправлен ответ в чат: ${response}`);
         } catch (error) {
@@ -995,18 +1091,19 @@ export class NightBotMonitor {
             // Всегда считаем смерти для стримерши
             const streamerName = 'kunilika666';
             const currentCount = this.deathCounters.get(streamerName) || 0;
-            
+
             if (currentCount === 0) {
                 const response = `Счётчик смертей уже на нуле`;
                 await this.sendMessage(channel, response);
                 console.log(`✅ Отправлен ответ в чат: ${response}`);
                 return;
             }
-            
+
             this.deathCounters.delete(streamerName);
-            
+            this.saveCounters();
+
             const response = `Счётчик смертей сброшен`;
-            
+
             await this.sendMessage(channel, response);
             console.log(`✅ Отправлен ответ в чат: ${response}`);
         } catch (error) {
@@ -1025,14 +1122,14 @@ export class NightBotMonitor {
             // Всегда считаем смерти для стримерши
             const streamerName = 'kunilika666';
             const currentCount = this.deathCounters.get(streamerName) || 0;
-            
+
             if (currentCount === 0) {
                 const response = `kunilika666 ещё не умирала`;
                 await this.sendMessage(channel, response);
                 console.log(`✅ Отправлен ответ в чат: ${response}`);
                 return;
             }
-            
+
             // Формируем правильное окончание слова "раз"
             let razWord = 'раз';
             if (currentCount % 10 === 1 && currentCount % 100 !== 11) {
@@ -1042,9 +1139,9 @@ export class NightBotMonitor {
             } else {
                 razWord = 'раз';
             }
-            
+
             const response = `kunilika666 умерла ${currentCount} ${razWord}`;
-            
+
             await this.sendMessage(channel, response);
             console.log(`✅ Отправлен ответ в чат: ${response}`);
         } catch (error) {
@@ -1060,8 +1157,8 @@ export class NightBotMonitor {
         console.log(`👻 Команда !vanish от ${user} в ${channel}`);
 
         // Импортируем STREAMER_USERNAME из config
-        const { STREAMER_USERNAME } = require('../config/env');
-        
+        const {STREAMER_USERNAME} = require('../config/env');
+
         // Стример не может банить сам себя
         if (STREAMER_USERNAME && user.toLowerCase() === STREAMER_USERNAME.toLowerCase()) {
             console.log(`⚠️ Стример ${user} попытался использовать !vanish - игнорируем`);
@@ -1077,26 +1174,38 @@ export class NightBotMonitor {
 
     /**
      * Таймаут пользователя через Helix API
+     * Использует кеш User ID для предотвращения DDOS на helix/users
      */
     private async timeoutUser(username: string, durationSeconds: number, reason: string): Promise<void> {
-        // Получаем ID пользователя
-        const userData = await this.helix<{ data: Array<{ id: string }> }>(
-            `https://api.twitch.tv/helix/users?login=${username.toLowerCase()}`
-        );
-        if (!userData.data[0]) {
-            console.error(`❌ Пользователь ${username} не найден`);
-            return;
+        const normalizedUsername = username.toLowerCase();
+
+        // Проверяем кеш User ID (уменьшает API нагрузку на ~90%)
+        let userId = this.userIdCache.get(normalizedUsername);
+
+        if (!userId) {
+            // Кеш промах - запрашиваем у API
+            const userData = await this.helix<{ data: Array<{ id: string }> }>(
+                `https://api.twitch.tv/helix/users?login=${normalizedUsername}`
+            );
+
+            if (!userData.data[0]) {
+                console.error(`❌ Пользователь ${username} не найден`);
+                return;
+            }
+
+            userId = userData.data[0].id;
+            this.userIdCache.set(normalizedUsername, userId);
+            console.log(`📝 User ID закеширован: ${normalizedUsername} -> ${userId}`);
         }
-        const userId = userData.data[0].id;
 
         // Выдаём таймаут через Helix API
         await this.helix(
             `https://api.twitch.tv/helix/moderation/bans?broadcaster_id=${this.broadcasterId}&moderator_id=${this.moderatorId}`,
             {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({
-                    data: { user_id: userId, duration: durationSeconds, reason }
+                    data: {user_id: userId, duration: durationSeconds, reason}
                 })
             }
         );
@@ -1190,7 +1299,8 @@ export class NightBotMonitor {
     /**
      * Callback для обработки сообщений Nightbot (можно переопределить)
      */
-    public onNightbotMessage: (channel: string, message: string, msg: any) => void = () => {};
+    public onNightbotMessage: (channel: string, message: string, msg: any) => void = () => {
+    };
 
     /**
      * Установить функцию проверки статуса стрима
@@ -1224,7 +1334,8 @@ export class NightBotMonitor {
      */
     clearStopCounters(): void {
         this.stopCounters.clear();
-        console.log('🧹 Счётчики !стоп очищены');
+        this.saveCounters();
+        console.log('🧹 Счётчики !стоп очищены и сохранены');
     }
 
     /**
@@ -1232,7 +1343,8 @@ export class NightBotMonitor {
      */
     clearDeathCounters(): void {
         this.deathCounters.clear();
-        console.log('🧹 Счётчики !смерть очищены');
+        this.saveCounters();
+        console.log('🧹 Счётчики !смерть очищены и сохранены');
     }
 
     /**
@@ -1241,13 +1353,13 @@ export class NightBotMonitor {
      */
     private warmupChattersCache(): void {
         console.log('🔥 Warming up: предзагружаем список зрителей...');
-        
+
         // Запускаем в фоне, не ждём результата
         this.getChatters(this.channelName)
             .then(chatters => {
                 console.log(`✅ Warming up завершён: ${chatters.length} зрителей в кеше`);
-                console.log(`👥 Зрители в кеше: ${chatters.join(', ')}`); //узнать какие зрители подключены
-                
+                console.log(`👥 Зрители в кеше: ${chatters.join(', ')}`);
+
                 // Запускаем периодический опрос для синхронизации viewers
                 this.startChattersSyncInterval();
             })
@@ -1305,6 +1417,12 @@ export class NightBotMonitor {
         // Очищаем кеш зрителей и inflight promise
         this.chattersCache.clear();
         this.chattersFetchPromise = null;
+
+        // Очищаем кеш User ID
+        if (this.userIdCache.size > 5000) {
+            this.userIdCache.clear();
+            console.log('🧹 Кеш User ID очищен');
+        }
     }
 
     isConnected(): boolean {
