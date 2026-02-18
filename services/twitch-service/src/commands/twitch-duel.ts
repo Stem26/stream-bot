@@ -21,6 +21,7 @@ const DUEL_EXEMPT_USERS = new Set([STREAMER_USERNAME?.toLowerCase()].filter(Bool
 const DUEL_ADMINS = new Set([
   STREAMER_USERNAME?.toLowerCase(),
   'stem261',
+  'kunila666_bot',
   'remax_7',
   'violent_osling'
 ].filter(Boolean));
@@ -224,4 +225,40 @@ export function clearDuelQueue(): void {
   if (queueSize > 0) {
     console.log(`🧹 Очередь на дуэли очищена (было ${queueSize} игроков)`);
   }
+}
+
+/**
+ * Снимает таймауты дуэлей со всех игроков (амнистия)
+ * Доступно только админам
+ * Возвращает список игроков для снятия реальных таймаутов в Twitch
+ */
+export function pardonAllDuelTimeouts(twitchUsername: string): { success: boolean; count: number; usernames: string[] } {
+  if (!canManageDuels(twitchUsername)) {
+    console.log(`⚠️ Пользователь ${twitchUsername} попытался использовать амнистию без прав`);
+    return { success: false, count: 0, usernames: [] };
+  }
+
+  const players = loadTwitchPlayers();
+  const now = Date.now();
+  let pardoned = 0;
+  const usernamesWithTimeout: string[] = [];
+
+  // Проходим по всем игрокам и снимаем активные таймауты
+  for (const [username, player] of players.entries()) {
+    if (player.duelTimeoutUntil && player.duelTimeoutUntil > now) {
+      delete player.duelTimeoutUntil;
+      pardoned++;
+      usernamesWithTimeout.push(player.twitchUsername);
+    }
+  }
+
+  if (pardoned > 0) {
+    saveTwitchPlayers(players);
+    console.log(`🕊️ Амнистия: снято ${pardoned} таймаутов дуэлей пользователем ${twitchUsername}`);
+    console.log(`📋 Игроки для разбана: ${usernamesWithTimeout.join(', ')}`);
+  } else {
+    console.log(`ℹ️ Амнистия: нет активных таймаутов для снятия`);
+  }
+
+  return { success: true, count: pardoned, usernames: usernamesWithTimeout };
 }

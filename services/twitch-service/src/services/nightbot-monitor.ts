@@ -3,7 +3,7 @@ import { StaticAuthProvider } from '@twurple/auth';
 import { processTwitchDickCommand } from '../commands/twitch-dick';
 import { processTwitchTopDickCommand } from '../commands/twitch-topDick';
 import { processTwitchBottomDickCommand } from '../commands/twitch-bottomDick';
-import { processTwitchDuelCommand, enableDuels, disableDuels } from '../commands/twitch-duel';
+import { processTwitchDuelCommand, enableDuels, disableDuels, pardonAllDuelTimeouts } from '../commands/twitch-duel';
 import { processTwitchRatCommand, processTwitchCutieCommand, addActiveUser, setChattersAPIFunction } from '../commands/twitch-rat';
 import { processTwitchPointsCommand, processTwitchTopPointsCommand } from '../commands/twitch-points';
 import { ENABLE_BOT_FEATURES, ALLOW_LOCAL_COMMANDS } from '../config/features';
@@ -125,6 +125,7 @@ export class NightBotMonitor {
         ['!дуэль', (ch, u, m, msg) => void this.handleDuelCommand(ch, u, m, msg)],
         ['!стоп_дуэль', (ch, u, m, msg) => void this.handleDisableDuelsCommand(ch, u, msg)],
         ['!старт_дуэль', (ch, u, m, msg) => void this.handleEnableDuelsCommand(ch, u, msg)],
+        ['!амнистия', (ch, u, m, msg) => void this.handleDuelPardonCommand(ch, u, msg)],
         ['!крыса', (ch, u, m, msg) => void this.handleRatCommand(ch, u, m, msg)],
         ['!милашка', (ch, u, m, msg) => void this.handleCutieCommand(ch, u, m, msg)],
         ['!vanish', (ch, u, m, msg) => void this.handleVanishCommand(ch, u, msg)],
@@ -746,6 +747,49 @@ export class NightBotMonitor {
     }
 
     /**
+     * Обработка команды !амнистия (!дуэль_амнистия) из чата
+     * Снимает таймауты дуэлей со всех игроков (только для админов)
+     */
+    private async handleDuelPardonCommand(channel: string, user: string, msg: any) {
+        console.log(`🕊️ Команда !амнистия от ${user} в ${channel}`);
+
+        try {
+            const result = pardonAllDuelTimeouts(user);
+
+            if (!result.success) {
+                // Нет прав - игнорируем молча
+                console.log(`⚠️ ${user} попытался использовать !амнистия без прав`);
+                return;
+            }
+
+            if (result.count > 0) {
+                // Снимаем реальные таймауты в Twitch для всех игроков
+                console.log(`🔓 Снимаем таймауты Twitch для ${result.usernames.length} игроков...`);
+                let unbannedCount = 0;
+                
+                for (const username of result.usernames) {
+                    const success = await this.untimeoutUser(username);
+                    if (success) {
+                        unbannedCount++;
+                    }
+                }
+
+                console.log(`✅ Реальных таймаутов снято: ${unbannedCount}/${result.usernames.length}`);
+
+                const response = `🕊️ Амнистия объявлена! Снято таймаутов: ${result.count}`;
+                await this.sendMessage(channel, response);
+                console.log(`✅ Отправлен ответ в чат: ${response}`);
+            } else {
+                const response = `ℹ️ Нет активных таймаутов дуэлей`;
+                await this.sendMessage(channel, response);
+                console.log(`✅ Отправлен ответ в чат: ${response}`);
+            }
+        } catch (error) {
+            console.error('❌ Ошибка при обработке команды !амнистия:', error);
+        }
+    }
+
+    /**
      * Обработка команды !крыса из чата
      * Выбирает рандомного активного чатера из списка подключенных зрителей
      */
@@ -1219,6 +1263,49 @@ export class NightBotMonitor {
         );
 
         console.log(`✅ Таймаут выдан: ${username} на ${durationSeconds} сек.`);
+    }
+
+    /**
+     * Снятие таймаута/бана с пользователя через Helix API
+     * Использует кеш User ID для предотвращения DDOS на helix/users
+     */
+    private async untimeoutUser(username: string): Promise<boolean> {
+        const normalizedUsername = username.toLowerCase();
+
+        try {
+            // Проверяем кеш User ID
+            let userId = this.userIdCache.get(normalizedUsername);
+
+            if (!userId) {
+                // Кеш промах - запрашиваем у API
+                const userData = await this.helix<{ data: Array<{ id: string }> }>(
+                    `https://api.twitch.tv/helix/users?login=${normalizedUsername}`
+                );
+
+                if (!userData.data[0]) {
+                    console.error(`❌ Пользователь ${username} не найден`);
+                    return false;
+                }
+
+                userId = userData.data[0].id;
+                this.userIdCache.set(normalizedUsername, userId);
+                console.log(`📝 User ID закеширован: ${normalizedUsername} -> ${userId}`);
+            }
+
+            // Снимаем таймаут/бан через Helix API (DELETE запрос)
+            await this.helix(
+                `https://api.twitch.tv/helix/moderation/bans?broadcaster_id=${this.broadcasterId}&moderator_id=${this.moderatorId}&user_id=${userId}`,
+                {
+                    method: 'DELETE'
+                }
+            );
+
+            console.log(`✅ Таймаут снят: ${username}`);
+            return true;
+        } catch (error: any) {
+            console.error(`⚠️ Ошибка снятия таймаута ${username}:`, error?.message || error);
+            return false;
+        }
     }
 
     /**
