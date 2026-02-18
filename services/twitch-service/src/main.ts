@@ -2,7 +2,7 @@ import { NightBotMonitor } from './services/nightbot-monitor';
 import { TwitchStreamMonitor } from './services/twitch-stream-monitor';
 import { Telegraf } from 'telegraf';
 import { loadConfig } from './config/env';
-import { clearDuelQueue } from "./commands/twitch-duel";
+import { clearDuelQueue, resetDuelsOnStreamEnd } from "./commands/twitch-duel";
 import { clearActiveUsers } from "./commands/twitch-rat";
 
 async function main() {
@@ -40,6 +40,7 @@ async function main() {
     // Очищаем очередь на дуэли, активных пользователей и счётчики при окончании стрима
     streamMonitor.setOnStreamOfflineCallback(() => {
         clearDuelQueue();
+        resetDuelsOnStreamEnd();
         clearActiveUsers(config.twitch.channel);
         nightBotMonitor.clearChattersCache();
         nightBotMonitor.clearStopCounters();

@@ -6,13 +6,27 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { ENABLE_BOT_FEATURES } from '../config/features';
 import { IS_LOCAL } from '../config/env';
+import { addStreamToHistory } from '../storage/stream-history';
+
+// Определяем корень монорепозитория (как в twitch-players.ts)
+const MONOREPO_ROOT = (() => {
+  let root = process.cwd();
+  if (fs.existsSync(path.join(root, 'package.json'))) {
+    return root;
+  }
+  root = path.resolve(process.cwd(), '../..');
+  if (fs.existsSync(path.join(root, 'package.json'))) {
+    return root;
+  }
+  return process.cwd();
+})();
 
 // Файл для хранения состояния announcement'ов (в корне монорепы)
-const ANNOUNCEMENT_STATE_FILE = path.resolve(__dirname, '../../../../../announcement-state.json');
+const ANNOUNCEMENT_STATE_FILE = path.join(MONOREPO_ROOT, 'announcement-state.json');
 
 interface AnnouncementState {
-    lastWelcomeAnnouncementAt: number | null;  // timestamp
-    lastLinkAnnouncementAt: number | null;     // timestamp
+    lastWelcomeAnnouncementAt: number | null;
+    lastLinkAnnouncementAt: number | null;
     currentLinkIndex: number;
 }
 
@@ -70,6 +84,7 @@ interface StopTrackingResult {
     stats: {
         peak: number;
         duration: string;
+        startTime: Date;
     };
     broadcasterName: string;
 }
@@ -524,6 +539,7 @@ export class TwitchStreamMonitor {
 
         const stats = this.calculateStreamStats();
         const broadcasterName = this.currentStreamStats.broadcasterName;
+        const startTime = this.currentStreamStats.startTime;
 
         // Выводим статистику в консоль
         console.error('\n📊 ===== СТАТИСТИКА СТРИМА =====');
@@ -535,7 +551,13 @@ export class TwitchStreamMonitor {
         // Очищаем данные
         this.currentStreamStats = null;
 
-        return {stats, broadcasterName};
+        return {
+            stats: {
+                ...stats,
+                startTime
+            },
+            broadcasterName
+        };
     }
 
     /**
@@ -612,6 +634,27 @@ export class TwitchStreamMonitor {
             }
         } else {
             console.error('⚠️ CHANNEL_ID не установлен, уведомление о завершении не отправлено');
+        }
+
+        // Сохраняем статистику стрима в историю
+        if (result) {
+            try {
+                const {stats} = result;
+                
+                // Конвертируем дату и время в МСК (UTC+3)
+                const mskTime = new Date(stats.startTime.getTime() + 3 * 60 * 60 * 1000);
+                const dateStr = mskTime.toISOString().split('T')[0]; // YYYY-MM-DD
+                const timeStr = mskTime.toISOString().split('T')[1].substring(0, 5) + ' МСК'; // HH:MM МСК
+                
+                addStreamToHistory({
+                    date: dateStr,
+                    startTime: timeStr,
+                    duration: stats.duration,
+                    peakViewers: stats.peak
+                });
+            } catch (error) {
+                console.error('❌ Ошибка при сохранении истории стрима:', error);
+            }
         }
     }
 
