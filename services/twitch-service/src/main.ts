@@ -32,6 +32,11 @@ async function main() {
     // Связываем синхронизацию viewers: при запросе chatters сразу запрашиваем viewers для точности пика
     nightBotMonitor.setSyncViewersCallback((chattersCount) => streamMonitor.recordViewersNow(chattersCount));
 
+    // Запускаем синхронизацию зрителей при начале стрима
+    streamMonitor.setOnStreamOnlineCallback(() => {
+        nightBotMonitor.startViewersSync();
+    });
+
     // Очищаем очередь на дуэли, активных пользователей и счётчики при окончании стрима
     streamMonitor.setOnStreamOfflineCallback(() => {
         clearDuelQueue();
@@ -39,6 +44,7 @@ async function main() {
         nightBotMonitor.clearChattersCache();
         nightBotMonitor.clearStopCounters();
         nightBotMonitor.clearDeathCounters();
+        nightBotMonitor.stopViewersSync();
     });
 
     await nightBotMonitor.connect(

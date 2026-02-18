@@ -103,6 +103,8 @@ export class NightBotMonitor {
     // Периодический опрос chatters для синхронизации viewers (каждую минуту)
     private chattersSyncInterval: NodeJS.Timeout | null = null;
     private readonly CHATTERS_SYNC_INTERVAL_MS = 60 * 1000; // 60 секунд (синхронно с viewers)
+    // Флаг для предотвращения параллельного запуска warmup
+    private isWarmingUp: boolean = false;
 
     // Мапа команд для чистого роутинга
     private readonly commands = new Map<string, CommandHandler>([
@@ -402,6 +404,12 @@ export class NightBotMonitor {
 
             this.chatClient.onConnect(() => {
                 console.log('✅ Успешно подключились к Twitch чату!');
+                
+                // При переподключении перезапускаем синхронизацию зрителей если стрим онлайн
+                if (this.isStreamOnlineCheck()) {
+                    console.log('🔄 Переподключение к чату: проверяем синхронизацию зрителей...');
+                    this.warmupChattersCache();
+                }
             });
 
             this.chatClient.onDisconnect((manually: boolean, reason?: Error) => {
@@ -1352,7 +1360,21 @@ export class NightBotMonitor {
      * Выполняется асинхронно в фоне, не блокирует запуск
      */
     private warmupChattersCache(): void {
+        // Защита от параллельного запуска
+        if (this.isWarmingUp) {
+            console.log('⚠️ Warming up уже выполняется, пропускаем...');
+            return;
+        }
+
+        // Если синхронизация уже запущена, просто перезапускаем интервал
+        if (this.chattersSyncInterval) {
+            console.log('♻️ Синхронизация уже запущена, обновляем интервал...');
+            this.startChattersSyncInterval();
+            return;
+        }
+
         console.log('🔥 Warming up: предзагружаем список зрителей...');
+        this.isWarmingUp = true;
 
         // Запускаем в фоне, не ждём результата
         this.getChatters(this.channelName)
@@ -1365,7 +1387,26 @@ export class NightBotMonitor {
             })
             .catch(error => {
                 console.log(`⚠️ Warming up не удался (не критично):`, error.message);
+            })
+            .finally(() => {
+                this.isWarmingUp = false;
             });
+    }
+
+    /**
+     * Публичный метод для запуска синхронизации зрителей (вызывается при начале стрима)
+     */
+    public startViewersSync(): void {
+        console.log('🔄 Запуск синхронизации зрителей при начале стрима...');
+        this.warmupChattersCache();
+    }
+
+    /**
+     * Публичный метод для остановки синхронизации зрителей (вызывается при окончании стрима)
+     */
+    public stopViewersSync(): void {
+        console.log('⏹️ Остановка синхронизации зрителей при окончании стрима...');
+        this.stopChattersSyncInterval();
     }
 
     /**

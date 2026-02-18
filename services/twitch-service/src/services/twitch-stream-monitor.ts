@@ -91,6 +91,7 @@ export class TwitchStreamMonitor {
     private isStreamOnline: boolean = false;
     private announcementState: AnnouncementState;
     private onStreamOfflineCallback: (() => void) | null = null;
+    private onStreamOnlineCallback: (() => void) | null = null;
 
     // Для отправки announcement
     private accessToken: string = '';
@@ -243,9 +244,18 @@ export class TwitchStreamMonitor {
             if (!TwitchStreamMonitor.subscriptionsInitialized) {
                 // Подписываемся на событие начала стрима
                 this.listener.onStreamOnline(user.id, async (event) => {
+                // Вызываем коллбек для запуска синхронизации зрителей (до проверки на дубли)
+                // Это гарантирует, что синхронизация запустится даже при повторном событии
+                try {
+                    this.onStreamOnlineCallback?.();
+                    console.log('✅ Синхронизация зрителей запущена при начале стрима');
+                } catch (e) {
+                    console.error('❌ Ошибка при запуске синхронизации зрителей:', e);
+                }
+
                 // Защита от дублей (если уже обработали через checkCurrentStreamStatus)
                 if (this.isStreamOnline) {
-                    console.error(`⚠️ Стрим уже онлайн, пропускаем дубль события`);
+                    console.error(`⚠️ Стрим уже онлайн, пропускаем дубль события (синхронизация перезапущена)`);
                     return;
                 }
 
@@ -358,6 +368,14 @@ export class TwitchStreamMonitor {
 
                 // Устанавливаем флаг, что стрим онлайн
                 this.isStreamOnline = true;
+
+                // Вызываем коллбек для запуска синхронизации зрителей (если стрим уже онлайн)
+                try {
+                    this.onStreamOnlineCallback?.();
+                    console.log('✅ Синхронизация зрителей запущена (стрим уже онлайн)');
+                } catch (e) {
+                    console.error('❌ Ошибка при запуске синхронизации зрителей:', e);
+                }
 
                 // sendWelcomeMessage проверит время последней отправки
                 console.error(`📣 Проверяем нужно ли отправить welcome сообщение...`);
@@ -485,6 +503,10 @@ export class TwitchStreamMonitor {
         this.onStreamOfflineCallback = cb;
     }
 
+    public setOnStreamOnlineCallback(cb: () => void) {
+        this.onStreamOnlineCallback = cb;
+    }
+
     /**
      * Остановка отслеживания количества зрителей
      * @returns статистика стрима или null
@@ -560,18 +582,24 @@ export class TwitchStreamMonitor {
      */
     private async handleStreamOffline(event: any, telegramChannelId?: string, result?: StopTrackingResult | null) {
         console.error(`⚫ Стрим завершён: ${event.broadcasterDisplayName}`);
+        console.log(`[DEBUG] telegramChannelId = ${telegramChannelId}, result = ${result ? 'exists' : 'null'}`);
 
-        // Отправляем уведомление о завершении со статистикой
-        if (telegramChannelId && result) {
+        // Отправляем уведомление о завершении (со статистикой если есть)
+        if (telegramChannelId) {
             try {
-                const {stats} = result;
+                let message: string;
 
-                const message = [
-                    `🔴 Стрим <a href="https://twitch.tv/${event.broadcasterName}">${event.broadcasterDisplayName}</a> закончился`,
-                    ``,
-                    `   <b>Максимум зрителей:</b> ${stats.peak}`,
-                    `   <b>Продолжительность:</b> ${stats.duration}`
-                ].join('\n');
+                if (result) {
+                    const {stats} = result;
+                    message = [
+                        `🔴 Стрим <a href="https://twitch.tv/${event.broadcasterName}">${event.broadcasterDisplayName}</a> закончился`,
+                        ``,
+                        `   <b>Максимум зрителей:</b> ${stats.peak}`,
+                        `   <b>Продолжительность:</b> ${stats.duration}`
+                    ].join('\n');
+                } else {
+                    message = `🔴 Стрим <a href="https://twitch.tv/${event.broadcasterName}">${event.broadcasterDisplayName}</a> закончился`;
+                }
 
                 await this.telegram.sendMessage(telegramChannelId, message, {
                     parse_mode: 'HTML',
@@ -582,6 +610,8 @@ export class TwitchStreamMonitor {
             } catch (error) {
                 console.error('❌ Ошибка при отправке уведомления об окончании:', error);
             }
+        } else {
+            console.error('⚠️ CHANNEL_ID не установлен, уведомление о завершении не отправлено');
         }
     }
 
