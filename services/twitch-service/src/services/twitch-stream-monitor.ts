@@ -28,6 +28,8 @@ interface AnnouncementState {
     lastWelcomeAnnouncementAt: number | null;
     lastLinkAnnouncementAt: number | null;
     currentLinkIndex: number;
+    currentStreamPeak: number | null;
+    currentStreamStartTime: number | null;
 }
 
 /**
@@ -42,7 +44,13 @@ function loadAnnouncementState(): AnnouncementState {
     } catch (error) {
         console.error('⚠️ Ошибка загрузки состояния announcements:', error);
     }
-    return { lastWelcomeAnnouncementAt: null, lastLinkAnnouncementAt: null, currentLinkIndex: 0 };
+    return { 
+        lastWelcomeAnnouncementAt: null, 
+        lastLinkAnnouncementAt: null, 
+        currentLinkIndex: 0,
+        currentStreamPeak: null,
+        currentStreamStartTime: null
+    };
 }
 
 /**
@@ -277,6 +285,12 @@ export class TwitchStreamMonitor {
                 console.error(`🔴 Стрим начался на канале ${event.broadcasterDisplayName}!`);
                 this.isStreamOnline = true;
 
+                // Сбрасываем статистику текущего стрима (новый стрим начался)
+                this.announcementState.currentStreamPeak = null;
+                this.announcementState.currentStreamStartTime = Date.now();
+                saveAnnouncementState(this.announcementState);
+                console.log('🔄 Статистика текущего стрима сброшена (новый стрим)');
+
                 // Отправляем приветственное сообщение (все ссылки)
                 await this.sendWelcomeMessage();
 
@@ -496,9 +510,17 @@ export class TwitchStreamMonitor {
         }
 
         // Инициализируем статистику с реальным временем начала стрима
+        const initialCounts: number[] = [];
+        
+        // Восстанавливаем сохранённый пик (если бот перезапустился во время стрима)
+        if (this.announcementState.currentStreamPeak !== null) {
+            initialCounts.push(this.announcementState.currentStreamPeak);
+            console.error(`🔄 Восстановлен пик зрителей из файла: ${this.announcementState.currentStreamPeak}`);
+        }
+        
         this.currentStreamStats = {
             startTime: startDate,
-            viewerCounts: [],
+            viewerCounts: initialCounts,
             broadcasterId,
             broadcasterName
         };
@@ -652,6 +674,12 @@ export class TwitchStreamMonitor {
                     duration: stats.duration,
                     peakViewers: stats.peak
                 });
+                
+                // Сбрасываем статистику текущего стрима после сохранения в историю
+                this.announcementState.currentStreamPeak = null;
+                this.announcementState.currentStreamStartTime = null;
+                saveAnnouncementState(this.announcementState);
+                console.log('🔄 Статистика текущего стрима сброшена (стрим завершён)');
             } catch (error) {
                 console.error('❌ Ошибка при сохранении истории стрима:', error);
             }
@@ -952,6 +980,12 @@ export class TwitchStreamMonitor {
                     : viewersAPI;
                 
                 this.currentStreamStats.viewerCounts.push(actualViewers);
+                
+                // Обновляем сохранённый пик, если новое значение больше
+                if (this.announcementState.currentStreamPeak === null || actualViewers > this.announcementState.currentStreamPeak) {
+                    this.announcementState.currentStreamPeak = actualViewers;
+                    saveAnnouncementState(this.announcementState);
+                }
                 
                 if (chattersCount) {
                     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
