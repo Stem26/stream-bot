@@ -36,21 +36,30 @@ interface AnnouncementState {
  * Загружает состояние announcement'ов из файла
  */
 function loadAnnouncementState(): AnnouncementState {
-    try {
-        if (fs.existsSync(ANNOUNCEMENT_STATE_FILE)) {
-            const data = fs.readFileSync(ANNOUNCEMENT_STATE_FILE, 'utf-8');
-            return JSON.parse(data);
-        }
-    } catch (error) {
-        console.error('⚠️ Ошибка загрузки состояния announcements:', error);
-    }
-    return { 
+    const defaultState: AnnouncementState = { 
         lastWelcomeAnnouncementAt: null, 
         lastLinkAnnouncementAt: null, 
         currentLinkIndex: 0,
         currentStreamPeak: null,
         currentStreamStartTime: null
     };
+    
+    try {
+        if (fs.existsSync(ANNOUNCEMENT_STATE_FILE)) {
+            const data = fs.readFileSync(ANNOUNCEMENT_STATE_FILE, 'utf-8');
+            const loadedState = JSON.parse(data);
+            
+            // Мёржим загруженное состояние с дефолтным (для обратной совместимости)
+            return {
+                ...defaultState,
+                ...loadedState
+            };
+        }
+    } catch (error) {
+        console.error('⚠️ Ошибка загрузки состояния announcements:', error);
+    }
+    
+    return defaultState;
 }
 
 /**
@@ -609,8 +618,8 @@ export class TwitchStreamMonitor {
             return {peak: 0, duration: '0мин'};
         }
 
-        const counts = this.currentStreamStats.viewerCounts;
-        const peak = Math.max(...counts);
+        const counts = this.currentStreamStats.viewerCounts.filter(c => typeof c === 'number' && !isNaN(c));
+        const peak = counts.length > 0 ? Math.max(...counts) : 0;
 
         // Подсчет длительности
         const durationMs = Date.now() - this.currentStreamStats.startTime.getTime();
