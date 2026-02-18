@@ -97,7 +97,8 @@ export function processTwitchDuelCommand(
   }
 
   // Проверяем личный timeout игрока (если пользователь не exempt)
-  if (!isExempt && player.duelTimeoutUntil && now < player.duelTimeoutUntil) {
+  // ИСКЛЮЧЕНИЕ: если в очереди стоит exempt пользователь (стример), пропускаем timeout
+  if (!isExempt && !waitingIsExempt && player.duelTimeoutUntil && now < player.duelTimeoutUntil) {
     const minutesLeft = Math.ceil((player.duelTimeoutUntil - now) / 60000);
     return {
       response: `@${twitchUsername}, ты в таймауте ещё ${minutesLeft} мин.`
