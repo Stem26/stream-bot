@@ -696,7 +696,8 @@ export class TwitchStreamMonitor {
                         `🔴 Стрим <a href="https://twitch.tv/${event.broadcasterName}">${event.broadcasterDisplayName}</a> закончился`,
                         ``,
                         `   <b>Максимум зрителей:</b> ${stats.peak}`,
-                        `   <b>Продолжительность:</b> ${stats.duration}`
+                        `   <b>Продолжительность:</b> ${stats.duration}`,
+                        `   <b>Новых follow:</b> ${stats.followsCount}`
                     ].join('\n');
                 } else {
                     message = `🔴 Стрим <a href="https://twitch.tv/${event.broadcasterName}">${event.broadcasterDisplayName}</a> закончился`;
