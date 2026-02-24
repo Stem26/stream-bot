@@ -8,6 +8,7 @@ export interface TwitchPlayerData {
   lastUsedDate?: string;
   points?: number;
   duelTimeoutUntil?: number;
+  duelCooldownUntil?: number;
   duelWins?: number;
   duelLosses?: number;
   duelDraws?: number;

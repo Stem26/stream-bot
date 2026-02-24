@@ -3,7 +3,7 @@ import { StaticAuthProvider } from '@twurple/auth';
 import { processTwitchDickCommand } from '../commands/twitch-dick';
 import { processTwitchTopDickCommand } from '../commands/twitch-topDick';
 import { processTwitchBottomDickCommand } from '../commands/twitch-bottomDick';
-import { processTwitchDuelCommand, enableDuels, disableDuels, pardonAllDuelTimeouts } from '../commands/twitch-duel';
+import { processTwitchDuelCommand, enableDuels, disableDuels, pardonAllDuelTimeouts, acceptDuelChallenge, declineDuelChallenge, clearDuelChallenges } from '../commands/twitch-duel';
 import { processTwitchRatCommand, processTwitchCutieCommand, addActiveUser, setChattersAPIFunction } from '../commands/twitch-rat';
 import { processTwitchPointsCommand, processTwitchTopPointsCommand } from '../commands/twitch-points';
 import { ENABLE_BOT_FEATURES, ALLOW_LOCAL_COMMANDS } from '../config/features';
@@ -124,6 +124,8 @@ export class NightBotMonitor {
         ['!toppoints', (ch, u, m, msg) => void this.handleTopPointsCommand(ch, u, m, msg)],
         ['!топ_очки', (ch, u, m, msg) => void this.handleTopPointsCommand(ch, u, m, msg)],
         ['!дуэль', (ch, u, m, msg) => void this.handleDuelCommand(ch, u, m, msg)],
+        ['!принять', (ch, u, m, msg) => void this.handleAcceptDuelCommand(ch, u, msg)],
+        ['!отклонить', (ch, u, m, msg) => void this.handleDeclineDuelCommand(ch, u, msg)],
         ['!стоп_дуэль', (ch, u, m, msg) => void this.handleDisableDuelsCommand(ch, u, msg)],
         ['!старт_дуэль', (ch, u, m, msg) => void this.handleEnableDuelsCommand(ch, u, msg)],
         ['!амнистия', (ch, u, m, msg) => void this.handleDuelPardonCommand(ch, u, msg)],
@@ -533,6 +535,22 @@ export class NightBotMonitor {
                     return;
                 }
 
+                // Проверяем команду !дуэль с параметрами (например: !дуэль @user или !дуэль user)
+                if (trimmedMessage.startsWith('!дуэль ')) {
+                    // Проверка что стрим онлайн
+                    if (!this.isStreamOnlineCheck() && !IS_LOCAL) {
+                        console.log(`⚠️ Команда !дуэль проигнорирована: стрим оффлайн`);
+                        return;
+                    }
+
+                    if (IS_LOCAL && !this.isStreamOnlineCheck()) {
+                        console.log(`🧪 ТЕСТ в оффлайне: выполняем команду !дуэль`);
+                    }
+
+                    this.handleDuelCommand(channel, user, message, msg);
+                    return;
+                }
+
                 // Проверяем, есть ли команда в мапе
                 const commandHandler = this.commands.get(trimmedMessage);
                 if (commandHandler) {
@@ -705,11 +723,20 @@ export class NightBotMonitor {
      * Обработка команды !дуэль из чата
      */
     private async handleDuelCommand(channel: string, user: string, message: string, msg: any) {
-        console.log(`⚔️ Команда !дуэль от ${user} в ${channel}`);
-        log('COMMAND', { command: '!дуэль', username: user, channel });
-
         try {
-            const result = processTwitchDuelCommand(user, channel);
+            // Парсим сообщение для извлечения целевого пользователя
+            const parts = message.trim().split(/\s+/);
+            const targetUsername = parts.length > 1 ? parts[1].replace('@', '') : undefined;
+
+            if (targetUsername) {
+                console.log(`⚔️ Команда !дуэль от ${user} -> вызов @${targetUsername} в ${channel}`);
+            } else {
+                console.log(`⚔️ Команда !дуэль от ${user} в ${channel} (встать в очередь)`);
+            }
+            
+            log('COMMAND', { command: '!дуэль', username: user, channel, message, targetUsername });
+
+            const result = processTwitchDuelCommand(user, channel, targetUsername);
 
             // Если дуэли выключены, response будет пустым - ничего не отправляем
             if (result.response) {
@@ -739,6 +766,66 @@ export class NightBotMonitor {
             }
         } catch (error) {
             console.error('❌ Ошибка при обработке команды !дуэль:', error);
+        }
+    }
+
+    /**
+     * Обработка команды !принять из чата
+     */
+    private async handleAcceptDuelCommand(channel: string, user: string, msg: any) {
+        console.log(`✅ Команда !принять от ${user} в ${channel}`);
+        log('COMMAND', { command: '!принять', username: user, channel });
+
+        try {
+            const result = acceptDuelChallenge(user, channel);
+
+            if (result.response) {
+                await this.sendMessage(channel, result.response);
+                console.log(`✅ Отправлен ответ в чат: ${result.response}`);
+            }
+
+            // Логируем результат дуэли если она состоялась
+            if (result.loser || result.bothLost) {
+                const winner = result.bothLost ? undefined : (result.loser ? (result.loser === user ? result.loser2 || 'unknown' : user) : undefined);
+                log('DUEL_RESULT', {
+                    player1: result.loser || user,
+                    player2: result.loser2 || user,
+                    winner,
+                    bothLost: result.bothLost,
+                    outcome: result.bothLost ? 'both_lost' : winner ? `winner: ${winner}` : 'both_missed',
+                    type: 'personal_challenge'
+                });
+            }
+
+            // Если оба проиграли - даём таймаут обоим
+            if (result.bothLost && result.loser && result.loser2) {
+                await this.timeoutUser(result.loser, 300, 'Duel - Both Lost');
+                await this.timeoutUser(result.loser2, 300, 'Duel - Both Lost');
+            } else if (result.loser) {
+                // Обычная дуэль - таймаут только проигравшему
+                await this.timeoutUser(result.loser, 300, 'Duel');
+            }
+        } catch (error) {
+            console.error('❌ Ошибка при обработке команды !принять:', error);
+        }
+    }
+
+    /**
+     * Обработка команды !отклонить из чата
+     */
+    private async handleDeclineDuelCommand(channel: string, user: string, msg: any) {
+        console.log(`🏳️ Команда !отклонить от ${user} в ${channel}`);
+        log('COMMAND', { command: '!отклонить', username: user, channel });
+
+        try {
+            const result = declineDuelChallenge(user, channel);
+
+            if (result.response) {
+                await this.sendMessage(channel, result.response);
+                console.log(`✅ Отправлен ответ в чат: ${result.response}`);
+            }
+        } catch (error) {
+            console.error('❌ Ошибка при обработке команды !отклонить:', error);
         }
     }
 
@@ -1357,7 +1444,10 @@ export class NightBotMonitor {
             '!bottom_dick - топ самых коротких',
             '!очки (!points) - проверить свои очки',
             '!топ_очки (!top_points) - топ по очкам',
-            '!дуэль - (ставка 25 очков)',
+            '!дуэль - встать в очередь на дуэль (ставка 25 очков)',
+            '!дуэль @user - вызвать конкретного игрока на дуэль',
+            '!принять - принять вызов на дуэль',
+            '!отклонить - отклонить вызов на дуэль',
             '!крыса - выбрать случайную крысу из чата',
             '!милашка - выбрать случайную милашку из чата',
             '!vanish - скрыть свои сообщения (1 сек таймаут)'

@@ -7,13 +7,25 @@ type DuelQueueEntry = {
   joinedAt: number;
 };
 
+type DuelChallengeEntry = {
+  challenger: string;
+  challengerDisplay: string;
+  challenged: string;
+  challengedDisplay: string;
+  createdAt: number;
+};
+
 const duelQueueByChannel = new Map<string, DuelQueueEntry>();
 const duelCooldownByChannel = new Map<string, number>();
+const duelChallengesByChannel = new Map<string, DuelChallengeEntry>();
 const DEFAULT_POINTS = 1000;
 const DUEL_WIN_POINTS = 25;
 const DUEL_MISS_PENALTY = 5;
-const DUEL_TIMEOUT_MS = 5 * 60 * 1000;
-const DUEL_COOLDOWN_MS = 60 * 1000;
+const DUEL_TIMEOUT_MS = 5 * 60 * 1000; // 5 минут таймаут для проигравшего
+const DUEL_COOLDOWN_MS = 60 * 1000; // 1 минута общий КД канала
+const DUEL_PLAYER_COOLDOWN_MS = 60 * 1000; // 1 минута личный КД игрока (победитель)
+const CHALLENGE_TIMEOUT_MS = 2 * 60 * 1000; // 2 минуты на принятие вызова
+const QUEUE_TIMEOUT_MS = 2 * 60 * 1000; // 2 минуты ожидания в общей очереди
 const STREAMER_WIN_CHANCE = 0.9; // 90% шанс победы для стримера
 
 // Пользователи без cooldown и timeout (стример)
@@ -62,9 +74,243 @@ function ensurePlayer(players: Map<string, TwitchPlayerData>, twitchUsername: st
   return player;
 }
 
+/**
+ * Обработка персонального вызова на дуэль
+ */
+function handlePersonalChallenge(
+  challengerUsername: string,
+  challengerNormalized: string,
+  targetUsername: string,
+  channel: string,
+  players: Map<string, TwitchPlayerData>,
+  now: number
+): { response: string; loser?: string; loser2?: string; bothLost?: boolean } {
+  const targetNormalized = targetUsername.toLowerCase().replace('@', '');
+  const challengerPlayer = ensurePlayer(players, challengerUsername);
+  
+  // Нельзя вызвать самого себя
+  if (challengerNormalized === targetNormalized) {
+    return {
+      response: `@${challengerUsername}, нельзя вызвать самого себя на дуэль!`
+    };
+  }
+
+  // Проверяем, что вызывающий не стоит в общей очереди
+  const queueEntry = duelQueueByChannel.get(channel);
+  if (queueEntry) {
+    // Проверяем таймаут очереди
+    if (now - queueEntry.joinedAt <= QUEUE_TIMEOUT_MS) {
+      // Очередь ещё активна
+      if (queueEntry.username === challengerNormalized) {
+        return {
+          response: `@${challengerUsername}, ты уже стоишь в очереди на обычную дуэль! Дождись соперника.`
+        };
+      }
+      // Проверяем, что цель не стоит в общей очереди
+      if (queueEntry.username === targetNormalized) {
+        return {
+          response: `@${challengerUsername}, @${targetUsername} уже стоит в очереди на обычную дуэль с другим соперником!`
+        };
+      }
+    } else {
+      // Очередь истекла, удаляем её
+      duelQueueByChannel.delete(channel);
+      console.log(`⏱️ Очередь дуэли истекла для ${queueEntry.displayName} (удалена при персональном вызове)`);
+    }
+  }
+
+  // Проверяем exempt от cooldown для вызывающего
+  const challengerIsExempt = DUEL_EXEMPT_USERS.has(challengerNormalized);
+
+  // Проверяем общий cooldown канала (если вызывающий не exempt)
+  if (!challengerIsExempt) {
+    const lastDuelAt = duelCooldownByChannel.get(channel);
+    if (lastDuelAt && now - lastDuelAt < DUEL_COOLDOWN_MS) {
+      const secondsLeft = Math.ceil((DUEL_COOLDOWN_MS - (now - lastDuelAt)) / 1000);
+      return {
+        response: `Револьверы ещё не остыли, подожди ${secondsLeft} сек.`
+      };
+    }
+  }
+
+  // Проверяем личный timeout вызывающего (если не exempt)
+  if (!challengerIsExempt && challengerPlayer.duelTimeoutUntil && now < challengerPlayer.duelTimeoutUntil) {
+    const minutesLeft = Math.ceil((challengerPlayer.duelTimeoutUntil - now) / 60000);
+    return {
+      response: `@${challengerUsername}, ты в таймауте ещё ${minutesLeft} мин.`
+    };
+  }
+
+  // Проверяем личный cooldown вызывающего (если не exempt)
+  if (!challengerIsExempt && challengerPlayer.duelCooldownUntil && now < challengerPlayer.duelCooldownUntil) {
+    const secondsLeft = Math.ceil((challengerPlayer.duelCooldownUntil - now) / 1000);
+    return {
+      response: `@${challengerUsername}, ты недавно участвовал в дуэли, жди ${secondsLeft} сек.`
+    };
+  }
+
+  // Проверяем, есть ли уже активный вызов для этого пользователя
+  const existingChallenge = duelChallengesByChannel.get(channel);
+  if (existingChallenge) {
+    // Проверяем таймаут вызова
+    if (now - existingChallenge.createdAt > CHALLENGE_TIMEOUT_MS) {
+      // Вызов истёк, удаляем его
+      duelChallengesByChannel.delete(channel);
+      console.log(`⏱️ Вызов на дуэль от ${existingChallenge.challenger} к ${existingChallenge.challenged} истёк`);
+    } else {
+      // Есть активный вызов
+      const secondsLeft = Math.ceil((CHALLENGE_TIMEOUT_MS - (now - existingChallenge.createdAt)) / 1000);
+      return {
+        response: `Уже есть активный вызов от @${existingChallenge.challengerDisplay} к @${existingChallenge.challengedDisplay} (осталось ${secondsLeft} сек)`
+      };
+    }
+  }
+
+  // Создаём новый вызов
+  duelChallengesByChannel.set(channel, {
+    challenger: challengerNormalized,
+    challengerDisplay: challengerUsername,
+    challenged: targetNormalized,
+    challengedDisplay: targetUsername,
+    createdAt: now
+  });
+
+  console.log(`⚔️ Создан персональный вызов: ${challengerUsername} -> ${targetUsername} в канале ${channel}`);
+
+  saveTwitchPlayers(players);
+  
+  return {
+    response: `@${challengerUsername} вызывает @${targetUsername} на дуэль! ⚔️ У @${targetUsername} есть 2 минуты, чтобы написать !принять или !отклонить`
+  };
+}
+
+/**
+ * Выполнение дуэли между двумя игроками
+ */
+function executeDuel(
+  player1Username: string,
+  player1Normalized: string,
+  player2Username: string,
+  player2Normalized: string,
+  channel: string,
+  players: Map<string, TwitchPlayerData>,
+  now: number
+): { response: string; loser?: string; loser2?: string; bothLost?: boolean } {
+  const player1 = ensurePlayer(players, player1Username);
+  const player2 = ensurePlayer(players, player2Username);
+  
+  const player1IsExempt = DUEL_EXEMPT_USERS.has(player1Normalized);
+  const player2IsExempt = DUEL_EXEMPT_USERS.has(player2Normalized);
+  
+  // Специальные исходы дуэли (только если оба не exempt)
+  const randomValue = Math.random();
+  
+  // 5% шанс - оба попали и убили друг друга
+  const bothHit = !player1IsExempt && !player2IsExempt && randomValue < 0.05;
+  
+  // 5% шанс - оба промахнулись
+  const bothMiss = !player1IsExempt && !player2IsExempt && randomValue >= 0.05 && randomValue < 0.1;
+
+  if (bothHit) {
+    player1.points = Math.max(0, (player1.points ?? DEFAULT_POINTS) - DUEL_WIN_POINTS);
+    player2.points = Math.max(0, (player2.points ?? DEFAULT_POINTS) - DUEL_WIN_POINTS);
+    player1.duelTimeoutUntil = now + DUEL_TIMEOUT_MS;
+    player2.duelTimeoutUntil = now + DUEL_TIMEOUT_MS;
+
+    player1.duelLosses = (player1.duelLosses ?? 0) + 1;
+    player2.duelLosses = (player2.duelLosses ?? 0) + 1;
+
+    duelCooldownByChannel.set(channel, now);
+    saveTwitchPlayers(players);
+
+    return {
+      response: `@${player1Username} и @${player2Username} сошлись в дуэли! Оба попали и убили друг друга! 💀💀 Оба получают (-${DUEL_WIN_POINTS}) очков и таймаут на 5 минут.`,
+      loser: player1Username,
+      loser2: player2Username,
+      bothLost: true
+    };
+  }
+
+  if (bothMiss) {
+    player1.points = Math.max(0, (player1.points ?? DEFAULT_POINTS) - DUEL_MISS_PENALTY);
+    player2.points = Math.max(0, (player2.points ?? DEFAULT_POINTS) - DUEL_MISS_PENALTY);
+
+    // Оба промахнулись - ничья, даём обоим КД на 1 минуту
+    if (!player1IsExempt) {
+      player1.duelCooldownUntil = now + DUEL_PLAYER_COOLDOWN_MS;
+    }
+    if (!player2IsExempt) {
+      player2.duelCooldownUntil = now + DUEL_PLAYER_COOLDOWN_MS;
+    }
+
+    player1.duelDraws = (player1.duelDraws ?? 0) + 1;
+    player2.duelDraws = (player2.duelDraws ?? 0) + 1;
+
+    duelCooldownByChannel.set(channel, now);
+    saveTwitchPlayers(players);
+
+    return {
+      response: `@${player1Username} и @${player2Username} сошлись в дуэли! Оба промахнулись! 😅 Живы оба, но позор на всю деревню! (-${DUEL_MISS_PENALTY}) очков каждому.`,
+      loser: undefined,
+      loser2: undefined,
+      bothLost: false
+    };
+  }
+
+  // Обычная логика дуэли (один победитель)
+  let player1Wins: boolean;
+  if (player1IsExempt && !player2IsExempt) {
+    player1Wins = Math.random() < STREAMER_WIN_CHANCE;
+  } else if (!player1IsExempt && player2IsExempt) {
+    player1Wins = Math.random() >= STREAMER_WIN_CHANCE;
+  } else {
+    player1Wins = Math.random() < 0.5;
+  }
+  
+  const winner = player1Wins ? player1Username : player2Username;
+  const loser = player1Wins ? player2Username : player1Username;
+
+  if (player1Wins) {
+    player1.points = (player1.points ?? DEFAULT_POINTS) + DUEL_WIN_POINTS;
+    player2.points = Math.max(0, (player2.points ?? DEFAULT_POINTS) - DUEL_WIN_POINTS);
+    // Проигравший: 5 минут таймаут
+    if (!player2IsExempt) {
+      player2.duelTimeoutUntil = now + DUEL_TIMEOUT_MS;
+    }
+    // Победитель: 1 минута КД
+    if (!player1IsExempt) {
+      player1.duelCooldownUntil = now + DUEL_PLAYER_COOLDOWN_MS;
+    }
+    player1.duelWins = (player1.duelWins ?? 0) + 1;
+    player2.duelLosses = (player2.duelLosses ?? 0) + 1;
+  } else {
+    player2.points = (player2.points ?? DEFAULT_POINTS) + DUEL_WIN_POINTS;
+    player1.points = Math.max(0, (player1.points ?? DEFAULT_POINTS) - DUEL_WIN_POINTS);
+    // Проигравший: 5 минут таймаут
+    if (!player1IsExempt) {
+      player1.duelTimeoutUntil = now + DUEL_TIMEOUT_MS;
+    }
+    // Победитель: 1 минута КД
+    if (!player2IsExempt) {
+      player2.duelCooldownUntil = now + DUEL_PLAYER_COOLDOWN_MS;
+    }
+    player2.duelWins = (player2.duelWins ?? 0) + 1;
+    player1.duelLosses = (player1.duelLosses ?? 0) + 1;
+  }
+
+  duelCooldownByChannel.set(channel, now);
+  saveTwitchPlayers(players);
+
+  return {
+    response: `@${player1Username} и @${player2Username} сошлись в дуэли! Победитель @${winner} (+${DUEL_WIN_POINTS}), проигравший @${loser} (-${DUEL_WIN_POINTS}) и в таймаут на 5 минут.`,
+    loser
+  };
+}
+
 export function processTwitchDuelCommand(
     twitchUsername: string,
-    channel: string
+    channel: string,
+    targetUsername?: string
 ): { response: string; loser?: string; loser2?: string; bothLost?: boolean } {
   // Проверяем, включены ли дуэли
   if (!duelsEnabled) {
@@ -77,6 +323,11 @@ export function processTwitchDuelCommand(
   const now = Date.now();
   const normalized = twitchUsername.toLowerCase();
   const player = ensurePlayer(players, twitchUsername);
+
+  // Если указан целевой пользователь - это персональный вызов
+  if (targetUsername) {
+    return handlePersonalChallenge(twitchUsername, normalized, targetUsername, channel, players, now);
+  }
 
   // Проверяем exempt от cooldown
   const isExempt = DUEL_EXEMPT_USERS.has(normalized);
@@ -107,122 +358,114 @@ export function processTwitchDuelCommand(
     };
   }
 
+  // Проверяем личный cooldown игрока (если пользователь не exempt)
+  // ИСКЛЮЧЕНИЕ: если в очереди стоит exempt пользователь (стример), пропускаем cooldown
+  if (!isExempt && !waitingIsExempt && player.duelCooldownUntil && now < player.duelCooldownUntil) {
+    const secondsLeft = Math.ceil((player.duelCooldownUntil - now) / 1000);
+    return {
+      response: `@${twitchUsername}, ты недавно участвовал в дуэли, жди ${secondsLeft} сек.`
+    };
+  }
+
+  // Проверяем, что игрок не участвует в персональном вызове
+  const activeChallengeForQueue = duelChallengesByChannel.get(channel);
+  if (activeChallengeForQueue) {
+    // Проверяем таймаут вызова
+    if (now - activeChallengeForQueue.createdAt <= CHALLENGE_TIMEOUT_MS) {
+      // Вызов ещё активен
+      if (activeChallengeForQueue.challenger === normalized) {
+        return {
+          response: `@${twitchUsername}, ты уже вызвал @${activeChallengeForQueue.challengedDisplay} на дуэль! Дождись ответа.`
+        };
+      }
+      if (activeChallengeForQueue.challenged === normalized) {
+        return {
+          response: `@${twitchUsername}, тебя вызвал @${activeChallengeForQueue.challengerDisplay} на дуэль! Напиши !принять или !отклонить`
+        };
+      }
+    } else {
+      // Вызов истёк, удаляем его
+      duelChallengesByChannel.delete(channel);
+      console.log(`⏱️ Вызов на дуэль от ${activeChallengeForQueue.challenger} к ${activeChallengeForQueue.challenged} истёк (удалён при попытке встать в очередь)`);
+    }
+  }
+
+  // Проверяем таймаут очереди - если истекла, уведомляем и обновляем
+  if (waiting && now - waiting.joinedAt > QUEUE_TIMEOUT_MS) {
+    console.log(`⏱️ Очередь дуэли истекла для ${waiting.displayName}, соперник не нашёлся, очередь очищена`);
+    duelQueueByChannel.delete(channel);
+    // После удаления очередь пуста - ставим нового игрока
+    duelQueueByChannel.set(channel, { username: normalized, displayName: twitchUsername, joinedAt: now });
+    saveTwitchPlayers(players);
+    return {
+      response: `Очередь истекла. @${twitchUsername} встал в очередь на дуэль. Ждём 2 минуты соперника!`
+    };
+  }
+
   if (!waiting) {
     duelQueueByChannel.set(channel, { username: normalized, displayName: twitchUsername, joinedAt: now });
     saveTwitchPlayers(players);
     return {
-      response: `@${twitchUsername}, ты встал в очередь на дуэль. Ждём соперника!`
+      response: `@${twitchUsername}, ты встал в очередь на дуэль. Ждём 2 минуты соперника!`
     };
   }
 
   if (waiting.username === normalized) {
+    const secondsLeft = Math.ceil((QUEUE_TIMEOUT_MS - (now - waiting.joinedAt)) / 1000);
     return {
-      response: `@${twitchUsername}, ты уже в очереди на дуэль. Ждём соперника!`
+      response: `@${twitchUsername}, ты уже в очереди на дуэль. Ждём соперника ещё ${secondsLeft} сек.`
     };
   }
 
-  const opponentPlayer = ensurePlayer(players, waiting.displayName);
-  const opponentIsExempt = DUEL_EXEMPT_USERS.has(waiting.username);
-  const currentIsExempt = DUEL_EXEMPT_USERS.has(normalized);
-  
-  // Специальные исходы дуэли (только если оба не exempt)
-  const randomValue = Math.random();
-  
-  // 5% шанс - оба попали и убили друг друга
-  const bothHit = !currentIsExempt && !opponentIsExempt && randomValue < 0.05;
-  
-  // 5% шанс - оба промахнулись
-  const bothMiss = !currentIsExempt && !opponentIsExempt && randomValue >= 0.05 && randomValue < 0.1;
-
-  if (bothHit) {
-    // Оба попали: теряют очки и получают таймаут (минимум 0 очков)
-    player.points = Math.max(0, (player.points ?? DEFAULT_POINTS) - DUEL_WIN_POINTS);
-    opponentPlayer.points = Math.max(0, (opponentPlayer.points ?? DEFAULT_POINTS) - DUEL_WIN_POINTS);
-    player.duelTimeoutUntil = now + DUEL_TIMEOUT_MS;
-    opponentPlayer.duelTimeoutUntil = now + DUEL_TIMEOUT_MS;
-
-    // Статистика: оба проиграли
-    player.duelLosses = (player.duelLosses ?? 0) + 1;
-    opponentPlayer.duelLosses = (opponentPlayer.duelLosses ?? 0) + 1;
-
-    duelQueueByChannel.delete(channel);
-    duelCooldownByChannel.set(channel, now);
-    saveTwitchPlayers(players);
-
-    return {
-      response: `@${waiting.displayName} и @${twitchUsername} сошлись в дуэли! Оба попали и убили друг друга! 💀💀 Оба получают (-${DUEL_WIN_POINTS}) очков и таймаут на 5 минут.`,
-      loser: waiting.displayName,
-      loser2: twitchUsername,
-      bothLost: true
-    };
-  }
-
-  if (bothMiss) {
-    player.points = Math.max(0, (player.points ?? DEFAULT_POINTS) - DUEL_MISS_PENALTY);
-    opponentPlayer.points = Math.max(0, (opponentPlayer.points ?? DEFAULT_POINTS) - DUEL_MISS_PENALTY);
-
-    // Статистика: ничья
-    player.duelDraws = (player.duelDraws ?? 0) + 1;
-    opponentPlayer.duelDraws = (opponentPlayer.duelDraws ?? 0) + 1;
-
-    duelQueueByChannel.delete(channel);
-    duelCooldownByChannel.set(channel, now);
-    saveTwitchPlayers(players);
-
-    return {
-      response: `@${waiting.displayName} и @${twitchUsername} сошлись в дуэли! Оба промахнулись! 😅 Живы оба, но позор на всю деревню! (-${DUEL_MISS_PENALTY}) очков каждому.`,
-      loser: undefined,
-      loser2: undefined,
-      bothLost: false
-    };
-  }
-
-  // Обычная логика дуэли (один победитель)
-  let winnerIsCurrent: boolean;
-  if (currentIsExempt && !opponentIsExempt) {
-    // Текущий игрок - стример, 90% шанс победы
-    winnerIsCurrent = Math.random() < STREAMER_WIN_CHANCE;
-  } else if (!currentIsExempt && opponentIsExempt) {
-    // Противник - стример, 90% шанс победы (10% для текущего)
-    winnerIsCurrent = Math.random() >= STREAMER_WIN_CHANCE;
-  } else {
-    // Оба обычные игроки или оба exempt - 50/50
-    winnerIsCurrent = Math.random() < 0.5;
-  }
-  
-  const winner = winnerIsCurrent ? twitchUsername : waiting.displayName;
-  const loser = winnerIsCurrent ? waiting.displayName : twitchUsername;
-
-  if (winnerIsCurrent) {
-    player.points = (player.points ?? DEFAULT_POINTS) + DUEL_WIN_POINTS;
-    opponentPlayer.points = Math.max(0, (opponentPlayer.points ?? DEFAULT_POINTS) - DUEL_WIN_POINTS);
-    // Не ставим timeout если проигравший - exempt пользователь
-    if (!opponentIsExempt) {
-      opponentPlayer.duelTimeoutUntil = now + DUEL_TIMEOUT_MS;
+  // Проверяем, что оба игрока не участвуют в персональном вызове
+  const activeChallengeForDuel = duelChallengesByChannel.get(channel);
+  if (activeChallengeForDuel) {
+    // Проверяем таймаут вызова
+    if (now - activeChallengeForDuel.createdAt <= CHALLENGE_TIMEOUT_MS) {
+      // Вызов ещё активен
+      // Проверяем текущего игрока
+      if (activeChallengeForDuel.challenger === normalized) {
+        return {
+          response: `@${twitchUsername}, ты уже вызвал @${activeChallengeForDuel.challengedDisplay} на дуэль! Дождись ответа.`
+        };
+      }
+      if (activeChallengeForDuel.challenged === normalized) {
+        return {
+          response: `@${twitchUsername}, тебя вызвал @${activeChallengeForDuel.challengerDisplay} на дуэль! Напиши !принять или !отклонить`
+        };
+      }
+      // Проверяем игрока в очереди
+      if (activeChallengeForDuel.challenger === waiting.username) {
+        duelQueueByChannel.delete(channel);
+        return {
+          response: `@${waiting.displayName} уже вызвал @${activeChallengeForDuel.challengedDisplay} на дуэль, очередь отменена.`
+        };
+      }
+      if (activeChallengeForDuel.challenged === waiting.username) {
+        duelQueueByChannel.delete(channel);
+        return {
+          response: `@${waiting.displayName} вызван @${activeChallengeForDuel.challengerDisplay} на персональную дуэль, очередь отменена.`
+        };
+      }
+    } else {
+      // Вызов истёк, удаляем его
+      duelChallengesByChannel.delete(channel);
+      console.log(`⏱️ Персональный вызов истёк: ${activeChallengeForDuel.challenger} -> ${activeChallengeForDuel.challenged} (удалён при начале дуэли из очереди)`);
     }
-    // Статистика
-    player.duelWins = (player.duelWins ?? 0) + 1;
-    opponentPlayer.duelLosses = (opponentPlayer.duelLosses ?? 0) + 1;
-  } else {
-    opponentPlayer.points = (opponentPlayer.points ?? DEFAULT_POINTS) + DUEL_WIN_POINTS;
-    player.points = Math.max(0, (player.points ?? DEFAULT_POINTS) - DUEL_WIN_POINTS);
-    // Не ставим timeout если проигравший - exempt пользователь
-    if (!currentIsExempt) {
-      player.duelTimeoutUntil = now + DUEL_TIMEOUT_MS;
-    }
-    // Статистика
-    opponentPlayer.duelWins = (opponentPlayer.duelWins ?? 0) + 1;
-    player.duelLosses = (player.duelLosses ?? 0) + 1;
   }
 
+  // Удаляем из очереди и выполняем дуэль
   duelQueueByChannel.delete(channel);
-  duelCooldownByChannel.set(channel, now);
-  saveTwitchPlayers(players);
-
-  return {
-    response: `@${waiting.displayName} и @${twitchUsername} сошлись в дуэли! Победитель @${winner} (+${DUEL_WIN_POINTS}), проигравший @${loser} (-${DUEL_WIN_POINTS}) и в таймаут на 5 минут.`,
-    loser
-  };
+  
+  return executeDuel(
+    waiting.displayName,
+    waiting.username,
+    twitchUsername,
+    normalized,
+    channel,
+    players,
+    now
+  );
 }
 
 /**
@@ -309,4 +552,172 @@ export function pardonAllDuelTimeouts(twitchUsername: string): { success: boolea
   }
 
   return { success: true, count: pardoned, usernames: usernamesWithTimeout };
+}
+
+/**
+ * Принятие персонального вызова на дуэль
+ */
+export function acceptDuelChallenge(
+  twitchUsername: string,
+  channel: string
+): { response: string; loser?: string; loser2?: string; bothLost?: boolean } {
+  if (!duelsEnabled) {
+    return {
+      response: ''
+    };
+  }
+
+  const players = loadTwitchPlayers();
+  const now = Date.now();
+  const normalized = twitchUsername.toLowerCase();
+  
+  // Проверяем, есть ли активный вызов
+  const challenge = duelChallengesByChannel.get(channel);
+  
+  if (!challenge) {
+    return {
+      response: `@${twitchUsername}, нет активных вызовов на дуэль`
+    };
+  }
+
+  // Проверяем таймаут вызова
+  if (now - challenge.createdAt > CHALLENGE_TIMEOUT_MS) {
+    duelChallengesByChannel.delete(channel);
+    return {
+      response: `@${twitchUsername}, вызов на дуэль истёк`
+    };
+  }
+
+  // Проверяем, что принимает именно вызванный игрок
+  if (challenge.challenged !== normalized) {
+    return {
+      response: `@${twitchUsername}, этот вызов не для тебя! Вызван @${challenge.challengedDisplay}`
+    };
+  }
+
+  const challengedPlayer = ensurePlayer(players, twitchUsername);
+  const challengedIsExempt = DUEL_EXEMPT_USERS.has(normalized);
+  const challengerIsExempt = DUEL_EXEMPT_USERS.has(challenge.challenger);
+
+  // Проверяем личный timeout принимающего (если не exempt)
+  if (!challengedIsExempt && challengedPlayer.duelTimeoutUntil && now < challengedPlayer.duelTimeoutUntil) {
+    const minutesLeft = Math.ceil((challengedPlayer.duelTimeoutUntil - now) / 60000);
+    duelChallengesByChannel.delete(channel);
+    return {
+      response: `@${twitchUsername}, ты в таймауте ещё ${minutesLeft} мин. Вызов отменён.`
+    };
+  }
+
+  // Проверяем личный cooldown принимающего (если не exempt)
+  // ИСКЛЮЧЕНИЕ: если вызвал exempt пользователь (стример), пропускаем cooldown
+  if (!challengedIsExempt && !challengerIsExempt && challengedPlayer.duelCooldownUntil && now < challengedPlayer.duelCooldownUntil) {
+    const secondsLeft = Math.ceil((challengedPlayer.duelCooldownUntil - now) / 1000);
+    duelChallengesByChannel.delete(channel);
+    return {
+      response: `@${twitchUsername}, ты недавно участвовал в дуэли, жди ${secondsLeft} сек. Вызов отменён.`
+    };
+  }
+
+  // Проверяем, что никто из участников не стоит в общей очереди
+  const queueEntry = duelQueueByChannel.get(channel);
+  if (queueEntry) {
+    // Проверяем таймаут очереди
+    if (now - queueEntry.joinedAt <= QUEUE_TIMEOUT_MS) {
+      // Очередь ещё активна
+      if (queueEntry.username === challenge.challenger) {
+        duelChallengesByChannel.delete(channel);
+        duelQueueByChannel.delete(channel);
+        return {
+          response: `@${challenge.challengerDisplay} уже стоит в очереди на обычную дуэль. Вызов отменён.`
+        };
+      }
+      if (queueEntry.username === challenge.challenged) {
+        duelChallengesByChannel.delete(channel);
+        duelQueueByChannel.delete(channel);
+        return {
+          response: `@${twitchUsername}, ты уже стоишь в очереди на обычную дуэль. Вызов отменён.`
+        };
+      }
+    } else {
+      // Очередь истекла, удаляем её
+      duelQueueByChannel.delete(channel);
+      console.log(`⏱️ Очередь дуэли истекла для ${queueEntry.displayName} (удалена при принятии вызова)`);
+    }
+  }
+
+  // Удаляем вызов и выполняем дуэль
+  duelChallengesByChannel.delete(channel);
+  
+  console.log(`✅ Вызов принят: ${twitchUsername} принимает вызов от ${challenge.challengerDisplay}`);
+  
+  return executeDuel(
+    challenge.challengerDisplay,
+    challenge.challenger,
+    challenge.challengedDisplay,
+    challenge.challenged,
+    channel,
+    players,
+    now
+  );
+}
+
+/**
+ * Отклонение персонального вызова на дуэль
+ */
+export function declineDuelChallenge(
+  twitchUsername: string,
+  channel: string
+): { response: string } {
+  if (!duelsEnabled) {
+    return {
+      response: ''
+    };
+  }
+
+  const now = Date.now();
+  const normalized = twitchUsername.toLowerCase();
+  
+  // Проверяем, есть ли активный вызов
+  const challenge = duelChallengesByChannel.get(channel);
+  
+  if (!challenge) {
+    return {
+      response: `@${twitchUsername}, нет активных вызовов на дуэль`
+    };
+  }
+
+  // Проверяем таймаут вызова
+  if (now - challenge.createdAt > CHALLENGE_TIMEOUT_MS) {
+    duelChallengesByChannel.delete(channel);
+    return {
+      response: `@${twitchUsername}, вызов на дуэль уже истёк`
+    };
+  }
+
+  // Проверяем, что отклоняет именно вызванный игрок
+  if (challenge.challenged !== normalized) {
+    return {
+      response: `@${twitchUsername}, этот вызов не для тебя!`
+    };
+  }
+
+  // Удаляем вызов
+  duelChallengesByChannel.delete(channel);
+  
+  console.log(`🏳️ Вызов отклонён: ${twitchUsername} отклонил вызов от ${challenge.challengerDisplay}`);
+  
+  return {
+    response: `@${twitchUsername} отклонил вызов от @${challenge.challengerDisplay} 🏳️`
+  };
+}
+
+/**
+ * Очистка персональных вызовов (вызывается при окончании стрима)
+ */
+export function clearDuelChallenges(): void {
+  const challengesCount = duelChallengesByChannel.size;
+  duelChallengesByChannel.clear();
+  if (challengesCount > 0) {
+    console.log(`🧹 Персональные вызовы очищены (было ${challengesCount} вызовов)`);
+  }
 }
