@@ -12,7 +12,24 @@ export function processTwitchPointsCommand(twitchUsername: string): string {
     return `@${twitchUsername}, у тебя пока нет очков. Сыграй в дуэль, чтобы получить стартовые.`;
   }
 
-  return `@${twitchUsername}, у тебя ${player.points} очков.`;
+  // Формируем базовую информацию об очках
+  let response = `@${twitchUsername}, 💰 ${player.points} очков`;
+
+  // Добавляем статистику дуэлей, если есть хотя бы одна дуэль
+  const wins = player.duelWins ?? 0;
+  const losses = player.duelLosses ?? 0;
+  const draws = player.duelDraws ?? 0;
+  const totalDuels = wins + losses + draws;
+
+  if (totalDuels > 0) {
+    const winRate = Math.round((wins / totalDuels) * 100);
+    const lossRate = Math.round((losses / totalDuels) * 100);
+    const drawRate = Math.round((draws / totalDuels) * 100);
+
+    response += ` | Побед: ${wins} (${winRate}%) | Поражений: ${losses} (${lossRate}%) | Ничьих: ${draws} (${drawRate}%)`;
+  }
+
+  return response;
 }
 
 /**

@@ -87,8 +87,8 @@ const LINK_ANNOUNCEMENTS = [
     {message: '🎁Fetta (исполни желание): https://fetta.app/u/kunilika666', color: 'green' as const}
 ];
 
-const ANNOUNCEMENT_REPEAT_INTERVAL_MS = 60 * 60 * 1000; // 1 час для welcome
-const LINK_ROTATION_INTERVAL_MS = 13 * 60 * 1000; // 13 минут для ротации
+const ANNOUNCEMENT_REPEAT_INTERVAL_MS = 60 * 60 * 1000;
+const LINK_ROTATION_INTERVAL_MS = 13 * 60 * 1000;
 
 interface StreamStats {
     startTime: Date;

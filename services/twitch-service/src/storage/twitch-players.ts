@@ -8,6 +8,9 @@ export interface TwitchPlayerData {
   lastUsedDate?: string;
   points?: number;
   duelTimeoutUntil?: number;
+  duelWins?: number;
+  duelLosses?: number;
+  duelDraws?: number;
 }
 
 // Определяем корень монорепозитория

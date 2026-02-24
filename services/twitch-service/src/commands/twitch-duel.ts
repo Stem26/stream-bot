@@ -11,6 +11,7 @@ const duelQueueByChannel = new Map<string, DuelQueueEntry>();
 const duelCooldownByChannel = new Map<string, number>();
 const DEFAULT_POINTS = 1000;
 const DUEL_WIN_POINTS = 25;
+const DUEL_MISS_PENALTY = 5;
 const DUEL_TIMEOUT_MS = 5 * 60 * 1000;
 const DUEL_COOLDOWN_MS = 60 * 1000;
 
@@ -123,26 +124,55 @@ export function processTwitchDuelCommand(
   const opponentIsExempt = DUEL_EXEMPT_USERS.has(waiting.username);
   const currentIsExempt = DUEL_EXEMPT_USERS.has(normalized);
   
-  // 10% шанс что оба проигрывают (только если оба не exempt)
+  // Специальные исходы дуэли (только если оба не exempt)
   const randomValue = Math.random();
-  const bothLose = !currentIsExempt && !opponentIsExempt && randomValue < 0.1;
+  
+  // 5% шанс - оба попали и убили друг друга
+  const bothHit = !currentIsExempt && !opponentIsExempt && randomValue < 0.05;
+  
+  // 5% шанс - оба промахнулись
+  const bothMiss = !currentIsExempt && !opponentIsExempt && randomValue >= 0.05 && randomValue < 0.1;
 
-  if (bothLose) {
-    // Оба проигрывают: теряют очки и получают таймаут (минимум 0 очков)
+  if (bothHit) {
+    // Оба попали: теряют очки и получают таймаут (минимум 0 очков)
     player.points = Math.max(0, (player.points ?? DEFAULT_POINTS) - DUEL_WIN_POINTS);
     opponentPlayer.points = Math.max(0, (opponentPlayer.points ?? DEFAULT_POINTS) - DUEL_WIN_POINTS);
     player.duelTimeoutUntil = now + DUEL_TIMEOUT_MS;
     opponentPlayer.duelTimeoutUntil = now + DUEL_TIMEOUT_MS;
+
+    // Статистика: оба проиграли
+    player.duelLosses = (player.duelLosses ?? 0) + 1;
+    opponentPlayer.duelLosses = (opponentPlayer.duelLosses ?? 0) + 1;
 
     duelQueueByChannel.delete(channel);
     duelCooldownByChannel.set(channel, now);
     saveTwitchPlayers(players);
 
     return {
-      response: `@${waiting.displayName} и @${twitchUsername} сошлись в дуэли! Оба промахнулись и убили друг друга 💀 Оба получают (-${DUEL_WIN_POINTS}) очков и таймаут на 5 минут.`,
+      response: `@${waiting.displayName} и @${twitchUsername} сошлись в дуэли! Оба попали и убили друг друга! 💀💀 Оба получают (-${DUEL_WIN_POINTS}) очков и таймаут на 5 минут.`,
       loser: waiting.displayName,
       loser2: twitchUsername,
       bothLost: true
+    };
+  }
+
+  if (bothMiss) {
+    player.points = Math.max(0, (player.points ?? DEFAULT_POINTS) - DUEL_MISS_PENALTY);
+    opponentPlayer.points = Math.max(0, (opponentPlayer.points ?? DEFAULT_POINTS) - DUEL_MISS_PENALTY);
+
+    // Статистика: ничья
+    player.duelDraws = (player.duelDraws ?? 0) + 1;
+    opponentPlayer.duelDraws = (opponentPlayer.duelDraws ?? 0) + 1;
+
+    duelQueueByChannel.delete(channel);
+    duelCooldownByChannel.set(channel, now);
+    saveTwitchPlayers(players);
+
+    return {
+      response: `@${waiting.displayName} и @${twitchUsername} сошлись в дуэли! Оба промахнулись! 😅 Живы оба, но позор на всю деревню! (-${DUEL_MISS_PENALTY}) очков каждому.`,
+      loser: undefined,
+      loser2: undefined,
+      bothLost: false
     };
   }
 
@@ -167,6 +197,9 @@ export function processTwitchDuelCommand(
     if (!opponentIsExempt) {
       opponentPlayer.duelTimeoutUntil = now + DUEL_TIMEOUT_MS;
     }
+    // Статистика
+    player.duelWins = (player.duelWins ?? 0) + 1;
+    opponentPlayer.duelLosses = (opponentPlayer.duelLosses ?? 0) + 1;
   } else {
     opponentPlayer.points = (opponentPlayer.points ?? DEFAULT_POINTS) + DUEL_WIN_POINTS;
     player.points = Math.max(0, (player.points ?? DEFAULT_POINTS) - DUEL_WIN_POINTS);
@@ -174,6 +207,9 @@ export function processTwitchDuelCommand(
     if (!currentIsExempt) {
       player.duelTimeoutUntil = now + DUEL_TIMEOUT_MS;
     }
+    // Статистика
+    opponentPlayer.duelWins = (opponentPlayer.duelWins ?? 0) + 1;
+    player.duelLosses = (player.duelLosses ?? 0) + 1;
   }
 
   duelQueueByChannel.delete(channel);
