@@ -4,11 +4,17 @@ import { Telegraf } from 'telegraf';
 import { loadConfig } from './config/env';
 import { clearDuelQueue, resetDuelsOnStreamEnd } from "./commands/twitch-duel";
 import { clearActiveUsers } from "./commands/twitch-rat";
+import { log } from './utils/event-logger';
 
 async function main() {
     const config = loadConfig();
 
     console.log('🚀 Запуск Twitch сервиса...');
+    log('BOT_START', {
+        version: process.env.npm_package_version || 'unknown',
+        nodeVersion: process.version,
+        platform: process.platform
+    });
 
     // Telegram client (без polling!)
     const telegramBot = new Telegraf(config.telegram.token);
@@ -65,6 +71,7 @@ async function main() {
     // Graceful shutdown
     const shutdown = async (signal: string) => {
         console.log(`\n⚠️ Получен сигнал ${signal}, завершаем работу...`);
+        log('BOT_STOP', { reason: signal });
         
         try {
             console.log('🛑 Отключаем NightBot мониторинг...');
@@ -75,8 +82,13 @@ async function main() {
             
             console.log('✅ Все соединения закрыты');
             process.exit(0);
-        } catch (error) {
+        } catch (error: any) {
             console.error('❌ Ошибка при завершении:', error);
+            log('ERROR', {
+                context: 'shutdown',
+                error: error?.message || String(error),
+                stack: error?.stack
+            });
             process.exit(1);
         }
     };
@@ -86,7 +98,13 @@ async function main() {
     process.on('SIGHUP', () => shutdown('SIGHUP'));
 }
 
-main().catch((err) => {
+main().catch((err: any) => {
     console.error('❌ Twitch service fatal error:', err);
+    log('ERROR', {
+        context: 'main',
+        error: err?.message || String(err),
+        stack: err?.stack,
+        fatal: true
+    });
     process.exit(1);
 });

@@ -7,6 +7,7 @@ import * as path from 'path';
 import { ENABLE_BOT_FEATURES } from '../config/features';
 import { IS_LOCAL } from '../config/env';
 import { addStreamToHistory } from '../storage/stream-history';
+import { log } from '../utils/event-logger';
 
 // Определяем корень монорепозитория (как в twitch-players.ts)
 const MONOREPO_ROOT = (() => {
@@ -95,6 +96,7 @@ interface StreamStats {
     viewerCounts: number[];
     broadcasterId: string;
     broadcasterName: string;
+    followsCount: number;
 }
 
 interface StopTrackingResult {
@@ -102,6 +104,7 @@ interface StopTrackingResult {
         peak: number;
         duration: string;
         startTime: Date;
+        followsCount: number;
     };
     broadcasterName: string;
 }
@@ -300,6 +303,15 @@ export class TwitchStreamMonitor {
                 saveAnnouncementState(this.announcementState);
                 console.log('🔄 Статистика текущего стрима сброшена (новый стрим)');
 
+                // Получаем реальное время начала стрима из API
+                const stream = await this.apiClient!.streams.getStreamByUserId(event.broadcasterId);
+                const startDate = stream?.startDate || new Date();
+
+                // Логируем начало стрима (только факт, детали есть в stream-history)
+                log('STREAM_ONLINE', {
+                    channel: event.broadcasterDisplayName
+                });
+
                 // Отправляем приветственное сообщение (все ссылки)
                 await this.sendWelcomeMessage();
 
@@ -310,10 +322,6 @@ export class TwitchStreamMonitor {
                 this.startLinkRotation(true);
 
                 await this.handleStreamOnline(event, telegramChannelId);
-
-                // Получаем реальное время начала стрима из API
-                const stream = await this.apiClient!.streams.getStreamByUserId(event.broadcasterId);
-                const startDate = stream?.startDate || new Date();
 
                 this.startViewerCountTracking(event.broadcasterId, event.broadcasterName, startDate);
             });
@@ -335,12 +343,27 @@ export class TwitchStreamMonitor {
                 this.stopLinkRotation();
 
                 const result = this.stopViewerCountTracking();
+                
+                // Логируем завершение стрима (только факт, детали есть в stream-history)
+                log('STREAM_OFFLINE', {
+                    channel: event.broadcasterDisplayName
+                });
+                
                 await this.handleStreamOffline(event, telegramChannelId, result);
             });
 
             // Подписываемся на событие Follow (когда пользователь нажимает "Отслеживать")
             this.listener.onChannelFollow(user.id, this.moderatorId, async (event) => {
                 console.log(`💜 Новый фоловер: ${event.userDisplayName} (@${event.userName})`);
+                
+                // Увеличиваем счётчик follow только если стрим онлайн
+                if (this.isStreamOnline && this.currentStreamStats) {
+                    this.currentStreamStats.followsCount++;
+                    console.log(`📊 Follow за стрим: ${this.currentStreamStats.followsCount}`);
+                } else if (!this.isStreamOnline) {
+                    console.log(`ℹ️ Follow получен вне стрима, не учитывается в статистике`);
+                }
+                
                 
                 // Проверяем, включены ли функции бота
                 if (!ENABLE_BOT_FEATURES) {
@@ -379,12 +402,23 @@ export class TwitchStreamMonitor {
             }
             
             console.error(`✅ Мониторинг стримов запущен для канала: ${channelName}`);
+            log('CONNECTION', {
+                service: 'TwitchStreamMonitor',
+                status: 'connected',
+                channel: channelName
+            });
 
             await this.checkCurrentStreamStatus(user.id);
 
             return true;
-        } catch (error) {
+        } catch (error: any) {
             console.error('❌ Ошибка подключения к Twitch EventSub:', error);
+            log('ERROR', {
+                context: 'TwitchStreamMonitor.connect',
+                error: error?.message || String(error),
+                stack: error?.stack,
+                channel: channelName
+            });
             return false;
         }
     }
@@ -491,8 +525,14 @@ export class TwitchStreamMonitor {
             });
 
             console.error('✅ Уведомление о начале стрима отправлено в Telegram');
-        } catch (error) {
+        } catch (error: any) {
             console.error('❌ Ошибка при отправке уведомления:', error);
+            log('ERROR', {
+                context: 'handleStreamOnline',
+                error: error?.message || String(error),
+                stack: error?.stack,
+                channel: event.broadcasterDisplayName
+            });
 
             // Даже при ошибке пытаемся отправить минимальное уведомление
             try {
@@ -502,8 +542,14 @@ export class TwitchStreamMonitor {
                     link_preview_options: {is_disabled: false}
                 });
                 console.error('✅ Резервное уведомление отправлено');
-            } catch (fallbackError) {
+            } catch (fallbackError: any) {
                 console.error('❌ Даже резервное уведомление не удалось отправить:', fallbackError);
+                log('ERROR', {
+                    context: 'handleStreamOnline.fallback',
+                    error: fallbackError?.message || String(fallbackError),
+                    stack: fallbackError?.stack,
+                    channel: event.broadcasterDisplayName
+                });
             }
         }
     }
@@ -531,7 +577,8 @@ export class TwitchStreamMonitor {
             startTime: startDate,
             viewerCounts: initialCounts,
             broadcasterId,
-            broadcasterName
+            broadcasterName,
+            followsCount: 0
         };
 
         console.error('📊 Запущено отслеживание количества зрителей');
@@ -577,6 +624,7 @@ export class TwitchStreamMonitor {
         console.error(`👤 Канал: ${broadcasterName}`);
         console.error(`⏱️  Длительность: ${stats.duration}`);
         console.error(`👥 Пик зрителей: ${stats.peak}`);
+        console.error(`💜 Новых follow: ${stats.followsCount}`);
         console.error('================================\n');
 
         // Очищаем данные
@@ -615,7 +663,7 @@ export class TwitchStreamMonitor {
      */
     private calculateStreamStats() {
         if (!this.currentStreamStats || this.currentStreamStats.viewerCounts.length === 0) {
-            return {peak: 0, duration: '0мин'};
+            return {peak: 0, duration: '0мин', followsCount: 0};
         }
 
         const counts = this.currentStreamStats.viewerCounts.filter(c => typeof c === 'number' && !isNaN(c));
@@ -627,7 +675,7 @@ export class TwitchStreamMonitor {
         const minutes = Math.floor((durationMs % 3600000) / 60000);
         const duration = hours > 0 ? `${hours}ч ${minutes}мин` : `${minutes}мин`;
 
-        return {peak, duration};
+        return {peak, duration, followsCount: this.currentStreamStats.followsCount};
     }
 
     /**
@@ -660,8 +708,14 @@ export class TwitchStreamMonitor {
                 });
 
                 console.error('✅ Уведомление об окончании стрима отправлено в Telegram');
-            } catch (error) {
+            } catch (error: any) {
                 console.error('❌ Ошибка при отправке уведомления об окончании:', error);
+                log('ERROR', {
+                    context: 'handleStreamOffline',
+                    error: error?.message || String(error),
+                    stack: error?.stack,
+                    channel: event.broadcasterDisplayName
+                });
             }
         } else {
             console.error('⚠️ CHANNEL_ID не установлен, уведомление о завершении не отправлено');
@@ -681,7 +735,8 @@ export class TwitchStreamMonitor {
                     date: dateStr,
                     startTime: timeStr,
                     duration: stats.duration,
-                    peakViewers: stats.peak
+                    peakViewers: stats.peak,
+                    followsCount: stats.followsCount
                 });
                 
                 // Сбрасываем статистику текущего стрима после сохранения в историю
@@ -689,8 +744,13 @@ export class TwitchStreamMonitor {
                 this.announcementState.currentStreamStartTime = null;
                 saveAnnouncementState(this.announcementState);
                 console.log('🔄 Статистика текущего стрима сброшена (стрим завершён)');
-            } catch (error) {
+            } catch (error: any) {
                 console.error('❌ Ошибка при сохранении истории стрима:', error);
+                log('ERROR', {
+                    context: 'handleStreamOffline.saveHistory',
+                    error: error?.message || String(error),
+                    stack: error?.stack
+                });
             }
         }
     }
@@ -953,9 +1013,18 @@ export class TwitchStreamMonitor {
                 TwitchStreamMonitor.subscriptionsInitialized = false;
                 TwitchStreamMonitor.startPromise = null;
                 console.error('🛑 Отключено от Twitch EventSub (singleton)');
+                log('CONNECTION', {
+                    service: 'TwitchStreamMonitor',
+                    status: 'disconnected'
+                });
             }
-        } catch (error) {
+        } catch (error: any) {
             console.error('❌ Ошибка при отключении от Twitch EventSub:', error);
+            log('ERROR', {
+                context: 'TwitchStreamMonitor.disconnect',
+                error: error?.message || String(error),
+                stack: error?.stack
+            });
         }
     }
 

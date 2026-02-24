@@ -10,6 +10,7 @@ import { ENABLE_BOT_FEATURES, ALLOW_LOCAL_COMMANDS } from '../config/features';
 import { IS_LOCAL } from '../config/env';
 import * as fs from 'fs';
 import * as path from 'path';
+import { log } from '../utils/event-logger';
 
 // Файл для хранения состояния счётчиков (в корне монорепы)
 const COUNTERS_STATE_FILE = path.resolve(__dirname, '../../../../../counters-state.json');
@@ -605,10 +606,22 @@ export class NightBotMonitor {
                 }
             });
 
+            console.log(`✅ NightBotMonitor подключен к каналу: ${this.channelName}`);
+            log('CONNECTION', {
+                service: 'NightBotMonitor',
+                status: 'connected',
+                channel: this.channelName
+            });
             return true;
         } catch (error: any) {
             console.error('❌ Ошибка подключения к Twitch чату:', error);
             console.error('   Детали:', error?.message || 'нет деталей');
+            log('ERROR', {
+                context: 'NightBotMonitor.connect',
+                error: error?.message || String(error),
+                stack: error?.stack,
+                channel: this.channelName
+            });
             return false;
         }
     }
@@ -693,6 +706,7 @@ export class NightBotMonitor {
      */
     private async handleDuelCommand(channel: string, user: string, message: string, msg: any) {
         console.log(`⚔️ Команда !дуэль от ${user} в ${channel}`);
+        log('COMMAND', { command: '!дуэль', username: user, channel });
 
         try {
             const result = processTwitchDuelCommand(user, channel);
@@ -701,6 +715,18 @@ export class NightBotMonitor {
             if (result.response) {
                 await this.sendMessage(channel, result.response);
                 console.log(`✅ Отправлен ответ в чат: ${result.response}`);
+            }
+
+            // Логируем результат дуэли если она состоялась
+            if (result.loser || result.bothLost) {
+                const winner = result.bothLost ? undefined : (result.loser ? (result.loser === user ? result.loser2 || 'unknown' : user) : undefined);
+                log('DUEL_RESULT', {
+                    player1: result.loser || user,
+                    player2: result.loser2 || user,
+                    winner,
+                    bothLost: result.bothLost,
+                    outcome: result.bothLost ? 'both_lost' : winner ? `winner: ${winner}` : 'both_missed'
+                });
             }
 
             // Если оба проиграли - даём таймаут обоим
@@ -722,6 +748,7 @@ export class NightBotMonitor {
      */
     private async handleDisableDuelsCommand(channel: string, user: string, msg: any) {
         console.log(`🛑 Команда !стоп_дуэль от ${user} в ${channel}`);
+        log('COMMAND', { command: '!стоп_дуэль', username: user, channel });
 
         try {
             disableDuels(user);
@@ -737,6 +764,7 @@ export class NightBotMonitor {
      */
     private async handleEnableDuelsCommand(channel: string, user: string, msg: any) {
         console.log(`✅ Команда !старт_дуэль от ${user} в ${channel}`);
+        log('COMMAND', { command: '!старт_дуэль', username: user, channel });
 
         try {
             enableDuels(user);
@@ -761,6 +789,14 @@ export class NightBotMonitor {
                 console.log(`⚠️ ${user} попытался использовать !амнистия без прав`);
                 return;
             }
+
+            // Логируем команду
+            log('COMMAND', {
+                command: '!амнистия',
+                username: user,
+                channel,
+                pardonedCount: result.count
+            });
 
             if (result.count > 0) {
                 // Снимаем реальные таймауты в Twitch для всех игроков
@@ -1537,6 +1573,11 @@ export class NightBotMonitor {
         if (this.chatClient) {
             await this.chatClient.quit();
             console.log('🔌 Отключено от Twitch чата');
+            log('CONNECTION', {
+                service: 'NightBotMonitor',
+                status: 'disconnected',
+                channel: this.channelName
+            });
         }
 
         // Останавливаем периодический опрос

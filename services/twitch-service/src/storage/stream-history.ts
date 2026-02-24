@@ -6,6 +6,7 @@ export interface StreamHistoryEntry {
   startTime: string;
   duration: string;
   peakViewers: number;
+  followsCount?: number;
   game?: string;
   title?: string;
 }
