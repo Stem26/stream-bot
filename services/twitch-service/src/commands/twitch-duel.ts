@@ -14,6 +14,7 @@ const DUEL_WIN_POINTS = 25;
 const DUEL_MISS_PENALTY = 5;
 const DUEL_TIMEOUT_MS = 5 * 60 * 1000;
 const DUEL_COOLDOWN_MS = 60 * 1000;
+const STREAMER_WIN_CHANCE = 0.9; // 90% шанс победы для стримера
 
 // Пользователи без cooldown и timeout (стример)
 const DUEL_EXEMPT_USERS = new Set([STREAMER_USERNAME?.toLowerCase()].filter(Boolean));
@@ -179,11 +180,13 @@ export function processTwitchDuelCommand(
   // Обычная логика дуэли (один победитель)
   let winnerIsCurrent: boolean;
   if (currentIsExempt && !opponentIsExempt) {
-    // Текущий игрок - стример, он побеждает
-    winnerIsCurrent = true;
+    // Текущий игрок - стример, 90% шанс победы
+    winnerIsCurrent = Math.random() < STREAMER_WIN_CHANCE;
   } else if (!currentIsExempt && opponentIsExempt) {
-    winnerIsCurrent = false;
+    // Противник - стример, 90% шанс победы (10% для текущего)
+    winnerIsCurrent = Math.random() >= STREAMER_WIN_CHANCE;
   } else {
+    // Оба обычные игроки или оба exempt - 50/50
     winnerIsCurrent = Math.random() < 0.5;
   }
   
