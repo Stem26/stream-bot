@@ -5,6 +5,7 @@ import { loadConfig } from './config/env';
 import { clearDuelQueue, resetDuelsOnStreamEnd, clearDuelChallenges } from "./commands/twitch-duel";
 import { clearActiveUsers } from "./commands/twitch-rat";
 import { log } from './utils/event-logger';
+import { initDatabase, closeDatabase } from './database/database';
 
 async function main() {
     const config = loadConfig();
@@ -15,6 +16,16 @@ async function main() {
         nodeVersion: process.version,
         platform: process.platform
     });
+
+    // Инициализация базы данных
+    console.log('📦 Инициализация базы данных...');
+    try {
+        initDatabase();
+        console.log('✅ База данных готова');
+    } catch (error) {
+        console.error('❌ Ошибка инициализации БД:', error);
+        throw error;
+    }
 
     // Telegram client (без polling!)
     const telegramBot = new Telegraf(config.telegram.token);
@@ -81,6 +92,9 @@ async function main() {
             console.log('🛑 Отключаем Stream мониторинг...');
             await streamMonitor.disconnect();
             
+            console.log('🛑 Закрываем соединение с базой данных...');
+            closeDatabase();
+            
             console.log('✅ Все соединения закрыты');
             process.exit(0);
         } catch (error: any) {
@@ -90,6 +104,7 @@ async function main() {
                 error: error?.message || String(error),
                 stack: error?.stack
             });
+            closeDatabase(); // Закрываем БД даже при ошибке
             process.exit(1);
         }
     };

@@ -1,19 +1,17 @@
-import { loadTwitchPlayers } from '../storage/twitch-players';
+import { TwitchPlayersStorageDB } from '../../twitch-service/src/services/TwitchPlayersStorageDB';
+
+const storage = new TwitchPlayersStorageDB();
 
 /**
  * Команда для отображения топа Twitch игроков
  * @returns строка с топом для отправки в чат
  */
 export function processTwitchTopDickCommand(): string {
-    const players = loadTwitchPlayers();
+    const sortedPlayers = storage.getTop(10);
 
-    if (players.size === 0) {
+    if (sortedPlayers.length === 0) {
         return 'Пока никто не играл в !dick на Twitch.';
     }
-
-    const sortedPlayers = Array.from(players.values())
-        .sort((a, b) => b.size - a.size)
-        .slice(0, 10);
 
     let response = '🏆 ТОП 10 ПИСЮНОВ НА TWITCH:';
 

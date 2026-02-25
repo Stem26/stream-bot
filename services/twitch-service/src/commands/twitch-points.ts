@@ -1,10 +1,12 @@
-import { loadTwitchPlayers, TwitchPlayerData } from '../storage/twitch-players';
+import { TwitchPlayersStorageDB } from '../services/TwitchPlayersStorageDB';
+
+const storage = new TwitchPlayersStorageDB();
 
 /**
  * Команда для отображения очков пользователя в Twitch чате
  */
 export function processTwitchPointsCommand(twitchUsername: string): string {
-  const players = loadTwitchPlayers();
+  const players = storage.loadTwitchPlayers();
   const normalized = twitchUsername.toLowerCase();
   const player = players.get(normalized);
 
@@ -36,27 +38,16 @@ export function processTwitchPointsCommand(twitchUsername: string): string {
  * Команда для отображения топ-10 по очкам в Twitch чате
  */
 export function processTwitchTopPointsCommand(): string {
-  const players = loadTwitchPlayers();
+  const sortedPlayers = storage.getTopPoints(10);
 
-  if (players.size === 0) {
+  if (sortedPlayers.length === 0) {
     return 'Пока никто не набрал очков.';
   }
-
-  const scoredPlayers = Array.from(players.values())
-    .filter((player: TwitchPlayerData) => typeof player.points === 'number');
-
-  if (scoredPlayers.length === 0) {
-    return 'Пока никто не набрал очков.';
-  }
-
-  const sortedPlayers = scoredPlayers
-    .sort((a, b) => (b.points ?? 0) - (a.points ?? 0))
-    .slice(0, 10);
 
   let response = '🏆 ТОП 10 ПО ОЧКАМ:';
   sortedPlayers.forEach((player, index) => {
     const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}.`;
-    response += ` | ${medal} @${player.twitchUsername} - ${player.points ?? 0}`;
+    response += ` | ${medal} @${player.twitchUsername} - ${player.points ?? 1000}`;
   });
 
   return response;

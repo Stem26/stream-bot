@@ -69,6 +69,15 @@ services/*/players.json
 services/*/twitch-players.json
 *.json.backup
 announcement-state.json
+stream-history.json
+future_history.json
+
+# SQLite databases
+*.db
+*.db-shm
+*.db-wal
+telegram-bot.db*
+twitch-bot.db*
 
 # PM2
 .pm2/

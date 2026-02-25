@@ -1,5 +1,22 @@
-import { loadTwitchPlayers, saveTwitchPlayers, TwitchPlayerData } from '../storage/twitch-players';
+import { TwitchPlayersStorageDB } from '../services/TwitchPlayersStorageDB';
 import { STREAMER_USERNAME } from '../config/env';
+
+// Инициализируем хранилище игроков
+const storage = new TwitchPlayersStorageDB();
+
+// Типы данных
+export interface TwitchPlayerData {
+  twitchUsername: string;
+  size: number;
+  lastUsed: number;
+  lastUsedDate?: string;
+  points?: number;
+  duelTimeoutUntil?: number;
+  duelCooldownUntil?: number;
+  duelWins?: number;
+  duelLosses?: number;
+  duelDraws?: number;
+}
 
 type DuelQueueEntry = {
   username: string;
@@ -177,7 +194,7 @@ function handlePersonalChallenge(
 
   console.log(`⚔️ Создан персональный вызов: ${challengerUsername} -> ${targetUsername} в канале ${channel}`);
 
-  saveTwitchPlayers(players);
+  storage.saveTwitchPlayers(players);
   
   return {
     response: `@${challengerUsername} вызывает @${targetUsername} на дуэль! ⚔️ У @${targetUsername} есть 2 минуты, чтобы написать !принять или !отклонить`
@@ -221,7 +238,7 @@ function executeDuel(
     player2.duelLosses = (player2.duelLosses ?? 0) + 1;
 
     duelCooldownByChannel.set(channel, now);
-    saveTwitchPlayers(players);
+    storage.saveTwitchPlayers(players);
 
     return {
       response: `@${player1Username} и @${player2Username} сошлись в дуэли! Оба попали и убили друг друга! 💀💀 Оба получают (-${DUEL_WIN_POINTS}) очков и таймаут на 5 минут.`,
@@ -247,7 +264,7 @@ function executeDuel(
     player2.duelDraws = (player2.duelDraws ?? 0) + 1;
 
     duelCooldownByChannel.set(channel, now);
-    saveTwitchPlayers(players);
+    storage.saveTwitchPlayers(players);
 
     return {
       response: `@${player1Username} и @${player2Username} сошлись в дуэли! Оба промахнулись! 😅 Живы оба, но позор на всю деревню! (-${DUEL_MISS_PENALTY}) очков каждому.`,
@@ -299,7 +316,7 @@ function executeDuel(
   }
 
   duelCooldownByChannel.set(channel, now);
-  saveTwitchPlayers(players);
+  storage.saveTwitchPlayers(players);
 
   return {
     response: `@${player1Username} и @${player2Username} сошлись в дуэли! Победитель @${winner} (+${DUEL_WIN_POINTS}), проигравший @${loser} (-${DUEL_WIN_POINTS}) и в таймаут на 5 минут.`,
@@ -319,7 +336,7 @@ export function processTwitchDuelCommand(
     };
   }
 
-  const players = loadTwitchPlayers();
+  const players = storage.loadTwitchPlayers();
   const now = Date.now();
   const normalized = twitchUsername.toLowerCase();
   const player = ensurePlayer(players, twitchUsername);
@@ -396,7 +413,7 @@ export function processTwitchDuelCommand(
     duelQueueByChannel.delete(channel);
     // После удаления очередь пуста - ставим нового игрока
     duelQueueByChannel.set(channel, { username: normalized, displayName: twitchUsername, joinedAt: now });
-    saveTwitchPlayers(players);
+    storage.saveTwitchPlayers(players);
     return {
       response: `Очередь истекла. @${twitchUsername} встал в очередь на дуэль. Ждём 2 минуты соперника!`
     };
@@ -404,7 +421,7 @@ export function processTwitchDuelCommand(
 
   if (!waiting) {
     duelQueueByChannel.set(channel, { username: normalized, displayName: twitchUsername, joinedAt: now });
-    saveTwitchPlayers(players);
+    storage.saveTwitchPlayers(players);
     return {
       response: `@${twitchUsername}, ты встал в очередь на дуэль. Ждём 2 минуты соперника!`
     };
@@ -529,7 +546,7 @@ export function pardonAllDuelTimeouts(twitchUsername: string): { success: boolea
     return { success: false, count: 0, usernames: [] };
   }
 
-  const players = loadTwitchPlayers();
+  const players = storage.loadTwitchPlayers();
   const now = Date.now();
   let pardoned = 0;
   const usernamesWithTimeout: string[] = [];
@@ -544,7 +561,7 @@ export function pardonAllDuelTimeouts(twitchUsername: string): { success: boolea
   }
 
   if (pardoned > 0) {
-    saveTwitchPlayers(players);
+    storage.saveTwitchPlayers(players);
     console.log(`🕊️ Амнистия: снято ${pardoned} таймаутов дуэлей пользователем ${twitchUsername}`);
     console.log(`📋 Игроки для разбана: ${usernamesWithTimeout.join(', ')}`);
   } else {
@@ -567,7 +584,7 @@ export function acceptDuelChallenge(
     };
   }
 
-  const players = loadTwitchPlayers();
+  const players = storage.loadTwitchPlayers();
   const now = Date.now();
   const normalized = twitchUsername.toLowerCase();
   

@@ -1,6 +1,6 @@
 import { AppServices } from '../types/context';
 import { AppConfig } from '../types/config';
-import { PlayersStorage } from '../services/PlayersStorage';
+import { PlayersStorageDB } from '../services/PlayersStorageDB';
 import { DickService } from '../domain/dick/DickService';
 
 /**
@@ -9,7 +9,7 @@ import { DickService } from '../domain/dick/DickService';
 export function initServices(config: AppConfig): AppServices {
   console.log('🔧 Инициализация сервисов...');
   
-  const players = new PlayersStorage();
+  const players = new PlayersStorageDB();
   const dick = new DickService(players, config.streamerUserId);
   
   if (config.streamerUserId) {

@@ -1,18 +1,17 @@
-import { loadTwitchPlayers } from '../storage/twitch-players';
+import { TwitchPlayersStorageDB } from '../../twitch-service/src/services/TwitchPlayersStorageDB';
+
+const storage = new TwitchPlayersStorageDB();
 
 /**
  * Команда для отображения антитопа Twitch игроков
  * @returns строка с антитопом для отправки в чат
  */
 export function processTwitchBottomDickCommand(): string {
-  const players = loadTwitchPlayers();
-  if (players.size === 0) {
+  const sortedPlayers = storage.getBottom(10);
+
+  if (sortedPlayers.length === 0) {
     return 'Пока никто не играл в !dick на Twitch.';
   }
-
-  const sortedPlayers = Array.from(players.values())
-    .sort((a, b) => a.size - b.size)
-    .slice(0, 10); // Берем топ 10 аутсайдеров
 
   let response = '💩 ТОП 10 АУТСАЙДЕРОВ НА TWITCH:';
   

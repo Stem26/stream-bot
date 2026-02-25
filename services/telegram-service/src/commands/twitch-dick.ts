@@ -1,5 +1,8 @@
-import { loadTwitchPlayers, saveTwitchPlayers, getTwitchPlayerRank, TwitchPlayerData } from '../storage/twitch-players';
-import { getMoscowDate, canPlayToday } from '../utils/date';
+import { TwitchPlayersStorageDB } from '../../twitch-service/src/services/TwitchPlayersStorageDB';
+import { getMoscowDate } from '../utils/date';
+import type { TwitchPlayerData } from '../../twitch-service/src/services/TwitchPlayersStorageDB';
+
+const storage = new TwitchPlayersStorageDB();
 
 function canPlayTodayTwitch(player: TwitchPlayerData): boolean {
   const today = getMoscowDate();
@@ -16,7 +19,7 @@ function generateGrowth(normalizedUsername: string, players: Map<string, TwitchP
   const specialUsername = 'kunilika666';
   
   if (normalizedUsername === specialUsername) {
-    const rank = getTwitchPlayerRank(players, normalizedUsername);
+    const rank = storage.getTwitchPlayerRank(players, normalizedUsername);
     
     if (rank > 1) {
       return Math.floor(Math.random() * 11);
@@ -32,7 +35,7 @@ function generateGrowth(normalizedUsername: string, players: Map<string, TwitchP
  * @returns строка с ответом для отправки в чат
  */
 export function processTwitchDickCommand(twitchUsername: string): string {
-  const players = loadTwitchPlayers();
+  const players = storage.loadTwitchPlayers();
   const today = getMoscowDate();
   const now = Date.now();
   const normalizedUsername = twitchUsername.toLowerCase();
@@ -49,7 +52,7 @@ export function processTwitchDickCommand(twitchUsername: string): string {
       lastUsedDate: today
     };
     players.set(normalizedUsername, player);
-    saveTwitchPlayers(players);
+    storage.saveTwitchPlayers(players);
 
     const growthText = growth > 0 
       ? `вырос на ${growth}` 
@@ -65,7 +68,7 @@ export function processTwitchDickCommand(twitchUsername: string): string {
     player.lastUsedDate = today;
     player.twitchUsername = twitchUsername;
     players.set(normalizedUsername, player);
-    saveTwitchPlayers(players);
+    storage.saveTwitchPlayers(players);
 
     const growthText = growth > 0 
       ? `вырос на ${growth}` 
@@ -75,7 +78,7 @@ export function processTwitchDickCommand(twitchUsername: string): string {
 
     return `@${twitchUsername}, твой писюн ${growthText} см. Теперь он равен ${player.size} см. Следующая попытка завтра!`;
   } else if (player) {
-    const rank = getTwitchPlayerRank(players, normalizedUsername);
+    const rank = storage.getTwitchPlayerRank(players, normalizedUsername);
 
     return `@${twitchUsername}, ты уже играл. Сейчас он равен ${player.size} см. Ты занимаешь ${rank} место в топе. Следующая попытка завтра!`;
   }

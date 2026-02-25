@@ -1,4 +1,4 @@
-import { PlayerData } from '../storage/players';
+import type { Player } from '../services/PlayersStorageDB';
 
 export function getMoscowDate(): string {
   const now = new Date();
@@ -10,7 +10,7 @@ export function getMoscowDate(): string {
   return `${year}-${month}-${day}`;
 }
 
-export function canPlayToday(player: PlayerData): boolean {
+export function canPlayToday(player: Player): boolean {
   const today = getMoscowDate();
   if (!player.lastUsedDate) {
     return true;
@@ -19,7 +19,7 @@ export function canPlayToday(player: PlayerData): boolean {
   return player.lastUsedDate !== today;
 }
 
-export function canUseHornyToday(player: PlayerData): boolean {
+export function canUseHornyToday(player: Player): boolean {
   const today = getMoscowDate();
   if (!player.lastHornyDate) {
     return true;
@@ -28,7 +28,7 @@ export function canUseHornyToday(player: PlayerData): boolean {
   return player.lastHornyDate !== today;
 }
 
-export function canUseFurryToday(player: PlayerData): boolean {
+export function canUseFurryToday(player: Player): boolean {
   const today = getMoscowDate();
   if (!player.lastFurryDate) {
     return true;
@@ -37,7 +37,7 @@ export function canUseFurryToday(player: PlayerData): boolean {
   return player.lastFurryDate !== today;
 }
 
-export function canUseFutureToday(player: PlayerData): boolean {
+export function canUseFutureToday(player: Player): boolean {
   const today = getMoscowDate();
   if (!player.lastFutureDate) {
     return true;

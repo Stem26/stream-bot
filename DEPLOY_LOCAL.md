@@ -1,3 +1,41 @@
+## Деплой на сервер (первый раз)
+
+### 1. Подготовка
+```bash
+cd /root/stream-bot
+git pull origin main
+npm install
+```
+
+### 2. Переменные окружения
+Создайте `.env` в корне проекта с продакшн-токенами (BOT_TOKEN, Twitch credentials и т.д.). Файл `.env` в .gitignore — не попадёт в репозиторий.
+
+### 3. База данных SQLite
+БД создаются в корне проекта: `telegram-bot.db`, `twitch-bot.db`.
+
+**Создать таблицы:**
+```bash
+cd /root/stream-bot
+npm run db:migrate --workspace services/telegram-service
+npm run db:migrate --workspace services/twitch-service
+```
+
+**Если есть бэкапы JSON** (players.json, twitch-players.json, stream-history.json) — скопируйте их в корень и импортируйте:
+```bash
+npm run db:migrate-data --workspace services/telegram-service
+npm run db:migrate-data --workspace services/twitch-service
+```
+
+### 4. Сборка и запуск
+```bash
+npm run build:telegram
+npm run build:twitch
+pm2 start ecosystem.config.js
+pm2 save
+```
+
+---
+
 ## Управление ботами на сервере
 
 ### Статус и логи
@@ -74,6 +112,8 @@ git push
 cd /root/stream-bot
 git pull origin main
 npm install
+npm run db:migrate --workspace services/telegram-service
+npm run db:migrate --workspace services/twitch-service
 npm run build:telegram
 npm run build:twitch
 pm2 start ecosystem.config.js
@@ -85,11 +125,12 @@ pm2 save
 cd /root/stream-bot
 git pull origin main
 npm install
+npm run db:migrate --workspace services/telegram-service
+npm run db:migrate --workspace services/twitch-service
 npm run build:telegram
 npm run build:twitch
 pm2 restart all
 pm2 logs --lines 50
-
 ```
 
 **Обновить только Telegram бот:**

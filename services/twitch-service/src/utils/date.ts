@@ -1,4 +1,10 @@
-import { PlayerData } from '../storage/players';
+// Минимальный интерфейс для проверки дат (избегаем циклической зависимости)
+interface PlayerWithDates {
+  lastUsedDate?: string;
+  lastHornyDate?: string;
+  lastFurryDate?: string;
+  lastFutureDate?: string;
+}
 
 export function getMoscowDate(): string {
   const now = new Date();
@@ -10,7 +16,7 @@ export function getMoscowDate(): string {
   return `${year}-${month}-${day}`;
 }
 
-export function canPlayToday(player: PlayerData): boolean {
+export function canPlayToday(player: PlayerWithDates): boolean {
   const today = getMoscowDate();
   if (!player.lastUsedDate) {
     return true;
@@ -19,7 +25,7 @@ export function canPlayToday(player: PlayerData): boolean {
   return player.lastUsedDate !== today;
 }
 
-export function canUseHornyToday(player: PlayerData): boolean {
+export function canUseHornyToday(player: PlayerWithDates): boolean {
   const today = getMoscowDate();
   if (!player.lastHornyDate) {
     return true;
@@ -28,7 +34,7 @@ export function canUseHornyToday(player: PlayerData): boolean {
   return player.lastHornyDate !== today;
 }
 
-export function canUseFurryToday(player: PlayerData): boolean {
+export function canUseFurryToday(player: PlayerWithDates): boolean {
   const today = getMoscowDate();
   if (!player.lastFurryDate) {
     return true;
@@ -37,7 +43,7 @@ export function canUseFurryToday(player: PlayerData): boolean {
   return player.lastFurryDate !== today;
 }
 
-export function canUseFutureToday(player: PlayerData): boolean {
+export function canUseFutureToday(player: PlayerWithDates): boolean {
   const today = getMoscowDate();
   if (!player.lastFutureDate) {
     return true;
