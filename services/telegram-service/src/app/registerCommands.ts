@@ -7,6 +7,21 @@ import { commands, getMenuCommands, canAccessCommand } from '../commands';
  * Включает проверку прав доступа для adminOnly команд
  */
 export function registerCommands(bot: Telegraf<BotContext>): void {
+  // Команда /myid — показать свой ID (доступна всем)
+  bot.command('myid', async (ctx) => {
+    const userId = ctx.from?.id;
+    const username = ctx.from?.username;
+    const firstName = ctx.from?.first_name;
+    
+    ctx.reply(
+      `👤 Ваша информация:\n\n` +
+      `ID: <code>${userId}</code>\n` +
+      `Username: ${username ? '@' + username : 'не установлен'}\n` +
+      `Имя: ${firstName || 'не установлено'}`,
+      { parse_mode: 'HTML' }
+    );
+  });
+
   for (const cmd of commands) {
     bot.command(cmd.name, async (ctx) => {
       if (!canAccessCommand(cmd, ctx)) {
@@ -18,7 +33,7 @@ export function registerCommands(bot: Telegraf<BotContext>): void {
     });
   }
   
-  console.log(`✅ Зарегистрировано ${commands.length} команд`);
+  console.log(`✅ Зарегистрировано ${commands.length + 1} команд`);
 }
 
 /**

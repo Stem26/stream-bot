@@ -709,6 +709,29 @@ export class TwitchStreamMonitor {
                 });
 
                 console.error('✅ Уведомление об окончании стрима отправлено в Telegram');
+                
+                // Отправка бэкапа БД администратору
+                try {
+                    const adminChatId = process.env.BACKUP_ADMIN_ID;
+                    if (adminChatId) {
+                        console.log('📦 Создание бэкапа БД после окончания стрима...');
+                        const { exec } = require('child_process');
+                        const backupScript = require('path').join(MONOREPO_ROOT, 'scripts', 'backup-db.js');
+                        exec(`node "${backupScript}" ${adminChatId}`, (error, stdout, stderr) => {
+                            if (error) {
+                                console.error('❌ Ошибка создания бэкапа:', error.message);
+                            } else {
+                                console.log('✅ Бэкап БД создан и отправлен админу');
+                                if (stdout) console.log(stdout);
+                            }
+                            if (stderr) console.error(stderr);
+                        });
+                    } else {
+                        console.log('⚠️ BACKUP_ADMIN_ID не установлен, бэкап не отправляется');
+                    }
+                } catch (backupError) {
+                    console.error('❌ Ошибка запуска бэкапа:', backupError);
+                }
             } catch (error: any) {
                 console.error('❌ Ошибка при отправке уведомления об окончании:', error);
                 log('ERROR', {

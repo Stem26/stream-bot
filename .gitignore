@@ -79,6 +79,11 @@ future_history.json
 telegram-bot.db*
 twitch-bot.db*
 
+# PostgreSQL backups
+backups/
+*.sql
+*.backup
+
 # PM2
 .pm2/
 

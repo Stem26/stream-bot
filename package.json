@@ -20,7 +20,8 @@
     "stream:notification:test": "npm --workspace services/twitch-service run stream:notification:test",
     "db:migrate:telegram": "npm --workspace services/telegram-service run db:migrate",
     "db:migrate:twitch": "npm --workspace services/twitch-service run db:migrate",
-    "db:check": "node scripts/db-check.js"
+    "db:check": "node scripts/db-check.js",
+    "db:backup": "node scripts/backup-db.js"
   },
   "keywords": [
     "telegram",
@@ -33,6 +34,7 @@
   "license": "MIT",
   "devDependencies": {
     "dotenv": "^17.3.1",
+    "form-data": "^4.0.1",
     "pg": "^8.18.0",
     "rimraf": "^5.0.5"
   }
