@@ -20,7 +20,7 @@ async function main() {
     // Инициализация базы данных
     console.log('📦 Инициализация базы данных...');
     try {
-        initDatabase();
+        await initDatabase();
         console.log('✅ База данных готова');
     } catch (error) {
         console.error('❌ Ошибка инициализации БД:', error);
@@ -93,7 +93,7 @@ async function main() {
             await streamMonitor.disconnect();
             
             console.log('🛑 Закрываем соединение с базой данных...');
-            closeDatabase();
+            await closeDatabase();
             
             console.log('✅ Все соединения закрыты');
             process.exit(0);
@@ -104,7 +104,7 @@ async function main() {
                 error: error?.message || String(error),
                 stack: error?.stack
             });
-            closeDatabase(); // Закрываем БД даже при ошибке
+            await closeDatabase(); // Закрываем БД даже при ошибке
             process.exit(1);
         }
     };

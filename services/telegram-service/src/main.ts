@@ -18,7 +18,7 @@ async function main() {
     // 2. Инициализация базы данных
     console.log('📦 Инициализация базы данных...');
     try {
-      initDatabase();
+      await initDatabase();
       console.log('✅ База данных готова');
     } catch (error) {
       console.error('❌ Ошибка инициализации БД:', error);
@@ -69,7 +69,7 @@ async function main() {
     const shutdown = async (signal: string) => {
       console.log(`🛑 Получен сигнал ${signal}, останавливаем бота...`);
       console.log('🛑 Закрываем соединение с базой данных...');
-      closeDatabase();
+      await closeDatabase();
       bot.stop(signal);
     };
 

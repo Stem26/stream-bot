@@ -1,4 +1,4 @@
-import { getDatabase } from '../database/database';
+import { query, queryOne, getPool } from '../database/database';
 
 export interface TwitchPlayerData {
   twitchUsername: string;
@@ -26,127 +26,100 @@ interface TwitchPlayerStatsRow {
   duel_draws: number;
 }
 
+function rowToPlayer(r: TwitchPlayerStatsRow): TwitchPlayerData {
+  return {
+    twitchUsername: r.twitch_username,
+    size: r.size,
+    lastUsed: r.last_used || 0,
+    lastUsedDate: r.last_used_date || undefined,
+    points: r.points,
+    duelTimeoutUntil: r.duel_timeout_until || undefined,
+    duelCooldownUntil: r.duel_cooldown_until || undefined,
+    duelWins: r.duel_wins,
+    duelLosses: r.duel_losses,
+    duelDraws: r.duel_draws
+  };
+}
+
 export class TwitchPlayersStorageDB {
-  loadTwitchPlayers(): Map<string, TwitchPlayerData> {
-    const rows = getDatabase().prepare(`
+  async loadTwitchPlayers(): Promise<Map<string, TwitchPlayerData>> {
+    const rows = await query<TwitchPlayerStatsRow>(`
       SELECT twitch_username, size, last_used, last_used_date, points,
         duel_timeout_until, duel_cooldown_until, duel_wins, duel_losses, duel_draws
       FROM twitch_player_stats
-    `).all() as TwitchPlayerStatsRow[];
+    `);
     const map = new Map<string, TwitchPlayerData>();
     rows.forEach(r => {
       const norm = r.twitch_username.toLowerCase();
-      map.set(norm, {
-        twitchUsername: r.twitch_username,
-        size: r.size,
-        lastUsed: r.last_used || 0,
-        lastUsedDate: r.last_used_date || undefined,
-        points: r.points,
-        duelTimeoutUntil: r.duel_timeout_until || undefined,
-        duelCooldownUntil: r.duel_cooldown_until || undefined,
-        duelWins: r.duel_wins,
-        duelLosses: r.duel_losses,
-        duelDraws: r.duel_draws
-      });
+      map.set(norm, rowToPlayer(r));
     });
     return map;
   }
 
-  saveTwitchPlayers(players: Map<string, TwitchPlayerData>): void {
-    const db = getDatabase();
-    db.transaction(() => {
+  async saveTwitchPlayers(players: Map<string, TwitchPlayerData>): Promise<void> {
+    const pool = getPool();
+    const client = await pool.connect();
+    try {
       for (const [norm, player] of players.entries()) {
-        const row = db.prepare('SELECT twitch_username FROM twitch_player_stats WHERE twitch_username = ?').get(norm);
-        if (!row) {
-          db.prepare(`
-            INSERT INTO twitch_player_stats (twitch_username, size, last_used, last_used_date, points,
-              duel_timeout_until, duel_cooldown_until, duel_wins, duel_losses, duel_draws)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          `).run(
+        await client.query(
+          `INSERT INTO twitch_player_stats (twitch_username, size, last_used, last_used_date, points,
+            duel_timeout_until, duel_cooldown_until, duel_wins, duel_losses, duel_draws)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+          ON CONFLICT (twitch_username) DO UPDATE SET
+            size=$2, last_used=$3, last_used_date=$4, points=$5,
+            duel_timeout_until=$6, duel_cooldown_until=$7, duel_wins=$8, duel_losses=$9, duel_draws=$10,
+            updated_at=CURRENT_TIMESTAMP`,
+          [
             norm, player.size, player.lastUsed, player.lastUsedDate || null, player.points || 1000,
             player.duelTimeoutUntil || null, player.duelCooldownUntil || null,
             player.duelWins || 0, player.duelLosses || 0, player.duelDraws || 0
-          );
-        } else {
-          db.prepare(`
-            UPDATE twitch_player_stats SET size=?, last_used=?, last_used_date=?, points=?,
-              duel_timeout_until=?, duel_cooldown_until=?, duel_wins=?, duel_losses=?, duel_draws=?,
-              updated_at=CURRENT_TIMESTAMP WHERE twitch_username=?
-          `).run(
-            player.size, player.lastUsed, player.lastUsedDate || null, player.points || 1000,
-            player.duelTimeoutUntil || null, player.duelCooldownUntil || null,
-            player.duelWins || 0, player.duelLosses || 0, player.duelDraws || 0, norm
-          );
-        }
+          ]
+        );
       }
-    })();
+    } finally {
+      client.release();
+    }
   }
 
-  getTwitchPlayerRank(players: Map<string, TwitchPlayerData>, username: string): number {
+  async getTwitchPlayerRank(players: Map<string, TwitchPlayerData>, username: string): Promise<number> {
     const norm = username.toLowerCase();
-    const row = getDatabase().prepare('SELECT size FROM twitch_player_stats WHERE twitch_username = ?').get(norm) as { size: number } | undefined;
+    const row = await queryOne<{ size: number }>(
+      'SELECT size FROM twitch_player_stats WHERE twitch_username = $1',
+      [norm]
+    );
     if (!row) return players.size + 1;
-    const count = getDatabase().prepare('SELECT COUNT(*) as count FROM twitch_player_stats WHERE size > ?').get(row.size) as { count: number };
-    return count.count + 1;
+    const countResult = await queryOne<{ count: number }>(
+      'SELECT COUNT(*)::int as count FROM twitch_player_stats WHERE size > $1',
+      [row.size]
+    );
+    const count = countResult?.count ?? 0;
+    return (typeof count === 'string' ? parseInt(count, 10) : count) + 1;
   }
 
-  getTop(limit: number = 10): TwitchPlayerData[] {
-    const rows = getDatabase().prepare(`
+  async getTop(limit: number = 10): Promise<TwitchPlayerData[]> {
+    const rows = await query<TwitchPlayerStatsRow>(`
       SELECT twitch_username, size, last_used, last_used_date, points,
         duel_timeout_until, duel_cooldown_until, duel_wins, duel_losses, duel_draws
-      FROM twitch_player_stats ORDER BY size DESC LIMIT ?
-    `).all(limit) as TwitchPlayerStatsRow[];
-    return rows.map(r => ({
-      twitchUsername: r.twitch_username,
-      size: r.size,
-      lastUsed: r.last_used || 0,
-      lastUsedDate: r.last_used_date || undefined,
-      points: r.points,
-      duelTimeoutUntil: r.duel_timeout_until || undefined,
-      duelCooldownUntil: r.duel_cooldown_until || undefined,
-      duelWins: r.duel_wins,
-      duelLosses: r.duel_losses,
-      duelDraws: r.duel_draws
-    }));
+      FROM twitch_player_stats ORDER BY size DESC LIMIT $1
+    `, [limit]);
+    return rows.map(rowToPlayer);
   }
 
-  getBottom(limit: number = 10): TwitchPlayerData[] {
-    const rows = getDatabase().prepare(`
+  async getBottom(limit: number = 10): Promise<TwitchPlayerData[]> {
+    const rows = await query<TwitchPlayerStatsRow>(`
       SELECT twitch_username, size, last_used, last_used_date, points,
         duel_timeout_until, duel_cooldown_until, duel_wins, duel_losses, duel_draws
-      FROM twitch_player_stats ORDER BY size ASC LIMIT ?
-    `).all(limit) as TwitchPlayerStatsRow[];
-    return rows.map(r => ({
-      twitchUsername: r.twitch_username,
-      size: r.size,
-      lastUsed: r.last_used || 0,
-      lastUsedDate: r.last_used_date || undefined,
-      points: r.points,
-      duelTimeoutUntil: r.duel_timeout_until || undefined,
-      duelCooldownUntil: r.duel_cooldown_until || undefined,
-      duelWins: r.duel_wins,
-      duelLosses: r.duel_losses,
-      duelDraws: r.duel_draws
-    }));
+      FROM twitch_player_stats ORDER BY size ASC LIMIT $1
+    `, [limit]);
+    return rows.map(rowToPlayer);
   }
 
-  getTopPoints(limit: number = 10): TwitchPlayerData[] {
-    const rows = getDatabase().prepare(`
+  async getTopPoints(limit: number = 10): Promise<TwitchPlayerData[]> {
+    const rows = await query<TwitchPlayerStatsRow>(`
       SELECT twitch_username, size, last_used, last_used_date, points,
         duel_timeout_until, duel_cooldown_until, duel_wins, duel_losses, duel_draws
-      FROM twitch_player_stats ORDER BY points DESC LIMIT ?
-    `).all(limit) as TwitchPlayerStatsRow[];
-    return rows.map(r => ({
-      twitchUsername: r.twitch_username,
-      size: r.size,
-      lastUsed: r.last_used || 0,
-      lastUsedDate: r.last_used_date || undefined,
-      points: r.points,
-      duelTimeoutUntil: r.duel_timeout_until || undefined,
-      duelCooldownUntil: r.duel_cooldown_until || undefined,
-      duelWins: r.duel_wins,
-      duelLosses: r.duel_losses,
-      duelDraws: r.duel_draws
-    }));
+      FROM twitch_player_stats ORDER BY points DESC LIMIT $1
+    `, [limit]);
+    return rows.map(rowToPlayer);
   }
 }

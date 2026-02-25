@@ -1,7 +1,7 @@
 import { BotContext } from '../types/context';
 import { getMoscowDate, canUseFurryToday } from '../utils/date';
 
-export function furryCommand(ctx: BotContext) {
+export async function furryCommand(ctx: BotContext) {
   if (!ctx.from) {
     ctx.reply('❌ Не удалось получить информацию о пользователе.');
     return;
@@ -13,8 +13,7 @@ export function furryCommand(ctx: BotContext) {
   const firstName = user.first_name || 'Пользователь';
   const today = getMoscowDate();
 
-  // ✨ Используем ctx.services
-  let player = ctx.services.players.get(userId);
+  let player = await ctx.services.players.get(userId);
 
   if (!player) {
     player = {
@@ -34,7 +33,7 @@ export function furryCommand(ctx: BotContext) {
     player.lastFurryDate = today;
     player.username = username;
     player.firstName = firstName;
-    ctx.services.players.set(userId, player);
+    await ctx.services.players.set(userId, player);
 
     ctx.reply(`@${username} ты сегодня фури на ${percentage}%\nСледующая попытка завтра!`);
   } else {

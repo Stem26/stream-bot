@@ -1,4 +1,4 @@
-import { getDatabase } from '../database/database';
+import { query, queryOne } from '../database/database';
 
 export interface Player {
   userId: number;
@@ -28,120 +28,105 @@ interface PlayerStatsRow {
   last_growth: number | null;
 }
 
+function rowToPlayer(row: PlayerStatsRow): Player {
+  return {
+    userId: row.telegram_id,
+    username: row.username || '',
+    firstName: row.first_name || '',
+    size: row.size,
+    lastUsed: row.last_used || 0,
+    lastUsedDate: row.last_used_date || '',
+    lastHornyDate: row.last_horny_date || undefined,
+    lastFurryDate: row.last_furry_date || undefined,
+    lastFutureDate: row.last_future_date || undefined,
+    futureAttemptsToday: row.future_attempts_today || 0,
+    lastGrowth: row.last_growth || 0
+  };
+}
+
 export class PlayersStorageDB {
-  get(userId: number): Player | undefined {
-    const row = getDatabase().prepare('SELECT * FROM player_stats WHERE telegram_id = ?').get(userId) as PlayerStatsRow | undefined;
+  async get(userId: number): Promise<Player | undefined> {
+    const row = await queryOne<PlayerStatsRow>(
+      'SELECT * FROM player_stats WHERE telegram_id = $1',
+      [userId]
+    );
     if (!row) return undefined;
-    return {
-      userId: row.telegram_id,
-      username: row.username || '',
-      firstName: row.first_name || '',
-      size: row.size,
-      lastUsed: row.last_used || 0,
-      lastUsedDate: row.last_used_date || '',
-      lastHornyDate: row.last_horny_date || undefined,
-      lastFurryDate: row.last_furry_date || undefined,
-      lastFutureDate: row.last_future_date || undefined,
-      futureAttemptsToday: row.future_attempts_today || 0,
-      lastGrowth: row.last_growth || 0
-    };
+    return rowToPlayer(row);
   }
 
-  set(userId: number, player: Player): void {
-    const db = getDatabase();
-    const row = db.prepare('SELECT telegram_id FROM player_stats WHERE telegram_id = ?').get(userId);
-    if (!row) {
-      db.prepare(`
-        INSERT INTO player_stats (telegram_id, username, first_name, size, last_used, last_used_date,
+  async set(userId: number, player: Player): Promise<void> {
+    const existing = await queryOne(
+      'SELECT telegram_id FROM player_stats WHERE telegram_id = $1',
+      [userId]
+    );
+
+    if (!existing) {
+      await query(
+        `INSERT INTO player_stats (telegram_id, username, first_name, size, last_used, last_used_date,
           last_horny_date, last_furry_date, last_future_date, future_attempts_today, last_growth)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(
-        userId, player.username, player.firstName, player.size, player.lastUsed, player.lastUsedDate,
-        player.lastHornyDate || null, player.lastFurryDate || null, player.lastFutureDate || null,
-        player.futureAttemptsToday || 0, player.lastGrowth || 0
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+        [
+          userId, player.username, player.firstName, player.size, player.lastUsed, player.lastUsedDate,
+          player.lastHornyDate || null, player.lastFurryDate || null, player.lastFutureDate || null,
+          player.futureAttemptsToday || 0, player.lastGrowth || 0
+        ]
       );
     } else {
-      db.prepare(`
-        UPDATE player_stats SET username=?, first_name=?, size=?, last_used=?, last_used_date=?,
-          last_horny_date=?, last_furry_date=?, last_future_date=?, future_attempts_today=?, last_growth=?,
-          updated_at=CURRENT_TIMESTAMP WHERE telegram_id=?
-      `).run(
-        player.username, player.firstName, player.size, player.lastUsed, player.lastUsedDate,
-        player.lastHornyDate || null, player.lastFurryDate || null, player.lastFutureDate || null,
-        player.futureAttemptsToday || 0, player.lastGrowth || 0, userId
+      await query(
+        `UPDATE player_stats SET username=$1, first_name=$2, size=$3, last_used=$4, last_used_date=$5,
+          last_horny_date=$6, last_furry_date=$7, last_future_date=$8, future_attempts_today=$9, last_growth=$10,
+          updated_at=CURRENT_TIMESTAMP WHERE telegram_id=$11`,
+        [
+          player.username, player.firstName, player.size, player.lastUsed, player.lastUsedDate,
+          player.lastHornyDate || null, player.lastFurryDate || null, player.lastFutureDate || null,
+          player.futureAttemptsToday || 0, player.lastGrowth || 0, userId
+        ]
       );
     }
   }
 
-  getRank(userId: number): number {
-    const row = getDatabase().prepare('SELECT size FROM player_stats WHERE telegram_id = ?').get(userId) as { size: number } | undefined;
+  async getRank(userId: number): Promise<number> {
+    const row = await queryOne<{ size: number }>(
+      'SELECT size FROM player_stats WHERE telegram_id = $1',
+      [userId]
+    );
     if (!row) return 0;
-    const count = getDatabase().prepare('SELECT COUNT(*) as count FROM player_stats WHERE size > ?').get(row.size) as { count: number };
-    return count.count + 1;
+    const countResult = await queryOne<{ count: number }>(
+      'SELECT COUNT(*)::int as count FROM player_stats WHERE size > $1',
+      [row.size]
+    );
+    const count = countResult?.count ?? 0;
+    return (typeof count === 'string' ? parseInt(count, 10) : count) + 1;
   }
 
-  getTop(limit: number = 10): Player[] {
-    const rows = getDatabase().prepare(`
-      SELECT telegram_id, username, first_name, size, last_used, last_used_date,
+  async getTop(limit: number = 10): Promise<Player[]> {
+    const rows = await query<PlayerStatsRow>(
+      `SELECT telegram_id, username, first_name, size, last_used, last_used_date,
         last_horny_date, last_furry_date, last_future_date, future_attempts_today, last_growth
-      FROM player_stats ORDER BY size DESC LIMIT ?
-    `).all(limit) as PlayerStatsRow[];
-    return rows.map(r => ({
-      userId: r.telegram_id,
-      username: r.username || '',
-      firstName: r.first_name || '',
-      size: r.size,
-      lastUsed: r.last_used || 0,
-      lastUsedDate: r.last_used_date || '',
-      lastHornyDate: r.last_horny_date || undefined,
-      lastFurryDate: r.last_furry_date || undefined,
-      lastFutureDate: r.last_future_date || undefined,
-      futureAttemptsToday: r.future_attempts_today || 0,
-      lastGrowth: r.last_growth || 0
-    }));
+      FROM player_stats ORDER BY size DESC LIMIT $1`,
+      [limit]
+    );
+    return rows.map(rowToPlayer);
   }
 
-  getBottom(limit: number = 10): Player[] {
-    const rows = getDatabase().prepare(`
-      SELECT telegram_id, username, first_name, size, last_used, last_used_date,
+  async getBottom(limit: number = 10): Promise<Player[]> {
+    const rows = await query<PlayerStatsRow>(
+      `SELECT telegram_id, username, first_name, size, last_used, last_used_date,
         last_horny_date, last_furry_date, last_future_date, future_attempts_today, last_growth
-      FROM player_stats ORDER BY size ASC LIMIT ?
-    `).all(limit) as PlayerStatsRow[];
-    return rows.map(r => ({
-      userId: r.telegram_id,
-      username: r.username || '',
-      firstName: r.first_name || '',
-      size: r.size,
-      lastUsed: r.last_used || 0,
-      lastUsedDate: r.last_used_date || '',
-      lastHornyDate: r.last_horny_date || undefined,
-      lastFurryDate: r.last_furry_date || undefined,
-      lastFutureDate: r.last_future_date || undefined,
-      futureAttemptsToday: r.future_attempts_today || 0,
-      lastGrowth: r.last_growth || 0
-    }));
+      FROM player_stats ORDER BY size ASC LIMIT $1`,
+      [limit]
+    );
+    return rows.map(rowToPlayer);
   }
 
-  getAll(): Map<number, Player> {
-    const rows = getDatabase().prepare(`
-      SELECT telegram_id, username, first_name, size, last_used, last_used_date,
+  async getAll(): Promise<Map<number, Player>> {
+    const rows = await query<PlayerStatsRow>(
+      `SELECT telegram_id, username, first_name, size, last_used, last_used_date,
         last_horny_date, last_furry_date, last_future_date, future_attempts_today, last_growth
-      FROM player_stats
-    `).all() as PlayerStatsRow[];
+      FROM player_stats`
+    );
     const map = new Map<number, Player>();
-    rows.forEach(r => map.set(r.telegram_id, {
-      userId: r.telegram_id,
-      username: r.username || '',
-      firstName: r.first_name || '',
-      size: r.size,
-      lastUsed: r.last_used || 0,
-      lastUsedDate: r.last_used_date || '',
-      lastHornyDate: r.last_horny_date || undefined,
-      lastFurryDate: r.last_furry_date || undefined,
-      lastFutureDate: r.last_future_date || undefined,
-      futureAttemptsToday: r.future_attempts_today || 0,
-      lastGrowth: r.last_growth || 0
-    }));
+    rows.forEach(r => map.set(r.telegram_id, rowToPlayer(r)));
     return map;
   }
 }

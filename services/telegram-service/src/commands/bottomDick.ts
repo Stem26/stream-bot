@@ -1,9 +1,9 @@
 import { BotContext } from '../types/context';
 import { formatName } from '../utils/format';
 
-export function bottomDickCommand(ctx: BotContext) {
+export async function bottomDickCommand(ctx: BotContext) {
   // ✨ Используем ctx.services вместо импорта!
-  const bottomPlayers = ctx.services.players.getBottom(10);
+  const bottomPlayers = await ctx.services.players.getBottom(10);
 
   if (bottomPlayers.length === 0) {
     ctx.reply('📊 Топ пуст. Используйте /dick чтобы начать играть!');

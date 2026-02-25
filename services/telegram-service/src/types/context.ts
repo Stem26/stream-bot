@@ -1,5 +1,5 @@
 import { Context } from 'telegraf';
-import { PlayersStorage } from '../services/PlayersStorage';
+import { PlayersStorageDB } from '../services/PlayersStorageDB';
 import { DickService } from '../domain/dick/DickService';
 import { AppConfig } from './config';
 
@@ -7,7 +7,7 @@ import { AppConfig } from './config';
  * Сервисы приложения (DI контейнер)
  */
 export interface AppServices {
-  players: PlayersStorage;
+  players: PlayersStorageDB;
   dick: DickService;
 }
 

@@ -94,14 +94,14 @@ function ensurePlayer(players: Map<string, TwitchPlayerData>, twitchUsername: st
 /**
  * Обработка персонального вызова на дуэль
  */
-function handlePersonalChallenge(
+async function handlePersonalChallenge(
   challengerUsername: string,
   challengerNormalized: string,
   targetUsername: string,
   channel: string,
   players: Map<string, TwitchPlayerData>,
   now: number
-): { response: string; loser?: string; loser2?: string; bothLost?: boolean } {
+): Promise<{ response: string; loser?: string; loser2?: string; bothLost?: boolean }> {
   const targetNormalized = targetUsername.toLowerCase().replace('@', '');
   const challengerPlayer = ensurePlayer(players, challengerUsername);
   
@@ -194,7 +194,7 @@ function handlePersonalChallenge(
 
   console.log(`⚔️ Создан персональный вызов: ${challengerUsername} -> ${targetUsername} в канале ${channel}`);
 
-  storage.saveTwitchPlayers(players);
+  await storage.saveTwitchPlayers(players);
   
   return {
     response: `@${challengerUsername} вызывает @${targetUsername} на дуэль! ⚔️ У @${targetUsername} есть 2 минуты, чтобы написать !принять или !отклонить`
@@ -204,7 +204,7 @@ function handlePersonalChallenge(
 /**
  * Выполнение дуэли между двумя игроками
  */
-function executeDuel(
+async function executeDuel(
   player1Username: string,
   player1Normalized: string,
   player2Username: string,
@@ -212,7 +212,7 @@ function executeDuel(
   channel: string,
   players: Map<string, TwitchPlayerData>,
   now: number
-): { response: string; loser?: string; loser2?: string; bothLost?: boolean } {
+): Promise<{ response: string; loser?: string; loser2?: string; bothLost?: boolean }> {
   const player1 = ensurePlayer(players, player1Username);
   const player2 = ensurePlayer(players, player2Username);
   
@@ -238,7 +238,7 @@ function executeDuel(
     player2.duelLosses = (player2.duelLosses ?? 0) + 1;
 
     duelCooldownByChannel.set(channel, now);
-    storage.saveTwitchPlayers(players);
+    await storage.saveTwitchPlayers(players);
 
     return {
       response: `@${player1Username} и @${player2Username} сошлись в дуэли! Оба попали и убили друг друга! 💀💀 Оба получают (-${DUEL_WIN_POINTS}) очков и таймаут на 5 минут.`,
@@ -264,7 +264,7 @@ function executeDuel(
     player2.duelDraws = (player2.duelDraws ?? 0) + 1;
 
     duelCooldownByChannel.set(channel, now);
-    storage.saveTwitchPlayers(players);
+    await storage.saveTwitchPlayers(players);
 
     return {
       response: `@${player1Username} и @${player2Username} сошлись в дуэли! Оба промахнулись! 😅 Живы оба, но позор на всю деревню! (-${DUEL_MISS_PENALTY}) очков каждому.`,
@@ -316,7 +316,7 @@ function executeDuel(
   }
 
   duelCooldownByChannel.set(channel, now);
-  storage.saveTwitchPlayers(players);
+  await storage.saveTwitchPlayers(players);
 
   return {
     response: `@${player1Username} и @${player2Username} сошлись в дуэли! Победитель @${winner} (+${DUEL_WIN_POINTS}), проигравший @${loser} (-${DUEL_WIN_POINTS}) и в таймаут на 5 минут.`,
@@ -324,11 +324,11 @@ function executeDuel(
   };
 }
 
-export function processTwitchDuelCommand(
+export async function processTwitchDuelCommand(
     twitchUsername: string,
     channel: string,
     targetUsername?: string
-): { response: string; loser?: string; loser2?: string; bothLost?: boolean } {
+): Promise<{ response: string; loser?: string; loser2?: string; bothLost?: boolean }> {
   // Проверяем, включены ли дуэли
   if (!duelsEnabled) {
     return {
@@ -336,14 +336,14 @@ export function processTwitchDuelCommand(
     };
   }
 
-  const players = storage.loadTwitchPlayers();
+  const players = await storage.loadTwitchPlayers();
   const now = Date.now();
   const normalized = twitchUsername.toLowerCase();
   const player = ensurePlayer(players, twitchUsername);
 
   // Если указан целевой пользователь - это персональный вызов
   if (targetUsername) {
-    return handlePersonalChallenge(twitchUsername, normalized, targetUsername, channel, players, now);
+    return await handlePersonalChallenge(twitchUsername, normalized, targetUsername, channel, players, now);
   }
 
   // Проверяем exempt от cooldown
@@ -413,7 +413,7 @@ export function processTwitchDuelCommand(
     duelQueueByChannel.delete(channel);
     // После удаления очередь пуста - ставим нового игрока
     duelQueueByChannel.set(channel, { username: normalized, displayName: twitchUsername, joinedAt: now });
-    storage.saveTwitchPlayers(players);
+    await storage.saveTwitchPlayers(players);
     return {
       response: `Очередь истекла. @${twitchUsername} встал в очередь на дуэль. Ждём 2 минуты соперника!`
     };
@@ -421,7 +421,7 @@ export function processTwitchDuelCommand(
 
   if (!waiting) {
     duelQueueByChannel.set(channel, { username: normalized, displayName: twitchUsername, joinedAt: now });
-    storage.saveTwitchPlayers(players);
+    await storage.saveTwitchPlayers(players);
     return {
       response: `@${twitchUsername}, ты встал в очередь на дуэль. Ждём 2 минуты соперника!`
     };
@@ -474,7 +474,7 @@ export function processTwitchDuelCommand(
   // Удаляем из очереди и выполняем дуэль
   duelQueueByChannel.delete(channel);
   
-  return executeDuel(
+  return await executeDuel(
     waiting.displayName,
     waiting.username,
     twitchUsername,
@@ -540,13 +540,13 @@ export function resetDuelsOnStreamEnd(): void {
  * Доступно только админам
  * Возвращает список игроков для снятия реальных таймаутов в Twitch
  */
-export function pardonAllDuelTimeouts(twitchUsername: string): { success: boolean; count: number; usernames: string[] } {
+export async function pardonAllDuelTimeouts(twitchUsername: string): Promise<{ success: boolean; count: number; usernames: string[] }> {
   if (!canManageDuels(twitchUsername)) {
     console.log(`⚠️ Пользователь ${twitchUsername} попытался использовать амнистию без прав`);
     return { success: false, count: 0, usernames: [] };
   }
 
-  const players = storage.loadTwitchPlayers();
+  const players = await storage.loadTwitchPlayers();
   const now = Date.now();
   let pardoned = 0;
   const usernamesWithTimeout: string[] = [];
@@ -561,7 +561,7 @@ export function pardonAllDuelTimeouts(twitchUsername: string): { success: boolea
   }
 
   if (pardoned > 0) {
-    storage.saveTwitchPlayers(players);
+    await storage.saveTwitchPlayers(players);
     console.log(`🕊️ Амнистия: снято ${pardoned} таймаутов дуэлей пользователем ${twitchUsername}`);
     console.log(`📋 Игроки для разбана: ${usernamesWithTimeout.join(', ')}`);
   } else {
@@ -574,17 +574,17 @@ export function pardonAllDuelTimeouts(twitchUsername: string): { success: boolea
 /**
  * Принятие персонального вызова на дуэль
  */
-export function acceptDuelChallenge(
+export async function acceptDuelChallenge(
   twitchUsername: string,
   channel: string
-): { response: string; loser?: string; loser2?: string; bothLost?: boolean } {
+): Promise<{ response: string; loser?: string; loser2?: string; bothLost?: boolean }> {
   if (!duelsEnabled) {
     return {
       response: ''
     };
   }
 
-  const players = storage.loadTwitchPlayers();
+  const players = await storage.loadTwitchPlayers();
   const now = Date.now();
   const normalized = twitchUsername.toLowerCase();
   
@@ -667,7 +667,7 @@ export function acceptDuelChallenge(
   
   console.log(`✅ Вызов принят: ${twitchUsername} принимает вызов от ${challenge.challengerDisplay}`);
   
-  return executeDuel(
+  return await executeDuel(
     challenge.challengerDisplay,
     challenge.challenger,
     challenge.challengedDisplay,

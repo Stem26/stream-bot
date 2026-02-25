@@ -651,7 +651,7 @@ export class NightBotMonitor {
         console.log(`🎮 Команда !dick от ${user} в ${channel}`);
 
         try {
-            const response = processTwitchDickCommand(user);
+            const response = await processTwitchDickCommand(user);
             await this.sendMessage(channel, response);
             console.log(`✅ Отправлен ответ в чат: ${response}`);
         } catch (error) {
@@ -666,7 +666,7 @@ export class NightBotMonitor {
         console.log(`🎮 Команда !top_dick от ${user} в ${channel}`);
 
         try {
-            const response = processTwitchTopDickCommand();
+            const response = await processTwitchTopDickCommand();
             await this.sendMessage(channel, response);
             console.log(`✅ Отправлен топ в чат`);
         } catch (error) {
@@ -681,7 +681,7 @@ export class NightBotMonitor {
         console.log(`🎮 Команда !bottom_dick от ${user} в ${channel}`);
 
         try {
-            const response = processTwitchBottomDickCommand();
+            const response = await processTwitchBottomDickCommand();
             await this.sendMessage(channel, response);
             console.log(`✅ Отправлен антитоп в чат`);
         } catch (error) {
@@ -696,7 +696,7 @@ export class NightBotMonitor {
         console.log(`💰 Команда !points от ${user} в ${channel}`);
 
         try {
-            const response = processTwitchPointsCommand(user);
+            const response = await processTwitchPointsCommand(user);
             await this.sendMessage(channel, response);
             console.log(`✅ Отправлен ответ в чат: ${response}`);
         } catch (error) {
@@ -711,7 +711,7 @@ export class NightBotMonitor {
         console.log(`💰 Команда !top_points от ${user} в ${channel}`);
 
         try {
-            const response = processTwitchTopPointsCommand();
+            const response = await processTwitchTopPointsCommand();
             await this.sendMessage(channel, response);
             console.log(`✅ Отправлен топ по очкам в чат`);
         } catch (error) {
@@ -736,7 +736,7 @@ export class NightBotMonitor {
             
             log('COMMAND', { command: '!дуэль', username: user, channel, message, targetUsername });
 
-            const result = processTwitchDuelCommand(user, channel, targetUsername);
+            const result = await processTwitchDuelCommand(user, channel, targetUsername);
 
             // Если дуэли выключены, response будет пустым - ничего не отправляем
             if (result.response) {
@@ -777,7 +777,7 @@ export class NightBotMonitor {
         log('COMMAND', { command: '!принять', username: user, channel });
 
         try {
-            const result = acceptDuelChallenge(user, channel);
+            const result = await acceptDuelChallenge(user, channel);
 
             if (result.response) {
                 await this.sendMessage(channel, result.response);
@@ -818,7 +818,7 @@ export class NightBotMonitor {
         log('COMMAND', { command: '!отклонить', username: user, channel });
 
         try {
-            const result = declineDuelChallenge(user, channel);
+            const result = await declineDuelChallenge(user, channel);
 
             if (result.response) {
                 await this.sendMessage(channel, result.response);
@@ -869,7 +869,7 @@ export class NightBotMonitor {
         console.log(`🕊️ Команда !амнистия от ${user} в ${channel}`);
 
         try {
-            const result = pardonAllDuelTimeouts(user);
+            const result = await pardonAllDuelTimeouts(user);
 
             if (!result.success) {
                 // Нет прав - игнорируем молча

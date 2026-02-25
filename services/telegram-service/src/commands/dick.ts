@@ -5,7 +5,7 @@ const processedMessages = new Set<number>();
 /**
  * Команда /dick - тонкая обертка над DickService
  */
-export function dickCommand(ctx: BotContext) {
+export async function dickCommand(ctx: BotContext) {
   if (!ctx.from) {
     ctx.reply('❌ Не удалось получить информацию о пользователе.');
     return;
@@ -30,7 +30,7 @@ export function dickCommand(ctx: BotContext) {
   const firstName = user.first_name || 'Пользователь';
 
   // ✨ Вся бизнес-логика в сервисе!
-  const result = ctx.services.dick.play(userId, username, firstName);
+  const result = await ctx.services.dick.play(userId, username, firstName);
   
   // Команда только отправляет сообщение
   ctx.reply(result.message);

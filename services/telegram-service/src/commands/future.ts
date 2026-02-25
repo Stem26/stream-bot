@@ -3,7 +3,7 @@ import { getMoscowDate, canUseFutureToday } from '../utils/date';
 import { predictions } from '../utils/predictions';
 import { getAvailablePredictions, addToHistory, clearHistory } from '../utils/futureHistory';
 
-export function futureCommand(ctx: BotContext) {
+export async function futureCommand(ctx: BotContext) {
   if (!ctx.from) {
     ctx.reply('❌ Не удалось получить информацию о пользователе.');
     return;
@@ -15,7 +15,7 @@ export function futureCommand(ctx: BotContext) {
   const firstName = user.first_name || 'Пользователь';
   const today = getMoscowDate();
 
-  let player = ctx.services.players.get(userId);
+  let player = await ctx.services.players.get(userId);
 
   if (!player) {
     player = {
@@ -52,14 +52,14 @@ export function futureCommand(ctx: BotContext) {
     player.futureAttemptsToday = 1;
     player.username = username;
     player.firstName = firstName;
-    ctx.services.players.set(userId, player);
+    await ctx.services.players.set(userId, player);
 
     ctx.reply(`"${prediction}"\n\n`);
   } else {
     player.futureAttemptsToday = (attempts + 1);
     player.username = username;
     player.firstName = firstName;
-    ctx.services.players.set(userId, player);
+    await ctx.services.players.set(userId, player);
 
     if (attempts === 1) {
       ctx.reply(`@${username}, ты уже получал предсказание сегодня.\nСледующая попытка завтра!`);

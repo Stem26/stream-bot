@@ -19,12 +19,21 @@
     "twitch:token:check": "npm --workspace services/twitch-service run twitch:token:check",
     "stream:notification:test": "npm --workspace services/twitch-service run stream:notification:test",
     "db:migrate:telegram": "npm --workspace services/telegram-service run db:migrate",
-    "db:migrate:twitch": "npm --workspace services/twitch-service run db:migrate"
+    "db:migrate:twitch": "npm --workspace services/twitch-service run db:migrate",
+    "db:check": "node scripts/db-check.js"
   },
-  "keywords": ["telegram", "twitch", "bot", "monorepo", "microservices"],
+  "keywords": [
+    "telegram",
+    "twitch",
+    "bot",
+    "monorepo",
+    "microservices"
+  ],
   "author": "",
   "license": "MIT",
   "devDependencies": {
+    "dotenv": "^17.3.1",
+    "pg": "^8.18.0",
     "rimraf": "^5.0.5"
   }
 }

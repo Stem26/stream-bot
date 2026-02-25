@@ -10,8 +10,18 @@ npm install
 ### 2. Переменные окружения
 Создайте `.env` в корне проекта с продакшн-токенами (BOT_TOKEN, Twitch credentials и т.д.). Файл `.env` в .gitignore — не попадёт в репозиторий.
 
-### 3. База данных SQLite
-БД создаются в корне проекта: `telegram-bot.db`, `twitch-bot.db`.
+### 3. База данных PostgreSQL
+БД на сервере 194.87.55.131. В `.env` укажи `DATABASE_URL`:
+```
+DATABASE_URL=postgresql://root:ПАРОЛЬ@194.87.55.131:5432/stream_bot
+```
+
+**На сервере — создать БД (если ещё нет):**
+```bash
+sudo -u postgres psql -c "CREATE DATABASE stream_bot;"
+# Или если используешь пользователя root:
+# createdb -h localhost -U postgres stream_bot
+```
 
 **Создать таблицы:**
 ```bash

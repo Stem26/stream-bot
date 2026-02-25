@@ -732,7 +732,7 @@ export class TwitchStreamMonitor {
                 const dateStr = mskTime.toISOString().split('T')[0]; // YYYY-MM-DD
                 const timeStr = mskTime.toISOString().split('T')[1].substring(0, 5) + ' МСК'; // HH:MM МСК
                 
-                addStreamToHistory({
+                await addStreamToHistory({
                     date: dateStr,
                     startTime: timeStr,
                     duration: stats.duration,

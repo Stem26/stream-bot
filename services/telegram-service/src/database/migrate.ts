@@ -7,11 +7,12 @@ import { initDatabase } from './database';
 
 console.log('🚀 Запуск миграции базы данных Telegram бота...');
 
-try {
-  initDatabase();
-  console.log('✅ Миграция успешно завершена!');
-  process.exit(0);
-} catch (error) {
-  console.error('❌ Ошибка при миграции:', error);
-  process.exit(1);
-}
+initDatabase()
+  .then(() => {
+    console.log('✅ Миграция успешно завершена!');
+    process.exit(0);
+  })
+  .catch((error) => {
+    console.error('❌ Ошибка при миграции:', error);
+    process.exit(1);
+  });

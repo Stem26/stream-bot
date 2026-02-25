@@ -1,4 +1,4 @@
-import { Player, PlayersStorage } from '../../services/PlayersStorage';
+import { Player, PlayersStorageDB } from '../../services/PlayersStorageDB';
 import { getMoscowDate, canPlayToday } from '../../utils/date';
 
 /**
@@ -18,7 +18,7 @@ export interface DickPlayResult {
 export class DickService {
   private streamerUserId?: number;
 
-  constructor(private playersStorage: PlayersStorage, streamerUserId?: number) {
+  constructor(private playersStorage: PlayersStorageDB, streamerUserId?: number) {
     this.streamerUserId = streamerUserId;
   }
 
@@ -31,16 +31,13 @@ export class DickService {
 
     // Защита для стримера
     if (isStreamer) {
-      // Вариант 2: Защита от жёсткого минуса
       if (growth < -5) {
         growth = Math.floor(growth / 2);
         console.log(`🛡️ Защита стримера: минус смягчён с ${growth * 2} до ${growth}`);
       }
-
-      // Вариант 3: Компенсация после неудачи
       if (player && player.lastGrowth && player.lastGrowth < 0) {
         if (Math.random() < 0.5) {
-          const bonus = Math.floor(Math.random() * 3) + 1; // +1..+3
+          const bonus = Math.floor(Math.random() * 3) + 1;
           growth += bonus;
           console.log(`🎁 Компенсация стримеру после неудачи: +${bonus} (было ${growth - bonus}, стало ${growth})`);
         }
@@ -50,9 +47,6 @@ export class DickService {
     return growth;
   }
 
-  /**
-   * Форматировать текст изменения размера
-   */
   private formatGrowthText(growth: number): string {
     if (growth > 0) return `вырос на ${growth}`;
     if (growth < 0) return `уменьшился на ${Math.abs(growth)}`;
@@ -62,15 +56,14 @@ export class DickService {
   /**
    * Играть в dick (главная бизнес-логика)
    */
-  play(userId: number, username: string, firstName: string): DickPlayResult {
+  async play(userId: number, username: string, firstName: string): Promise<DickPlayResult> {
     const today = getMoscowDate();
     const now = Date.now();
 
-    let player = this.playersStorage.get(userId);
+    let player = await this.playersStorage.get(userId);
     const isFirstTime = !player;
     const canPlay = !player || canPlayToday(player);
 
-    // ===== Первая игра =====
     if (isFirstTime) {
       const growth = this.calculateGrowth(userId);
       player = {
@@ -82,10 +75,10 @@ export class DickService {
         lastUsedDate: today,
         lastGrowth: growth
       };
-      this.playersStorage.set(userId, player);
+      await this.playersStorage.set(userId, player);
 
       const growthText = this.formatGrowthText(growth);
-      const message = 
+      const message =
         `@${username}, твой писюн ${growthText} см.\n` +
         `Теперь он равен ${player.size} см.\n` +
         `Следующая попытка завтра!`;
@@ -93,7 +86,6 @@ export class DickService {
       return { type: 'first_time', player, growth, message };
     }
 
-    // ===== Можно играть =====
     if (canPlay && player) {
       const growth = this.calculateGrowth(userId, player);
       player.size += growth;
@@ -102,10 +94,10 @@ export class DickService {
       player.username = username;
       player.firstName = firstName;
       player.lastGrowth = growth;
-      this.playersStorage.set(userId, player);
+      await this.playersStorage.set(userId, player);
 
       const growthText = this.formatGrowthText(growth);
-      const message = 
+      const message =
         `@${username}, твой писюн ${growthText} см.\n` +
         `Теперь он равен ${player.size} см.\n` +
         `Следующая попытка завтра!`;
@@ -113,10 +105,9 @@ export class DickService {
       return { type: 'success', player, growth, message };
     }
 
-    // ===== Уже играл сегодня =====
     if (player) {
-      const rank = this.playersStorage.getRank(userId);
-      const message = 
+      const rank = await this.playersStorage.getRank(userId);
+      const message =
         `@${username}, ты уже играл.\n` +
         `Сейчас он равен ${player.size} см.\n` +
         `Ты занимаешь ${rank} место в топе.\n` +
@@ -125,28 +116,18 @@ export class DickService {
       return { type: 'already_played', player, rank, message };
     }
 
-    // Не должно сюда попасть, но на всякий случай
     throw new Error('Unexpected state in DickService.play');
   }
 
-  /**
-   * Получить топ игроков
-   */
-  getTop(limit: number = 10): Player[] {
+  async getTop(limit: number = 10): Promise<Player[]> {
     return this.playersStorage.getTop(limit);
   }
 
-  /**
-   * Получить аутсайдеров
-   */
-  getBottom(limit: number = 10): Player[] {
+  async getBottom(limit: number = 10): Promise<Player[]> {
     return this.playersStorage.getBottom(limit);
   }
 
-  /**
-   * Получить ранг игрока
-   */
-  getRank(userId: number): number {
+  async getRank(userId: number): Promise<number> {
     return this.playersStorage.getRank(userId);
   }
 }
