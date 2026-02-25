@@ -31,10 +31,18 @@ async function createBackup() {
   const filepath = path.join(BACKUP_DIR, filename);
 
   try {
+    // Парсим DATABASE_URL используя URL API
+    const dbUrl = new URL(DATABASE_URL);
+    const dbHost = dbUrl.hostname;
+    const dbPort = dbUrl.port || '5432';
+    const dbUser = dbUrl.username;
+    const dbPassword = dbUrl.password;
+    const dbName = dbUrl.pathname.slice(1); // Убираем "/" в начале
+
     // Экспортировать DATABASE_URL для pg_dump
     const dumpCommand = process.platform === 'win32'
-      ? `set PGPASSWORD=${getDatabasePassword(DATABASE_URL)} && pg_dump -h ${getDatabaseHost(DATABASE_URL)} -U ${getDatabaseUser(DATABASE_URL)} -d ${getDatabaseName(DATABASE_URL)} -f "${filepath}"`
-      : `PGPASSWORD="${getDatabasePassword(DATABASE_URL)}" pg_dump -h ${getDatabaseHost(DATABASE_URL)} -U ${getDatabaseUser(DATABASE_URL)} -d ${getDatabaseName(DATABASE_URL)} -f "${filepath}"`;
+      ? `set PGPASSWORD=${dbPassword}&& pg_dump -h ${dbHost} -p ${dbPort} -U ${dbUser} -d ${dbName} -f "${filepath}"`
+      : `PGPASSWORD="${dbPassword}" pg_dump -h ${dbHost} -p ${dbPort} -U ${dbUser} -d ${dbName} -f "${filepath}"`;
 
     await execAsync(dumpCommand);
 
@@ -49,23 +57,39 @@ async function createBackup() {
 }
 
 function getDatabaseHost(url) {
-  const match = url.match(/@([^:/]+)/);
-  return match ? match[1] : 'localhost';
+  try {
+    const dbUrl = new URL(url);
+    return dbUrl.hostname;
+  } catch {
+    return 'localhost';
+  }
 }
 
 function getDatabaseUser(url) {
-  const match = url.match(/\/\/([^:]+):/);
-  return match ? match[1] : 'postgres';
+  try {
+    const dbUrl = new URL(url);
+    return dbUrl.username;
+  } catch {
+    return 'postgres';
+  }
 }
 
 function getDatabasePassword(url) {
-  const match = url.match(/:([^@]+)@/);
-  return match ? match[1] : '';
+  try {
+    const dbUrl = new URL(url);
+    return dbUrl.password;
+  } catch {
+    return '';
+  }
 }
 
 function getDatabaseName(url) {
-  const match = url.match(/\/([^?]+)(\?|$)/);
-  return match ? match[1] : 'stream_bot';
+  try {
+    const dbUrl = new URL(url);
+    return dbUrl.pathname.slice(1);
+  } catch {
+    return 'stream_bot';
+  }
 }
 
 async function sendToTelegram(filepath, filename, chatId) {
