@@ -5,6 +5,7 @@ export interface AppConfig {
   telegram: {
     token: string;
     channelId?: string;
+    chatId?: string;
   };
   twitch: {
     channel: string;
@@ -13,7 +14,7 @@ export interface AppConfig {
     refreshToken?: string;
   };
   allowedAdmins: number[];
-  streamerUsername?: string; // Username стримера для особой механики в играх
+  streamerUsername?: string;
   nodeEnv: string;
   isLocal: boolean;
 }

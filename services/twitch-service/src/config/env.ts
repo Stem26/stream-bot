@@ -54,6 +54,7 @@ export function loadConfig(): AppConfig {
     telegram: {
       token: botToken,
       channelId: process.env.CHANNEL_ID,
+      chatId: process.env.CHAT_ID,
     },
     twitch: {
       channel: twitchChannel,
@@ -76,6 +77,7 @@ export function loadConfig(): AppConfig {
 // Экспорт для обратной совместимости (используется в старых файлах)
 export const BOT_TOKEN = process.env.BOT_TOKEN;
 export const CHANNEL_ID = process.env.CHANNEL_ID;
+export const CHAT_ID = process.env.CHAT_ID;
 export const TWITCH_CHANNEL = process.env.TWITCH_CHANNEL;
 export const TWITCH_CLIENT_ID = process.env.TWITCH_CLIENT_ID;
 export const TWITCH_ACCESS_TOKEN = process.env.TWITCH_ACCESS_TOKEN;

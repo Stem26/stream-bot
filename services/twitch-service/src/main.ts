@@ -37,7 +37,8 @@ async function main() {
         config.twitch.channel,
         config.twitch.accessToken,
         config.twitch.clientId,
-        config.telegram.channelId
+        config.telegram.channelId,
+        config.telegram.chatId
     );
 
     // Chat monitor / commands / moderation

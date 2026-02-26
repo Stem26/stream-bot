@@ -202,14 +202,16 @@ export class TwitchStreamMonitor {
      * @param channelName - имя канала (без #)
      * @param accessToken - OAuth токен для Twitch
      * @param clientId - Client ID приложения Twitch
-     * @param telegramChannelId - ID Telegram канала для уведомлений
+     * @param telegramChannelId - ID Telegram канала для уведомлений о начале стрима
+     * @param telegramChatId - ID чата обсуждения Telegram канала для уведомлений о завершении стрима
      * @returns Promise<boolean> - true при успешном подключении, false при ошибке
      */
     async connect(
         channelName: string,
         accessToken: string,
         clientId: string,
-        telegramChannelId?: string
+        telegramChannelId?: string,
+        telegramChatId?: string
     ): Promise<boolean> {
         // если singleton listener уже существует, реюзим его
         // НЕ делаем early return — нужно инициализировать apiClient, broadcasterId и т.д.
@@ -349,7 +351,7 @@ export class TwitchStreamMonitor {
                     channel: event.broadcasterDisplayName
                 });
                 
-                await this.handleStreamOffline(event, telegramChannelId, result);
+                await this.handleStreamOffline(event, telegramChatId, result);
             });
 
             // Подписываемся на событие Follow (когда пользователь нажимает "Отслеживать")
@@ -681,12 +683,12 @@ export class TwitchStreamMonitor {
     /**
      * Обработчик события завершения стрима
      */
-    private async handleStreamOffline(event: any, telegramChannelId?: string, result?: StopTrackingResult | null) {
+    private async handleStreamOffline(event: any, telegramChatId?: string, result?: StopTrackingResult | null) {
         console.error(`⚫ Стрим завершён: ${event.broadcasterDisplayName}`);
-        console.log(`[DEBUG] telegramChannelId = ${telegramChannelId}, result = ${result ? 'exists' : 'null'}`);
+        console.log(`[DEBUG] telegramChatId = ${telegramChatId}, result = ${result ? 'exists' : 'null'}`);
 
-        // Отправляем уведомление о завершении (со статистикой если есть)
-        if (telegramChannelId) {
+        // Отправляем уведомление о завершении В ЧАТ ОБСУЖДЕНИЯ КАНАЛА (со статистикой если есть)
+        if (telegramChatId) {
             try {
                 let message: string;
 
@@ -703,12 +705,12 @@ export class TwitchStreamMonitor {
                     message = `🔴 Стрим <a href="https://twitch.tv/${event.broadcasterName}">${event.broadcasterDisplayName}</a> закончился`;
                 }
 
-                await this.telegram.sendMessage(telegramChannelId, message, {
+                await this.telegram.sendMessage(telegramChatId, message, {
                     parse_mode: 'HTML',
                     link_preview_options: {is_disabled: true}
                 });
 
-                console.error('✅ Уведомление об окончании стрима отправлено в Telegram');
+                console.error('✅ Уведомление об окончании стрима отправлено в чат обсуждения Telegram');
                 
                 // Отправка бэкапа БД администратору
                 try {
@@ -742,7 +744,7 @@ export class TwitchStreamMonitor {
                 });
             }
         } else {
-            console.error('⚠️ CHANNEL_ID не установлен, уведомление о завершении не отправлено');
+            console.error('⚠️ CHAT_ID не установлен, уведомление о завершении не отправлено');
         }
 
         // Сохраняем статистику стрима в историю
