@@ -94,3 +94,20 @@ backups/
 # Monorepo
 services/**/dist
 services/**/node_modules
+
+# КРИТИЧНО: npm workspaces создаёт симлинки в node_modules/
+# Из-за этого туда попадают файлы из services/* через симлинки
+# Нужно явно игнорировать эти файлы ВНУТРИ симлинков
+node_modules/telegram-service/dist/
+node_modules/telegram-service/logs/
+node_modules/telegram-service/.env*
+node_modules/telegram-service/*.db
+node_modules/telegram-service/*.db-*
+node_modules/telegram-service/node_modules/
+
+node_modules/twitch-service/dist/
+node_modules/twitch-service/logs/
+node_modules/twitch-service/.env*
+node_modules/twitch-service/*.db
+node_modules/twitch-service/*.db-*
+node_modules/twitch-service/node_modules/
