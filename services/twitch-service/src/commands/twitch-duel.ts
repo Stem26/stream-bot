@@ -32,9 +32,11 @@ type DuelChallengeEntry = {
   createdAt: number;
 };
 
+// Храним несколько вызовов: Map<channel, Map<challengeId, DuelChallengeEntry>>
+// challengeId формируется как "challenger_challenged" (оба normalized)
 const duelQueueByChannel = new Map<string, DuelQueueEntry>();
 const duelCooldownByChannel = new Map<string, number>();
-const duelChallengesByChannel = new Map<string, DuelChallengeEntry>();
+const duelChallengesByChannel = new Map<string, Map<string, DuelChallengeEntry>>();
 const DEFAULT_POINTS = 1000;
 const DUEL_WIN_POINTS = 25;
 const DUEL_MISS_PENALTY = 5;
@@ -92,6 +94,69 @@ function ensurePlayer(players: Map<string, TwitchPlayerData>, twitchUsername: st
 }
 
 /**
+ * Получить все вызовы для канала
+ */
+function getChallengesForChannel(channel: string): Map<string, DuelChallengeEntry> {
+  let challenges = duelChallengesByChannel.get(channel);
+  if (!challenges) {
+    challenges = new Map();
+    duelChallengesByChannel.set(channel, challenges);
+  }
+  return challenges;
+}
+
+/**
+ * Проверить, участвует ли пользователь в каком-либо вызове (как challenger или challenged)
+ */
+function findUserChallenge(channel: string, username: string): DuelChallengeEntry | undefined {
+  const challenges = getChallengesForChannel(channel);
+  for (const [_, challenge] of challenges) {
+    if (challenge.challenger === username || challenge.challenged === username) {
+      return challenge;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Удалить все вызовы, в которых участвует пользователь (как challenger или challenged)
+ */
+function clearUserChallenges(channel: string, username: string): void {
+  const challenges = getChallengesForChannel(channel);
+  const toDelete: string[] = [];
+  
+  for (const [challengeId, challenge] of challenges) {
+    if (challenge.challenger === username || challenge.challenged === username) {
+      toDelete.push(challengeId);
+      console.log(`🧹 Удаляем вызов: ${challenge.challengerDisplay} -> ${challenge.challengedDisplay}`);
+    }
+  }
+  
+  for (const id of toDelete) {
+    challenges.delete(id);
+  }
+}
+
+/**
+ * Очистить устаревшие вызовы в канале
+ */
+function cleanExpiredChallenges(channel: string, now: number): void {
+  const challenges = getChallengesForChannel(channel);
+  const toDelete: string[] = [];
+  
+  for (const [challengeId, challenge] of challenges) {
+    if (now - challenge.createdAt > CHALLENGE_TIMEOUT_MS) {
+      toDelete.push(challengeId);
+      console.log(`⏱️ Вызов на дуэль от ${challenge.challengerDisplay} к ${challenge.challengedDisplay} истёк`);
+    }
+  }
+  
+  for (const id of toDelete) {
+    challenges.delete(id);
+  }
+}
+
+/**
  * Обработка персонального вызова на дуэль
  */
 async function handlePersonalChallenge(
@@ -122,6 +187,9 @@ async function handlePersonalChallenge(
       response: `@${challengerUsername}, нельзя вызвать самого себя на дуэль!`
     };
   }
+
+  // Очищаем устаревшие вызовы
+  cleanExpiredChallenges(channel, now);
 
   // Проверяем, что вызывающий не стоит в общей очереди
   const queueEntry = duelQueueByChannel.get(channel);
@@ -177,25 +245,38 @@ async function handlePersonalChallenge(
     };
   }
 
-  // Проверяем, есть ли уже активный вызов для этого пользователя
-  const existingChallenge = duelChallengesByChannel.get(channel);
-  if (existingChallenge) {
-    // Проверяем таймаут вызова
-    if (now - existingChallenge.createdAt > CHALLENGE_TIMEOUT_MS) {
-      // Вызов истёк, удаляем его
-      duelChallengesByChannel.delete(channel);
-      console.log(`⏱️ Вызов на дуэль от ${existingChallenge.challenger} к ${existingChallenge.challenged} истёк`);
-    } else {
-      // Есть активный вызов
-      const secondsLeft = Math.ceil((CHALLENGE_TIMEOUT_MS - (now - existingChallenge.createdAt)) / 1000);
+  // Проверяем, участвует ли вызывающий в другом вызове
+  const challengerExistingChallenge = findUserChallenge(channel, challengerNormalized);
+  if (challengerExistingChallenge) {
+    if (challengerExistingChallenge.challenger === challengerNormalized) {
       return {
-        response: `Уже есть активный вызов от @${existingChallenge.challengerDisplay} к @${existingChallenge.challengedDisplay} (осталось ${secondsLeft} сек)`
+        response: `@${challengerUsername}, ты уже вызвал @${challengerExistingChallenge.challengedDisplay} на дуэль! Дождись ответа.`
+      };
+    } else {
+      return {
+        response: `@${challengerUsername}, тебя уже вызвал @${challengerExistingChallenge.challengerDisplay} на дуэль! Напиши !принять или !отклонить`
+      };
+    }
+  }
+
+  // Проверяем, участвует ли цель в другом вызове
+  const targetExistingChallenge = findUserChallenge(channel, targetNormalized);
+  if (targetExistingChallenge) {
+    if (targetExistingChallenge.challenger === targetNormalized) {
+      return {
+        response: `@${challengerUsername}, @${targetUsername} уже вызвал кого-то на дуэль, дождись окончания.`
+      };
+    } else {
+      return {
+        response: `@${challengerUsername}, @${targetUsername} уже вызван @${targetExistingChallenge.challengerDisplay} на дуэль, дождись окончания.`
       };
     }
   }
 
   // Создаём новый вызов
-  duelChallengesByChannel.set(channel, {
+  const challenges = getChallengesForChannel(channel);
+  const challengeId = `${challengerNormalized}_${targetNormalized}`;
+  challenges.set(challengeId, {
     challenger: challengerNormalized,
     challengerDisplay: challengerUsername,
     challenged: targetNormalized,
@@ -203,7 +284,7 @@ async function handlePersonalChallenge(
     createdAt: now
   });
 
-  console.log(`⚔️ Создан персональный вызов: ${challengerUsername} -> ${cleanTarget} в канале ${channel}`);
+  console.log(`⚔️ Создан персональный вызов #${challenges.size}: ${challengerUsername} -> ${cleanTarget} в канале ${channel}`);
 
   await storage.saveTwitchPlayers(players);
   
@@ -357,6 +438,9 @@ export async function processTwitchDuelCommand(
     return await handlePersonalChallenge(twitchUsername, normalized, targetUsername, channel, players, now);
   }
 
+  // Очищаем устаревшие вызовы
+  cleanExpiredChallenges(channel, now);
+
   // Проверяем exempt от cooldown
   const isExempt = DUEL_EXEMPT_USERS.has(normalized);
 
@@ -396,25 +480,16 @@ export async function processTwitchDuelCommand(
   }
 
   // Проверяем, что игрок не участвует в персональном вызове
-  const activeChallengeForQueue = duelChallengesByChannel.get(channel);
-  if (activeChallengeForQueue) {
-    // Проверяем таймаут вызова
-    if (now - activeChallengeForQueue.createdAt <= CHALLENGE_TIMEOUT_MS) {
-      // Вызов ещё активен
-      if (activeChallengeForQueue.challenger === normalized) {
-        return {
-          response: `@${twitchUsername}, ты уже вызвал @${activeChallengeForQueue.challengedDisplay} на дуэль! Дождись ответа.`
-        };
-      }
-      if (activeChallengeForQueue.challenged === normalized) {
-        return {
-          response: `@${twitchUsername}, тебя вызвал @${activeChallengeForQueue.challengerDisplay} на дуэль! Напиши !принять или !отклонить`
-        };
-      }
+  const userChallenge = findUserChallenge(channel, normalized);
+  if (userChallenge) {
+    if (userChallenge.challenger === normalized) {
+      return {
+        response: `@${twitchUsername}, ты уже вызвал @${userChallenge.challengedDisplay} на дуэль! Дождись ответа.`
+      };
     } else {
-      // Вызов истёк, удаляем его
-      duelChallengesByChannel.delete(channel);
-      console.log(`⏱️ Вызов на дуэль от ${activeChallengeForQueue.challenger} к ${activeChallengeForQueue.challenged} истёк (удалён при попытке встать в очередь)`);
+      return {
+        response: `@${twitchUsername}, тебя вызвал @${userChallenge.challengerDisplay} на дуэль! Напиши !принять или !отклонить`
+      };
     }
   }
 
@@ -445,40 +520,19 @@ export async function processTwitchDuelCommand(
     };
   }
 
-  // Проверяем, что оба игрока не участвуют в персональном вызове
-  const activeChallengeForDuel = duelChallengesByChannel.get(channel);
-  if (activeChallengeForDuel) {
-    // Проверяем таймаут вызова
-    if (now - activeChallengeForDuel.createdAt <= CHALLENGE_TIMEOUT_MS) {
-      // Вызов ещё активен
-      // Проверяем текущего игрока
-      if (activeChallengeForDuel.challenger === normalized) {
-        return {
-          response: `@${twitchUsername}, ты уже вызвал @${activeChallengeForDuel.challengedDisplay} на дуэль! Дождись ответа.`
-        };
-      }
-      if (activeChallengeForDuel.challenged === normalized) {
-        return {
-          response: `@${twitchUsername}, тебя вызвал @${activeChallengeForDuel.challengerDisplay} на дуэль! Напиши !принять или !отклонить`
-        };
-      }
-      // Проверяем игрока в очереди
-      if (activeChallengeForDuel.challenger === waiting.username) {
-        duelQueueByChannel.delete(channel);
-        return {
-          response: `@${waiting.displayName} уже вызвал @${activeChallengeForDuel.challengedDisplay} на дуэль, очередь отменена.`
-        };
-      }
-      if (activeChallengeForDuel.challenged === waiting.username) {
-        duelQueueByChannel.delete(channel);
-        return {
-          response: `@${waiting.displayName} вызван @${activeChallengeForDuel.challengerDisplay} на персональную дуэль, очередь отменена.`
-        };
-      }
+  // Проверяем, что игрок из очереди не участвует в персональном вызове
+  const waitingUserChallenge = findUserChallenge(channel, waiting.username);
+  if (waitingUserChallenge) {
+    // Игрок в очереди участвует в персональном вызове - очищаем очередь
+    duelQueueByChannel.delete(channel);
+    if (waitingUserChallenge.challenger === waiting.username) {
+      return {
+        response: `@${waiting.displayName} уже вызвал @${waitingUserChallenge.challengedDisplay} на дуэль, очередь отменена. @${twitchUsername}, встань в очередь снова!`
+      };
     } else {
-      // Вызов истёк, удаляем его
-      duelChallengesByChannel.delete(channel);
-      console.log(`⏱️ Персональный вызов истёк: ${activeChallengeForDuel.challenger} -> ${activeChallengeForDuel.challenged} (удалён при начале дуэли из очереди)`);
+      return {
+        response: `@${waiting.displayName} вызван @${waitingUserChallenge.challengerDisplay} на персональную дуэль, очередь отменена. @${twitchUsername}, встань в очередь снова!`
+      };
     }
   }
 
@@ -599,38 +653,33 @@ export async function acceptDuelChallenge(
   const now = Date.now();
   const normalized = twitchUsername.toLowerCase();
   
-  // Проверяем, есть ли активный вызов
-  const challenge = duelChallengesByChannel.get(channel);
+  // Очищаем устаревшие вызовы
+  cleanExpiredChallenges(channel, now);
+
+  // Ищем вызов, где этот пользователь - вызванный игрок
+  const userChallenge = findUserChallenge(channel, normalized);
   
-  if (!challenge) {
+  if (!userChallenge) {
     return {
       response: `@${twitchUsername}, нет активных вызовов на дуэль`
     };
   }
 
-  // Проверяем таймаут вызова
-  if (now - challenge.createdAt > CHALLENGE_TIMEOUT_MS) {
-    duelChallengesByChannel.delete(channel);
-    return {
-      response: `@${twitchUsername}, вызов на дуэль истёк`
-    };
-  }
-
   // Проверяем, что принимает именно вызванный игрок
-  if (challenge.challenged !== normalized) {
+  if (userChallenge.challenged !== normalized) {
     return {
-      response: `@${twitchUsername}, этот вызов не для тебя! Вызван @${challenge.challengedDisplay}`
+      response: `@${twitchUsername}, этот вызов не для тебя! Вызван @${userChallenge.challengedDisplay}`
     };
   }
 
   const challengedPlayer = ensurePlayer(players, twitchUsername);
   const challengedIsExempt = DUEL_EXEMPT_USERS.has(normalized);
-  const challengerIsExempt = DUEL_EXEMPT_USERS.has(challenge.challenger);
+  const challengerIsExempt = DUEL_EXEMPT_USERS.has(userChallenge.challenger);
 
   // Проверяем личный timeout принимающего (если не exempt)
   if (!challengedIsExempt && challengedPlayer.duelTimeoutUntil && now < challengedPlayer.duelTimeoutUntil) {
     const minutesLeft = Math.ceil((challengedPlayer.duelTimeoutUntil - now) / 60000);
-    duelChallengesByChannel.delete(channel);
+    clearUserChallenges(channel, normalized);
     return {
       response: `@${twitchUsername}, ты в таймауте ещё ${minutesLeft} мин. Вызов отменён.`
     };
@@ -640,7 +689,7 @@ export async function acceptDuelChallenge(
   // ИСКЛЮЧЕНИЕ: если вызвал exempt пользователь (стример), пропускаем cooldown
   if (!challengedIsExempt && !challengerIsExempt && challengedPlayer.duelCooldownUntil && now < challengedPlayer.duelCooldownUntil) {
     const secondsLeft = Math.ceil((challengedPlayer.duelCooldownUntil - now) / 1000);
-    duelChallengesByChannel.delete(channel);
+    clearUserChallenges(channel, normalized);
     return {
       response: `@${twitchUsername}, ты недавно участвовал в дуэли, жди ${secondsLeft} сек. Вызов отменён.`
     };
@@ -652,15 +701,15 @@ export async function acceptDuelChallenge(
     // Проверяем таймаут очереди
     if (now - queueEntry.joinedAt <= QUEUE_TIMEOUT_MS) {
       // Очередь ещё активна
-      if (queueEntry.username === challenge.challenger) {
-        duelChallengesByChannel.delete(channel);
+      if (queueEntry.username === userChallenge.challenger) {
+        clearUserChallenges(channel, normalized);
         duelQueueByChannel.delete(channel);
         return {
-          response: `@${challenge.challengerDisplay} уже стоит в очереди на обычную дуэль. Вызов отменён.`
+          response: `@${userChallenge.challengerDisplay} уже стоит в очереди на обычную дуэль. Вызов отменён.`
         };
       }
-      if (queueEntry.username === challenge.challenged) {
-        duelChallengesByChannel.delete(channel);
+      if (queueEntry.username === userChallenge.challenged) {
+        clearUserChallenges(channel, normalized);
         duelQueueByChannel.delete(channel);
         return {
           response: `@${twitchUsername}, ты уже стоишь в очереди на обычную дуэль. Вызов отменён.`
@@ -673,16 +722,17 @@ export async function acceptDuelChallenge(
     }
   }
 
-  // Удаляем вызов и выполняем дуэль
-  duelChallengesByChannel.delete(channel);
+  console.log(`✅ Вызов принят: ${twitchUsername} принимает вызов от ${userChallenge.challengerDisplay}`);
   
-  console.log(`✅ Вызов принят: ${twitchUsername} принимает вызов от ${challenge.challengerDisplay}`);
+  // КРИТИЧНО: Удаляем ВСЕ вызовы с участием обоих игроков ПЕРЕД началом дуэли
+  clearUserChallenges(channel, userChallenge.challenger);
+  clearUserChallenges(channel, userChallenge.challenged);
   
   return await executeDuel(
-    challenge.challengerDisplay,
-    challenge.challenger,
-    challenge.challengedDisplay,
-    challenge.challenged,
+    userChallenge.challengerDisplay,
+    userChallenge.challenger,
+    userChallenge.challengedDisplay,
+    userChallenge.challenged,
     channel,
     players,
     now
@@ -705,37 +755,32 @@ export function declineDuelChallenge(
   const now = Date.now();
   const normalized = twitchUsername.toLowerCase();
   
-  // Проверяем, есть ли активный вызов
-  const challenge = duelChallengesByChannel.get(channel);
+  // Очищаем устаревшие вызовы
+  cleanExpiredChallenges(channel, now);
   
-  if (!challenge) {
+  // Ищем вызов, где этот пользователь - вызванный игрок
+  const userChallenge = findUserChallenge(channel, normalized);
+  
+  if (!userChallenge) {
     return {
       response: `@${twitchUsername}, нет активных вызовов на дуэль`
     };
   }
 
-  // Проверяем таймаут вызова
-  if (now - challenge.createdAt > CHALLENGE_TIMEOUT_MS) {
-    duelChallengesByChannel.delete(channel);
-    return {
-      response: `@${twitchUsername}, вызов на дуэль уже истёк`
-    };
-  }
-
   // Проверяем, что отклоняет именно вызванный игрок
-  if (challenge.challenged !== normalized) {
+  if (userChallenge.challenged !== normalized) {
     return {
       response: `@${twitchUsername}, этот вызов не для тебя!`
     };
   }
 
   // Удаляем вызов
-  duelChallengesByChannel.delete(channel);
+  clearUserChallenges(channel, normalized);
   
-  console.log(`🏳️ Вызов отклонён: ${twitchUsername} отклонил вызов от ${challenge.challengerDisplay}`);
+  console.log(`🏳️ Вызов отклонён: ${twitchUsername} отклонил вызов от ${userChallenge.challengerDisplay}`);
   
   return {
-    response: `@${twitchUsername} отклонил вызов от @${challenge.challengerDisplay} 🏳️`
+    response: `@${twitchUsername} отклонил вызов от @${userChallenge.challengerDisplay} 🏳️`
   };
 }
 
@@ -743,7 +788,10 @@ export function declineDuelChallenge(
  * Очистка персональных вызовов (вызывается при окончании стрима)
  */
 export function clearDuelChallenges(): void {
-  const challengesCount = duelChallengesByChannel.size;
+  let challengesCount = 0;
+  for (const [_, challenges] of duelChallengesByChannel) {
+    challengesCount += challenges.size;
+  }
   duelChallengesByChannel.clear();
   if (challengesCount > 0) {
     console.log(`🧹 Персональные вызовы очищены (было ${challengesCount} вызовов)`);
