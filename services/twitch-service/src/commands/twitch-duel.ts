@@ -102,7 +102,18 @@ async function handlePersonalChallenge(
   players: Map<string, TwitchPlayerData>,
   now: number
 ): Promise<{ response: string; loser?: string; loser2?: string; bothLost?: boolean }> {
-  const targetNormalized = targetUsername.toLowerCase().replace('@', '');
+  // Очищаем имя от @ и невидимых символов
+  let cleanTarget = targetUsername.toLowerCase().replace(/^@+/, '');
+  cleanTarget = cleanTarget.replace(/[\u200B-\u200D\uFEFF\u034F\u061C\u180E]/g, '').trim();
+  
+  // Если после очистки осталась пустая строка, это невалидное имя
+  if (!cleanTarget || cleanTarget.length === 0) {
+    return {
+      response: `@${challengerUsername}, укажи корректное имя пользователя для вызова на дуэль!`
+    };
+  }
+  
+  const targetNormalized = cleanTarget;
   const challengerPlayer = ensurePlayer(players, challengerUsername);
   
   // Нельзя вызвать самого себя
@@ -192,12 +203,12 @@ async function handlePersonalChallenge(
     createdAt: now
   });
 
-  console.log(`⚔️ Создан персональный вызов: ${challengerUsername} -> ${targetUsername} в канале ${channel}`);
+  console.log(`⚔️ Создан персональный вызов: ${challengerUsername} -> ${cleanTarget} в канале ${channel}`);
 
   await storage.saveTwitchPlayers(players);
   
   return {
-    response: `@${challengerUsername} вызывает @${targetUsername} на дуэль! ⚔️ У @${targetUsername} есть 2 минуты, чтобы написать !принять или !отклонить`
+    response: `@${challengerUsername} вызывает @${cleanTarget} на дуэль! ⚔️ У @${cleanTarget} есть 2 минуты, чтобы написать !принять или !отклонить`
   };
 }
 

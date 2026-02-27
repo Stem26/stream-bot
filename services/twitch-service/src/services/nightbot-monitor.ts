@@ -726,7 +726,17 @@ export class NightBotMonitor {
         try {
             // Парсим сообщение для извлечения целевого пользователя
             const parts = message.trim().split(/\s+/);
-            const targetUsername = parts.length > 1 ? parts[1].replace('@', '') : undefined;
+            let targetUsername = parts.length > 1 ? parts[1].replace(/^@+/, '') : undefined;
+            
+            // Фильтруем пустые имена и невидимые символы
+            if (targetUsername) {
+                // Удаляем все невидимые Unicode символы (Zero-width, combining marks, etc.)
+                targetUsername = targetUsername.replace(/[\u200B-\u200D\uFEFF\u034F\u061C\u180E]/g, '').trim();
+                // Если после очистки осталась пустая строка, считаем что цель не указана
+                if (!targetUsername || targetUsername.length === 0) {
+                    targetUsername = undefined;
+                }
+            }
 
             if (targetUsername) {
                 console.log(`⚔️ Команда !дуэль от ${user} -> вызов @${targetUsername} в ${channel}`);
