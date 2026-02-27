@@ -767,9 +767,8 @@ export async function acceptDuelChallenge(
 
   console.log(`✅ Вызов принят: ${twitchUsername} принимает вызов от ${userChallenge.challengerDisplay}`);
   
-  // КРИТИЧНО: Удаляем ВСЕ вызовы с участием обоих игроков ПЕРЕД началом дуэли
-  clearUserChallenges(channel, userChallenge.challenger);
-  clearUserChallenges(channel, userChallenge.challenged);
+  // Не удаляем вызовы здесь - это сделает executeDuel() после установки cooldown
+  // (Очистка происходит через clearAllChallengesInChannel внутри executeDuel)
   
   return await executeDuel(
     userChallenge.challengerDisplay,
