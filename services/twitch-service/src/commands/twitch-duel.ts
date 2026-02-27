@@ -110,11 +110,17 @@ function getChallengesForChannel(channel: string): Map<string, DuelChallengeEntr
  */
 function findUserChallenge(channel: string, username: string): DuelChallengeEntry | undefined {
   const challenges = getChallengesForChannel(channel);
-  for (const [_, challenge] of challenges) {
+  console.log(`🔎 findUserChallenge: ищем ${username} в канале ${channel}, всего вызовов: ${challenges.size}`);
+  
+  for (const [challengeId, challenge] of challenges) {
+    console.log(`   - Проверяем вызов ${challengeId}: ${challenge.challenger} -> ${challenge.challenged}`);
     if (challenge.challenger === username || challenge.challenged === username) {
+      console.log(`   ✅ НАЙДЕН! ${username} участвует в вызове ${challenge.challengerDisplay} -> ${challenge.challengedDisplay}`);
       return challenge;
     }
   }
+  
+  console.log(`   ❌ Не найдено вызовов с участием ${username}`);
   return undefined;
 }
 
@@ -153,6 +159,22 @@ function cleanExpiredChallenges(channel: string, now: number): void {
   
   for (const id of toDelete) {
     challenges.delete(id);
+  }
+}
+
+/**
+ * Очистить ВСЕ вызовы в канале (используется после начала любой дуэли, т.к. включается cooldown)
+ */
+function clearAllChallengesInChannel(channel: string, reason: string = 'Дуэль началась, cooldown активен'): void {
+  const challenges = getChallengesForChannel(channel);
+  const count = challenges.size;
+  
+  if (count > 0) {
+    console.log(`🧹 Очистка всех вызовов в канале ${channel}: ${count} вызовов (причина: ${reason})`);
+    for (const [_, challenge] of challenges) {
+      console.log(`   - Отменён вызов: ${challenge.challengerDisplay} -> ${challenge.challengedDisplay}`);
+    }
+    challenges.clear();
   }
 }
 
@@ -247,7 +269,9 @@ async function handlePersonalChallenge(
 
   // Проверяем, участвует ли вызывающий в другом вызове
   const challengerExistingChallenge = findUserChallenge(channel, challengerNormalized);
+  console.log(`🔍 Проверка вызовов для ${challengerNormalized} в канале ${channel}: ${challengerExistingChallenge ? 'НАЙДЕН' : 'НЕ НАЙДЕН'}`);
   if (challengerExistingChallenge) {
+    console.log(`⚠️ Попытка второго вызова: ${challengerNormalized} уже участвует в вызове ${challengerExistingChallenge.challengerDisplay} -> ${challengerExistingChallenge.challengedDisplay}`);
     if (challengerExistingChallenge.challenger === challengerNormalized) {
       return {
         response: `@${challengerUsername}, ты уже вызвал @${challengerExistingChallenge.challengedDisplay} на дуэль! Дождись ответа.`
@@ -276,6 +300,13 @@ async function handlePersonalChallenge(
   // Создаём новый вызов
   const challenges = getChallengesForChannel(channel);
   const challengeId = `${challengerNormalized}_${targetNormalized}`;
+  
+  console.log(`📝 Создание вызова в канале ${channel}:`);
+  console.log(`   challengeId: ${challengeId}`);
+  console.log(`   challenger: ${challengerNormalized} (display: ${challengerUsername})`);
+  console.log(`   challenged: ${targetNormalized} (display: ${targetUsername})`);
+  console.log(`   Текущее кол-во вызовов в канале: ${challenges.size}`);
+  
   challenges.set(challengeId, {
     challenger: challengerNormalized,
     challengerDisplay: challengerUsername,
@@ -330,6 +361,10 @@ async function executeDuel(
     player2.duelLosses = (player2.duelLosses ?? 0) + 1;
 
     duelCooldownByChannel.set(channel, now);
+    
+    // КРИТИЧНО: Очищаем ВСЕ вызовы в канале, т.к. включился cooldown на 1 минуту
+    clearAllChallengesInChannel(channel, 'Оба убили друг друга, cooldown 1 мин');
+    
     await storage.saveTwitchPlayers(players);
 
     return {
@@ -356,6 +391,10 @@ async function executeDuel(
     player2.duelDraws = (player2.duelDraws ?? 0) + 1;
 
     duelCooldownByChannel.set(channel, now);
+    
+    // КРИТИЧНО: Очищаем ВСЕ вызовы в канале, т.к. включился cooldown на 1 минуту
+    clearAllChallengesInChannel(channel, 'Оба промахнулись, cooldown 1 мин');
+    
     await storage.saveTwitchPlayers(players);
 
     return {
@@ -408,6 +447,10 @@ async function executeDuel(
   }
 
   duelCooldownByChannel.set(channel, now);
+  
+  // КРИТИЧНО: Очищаем ВСЕ вызовы в канале, т.к. включился cooldown на 1 минуту
+  clearAllChallengesInChannel(channel, `Дуэль ${winner} vs ${loser}, cooldown 1 мин`);
+  
   await storage.saveTwitchPlayers(players);
 
   return {

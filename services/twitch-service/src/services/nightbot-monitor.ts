@@ -724,6 +724,11 @@ export class NightBotMonitor {
      */
     private async handleDuelCommand(channel: string, user: string, message: string, msg: any) {
         try {
+            console.log(`🎯 handleDuelCommand вызван:`);
+            console.log(`   channel (raw): "${channel}"`);
+            console.log(`   user (raw): "${user}"`);
+            console.log(`   message (raw): "${message}"`);
+            
             // Парсим сообщение для извлечения целевого пользователя
             const parts = message.trim().split(/\s+/);
             let targetUsername = parts.length > 1 ? parts[1].replace(/^@+/, '') : undefined;
