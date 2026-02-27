@@ -107,6 +107,10 @@ export class NightBotMonitor {
     // Флаг для предотвращения параллельного запуска warmup
     private isWarmingUp: boolean = false;
 
+    // Cooldown для команд топа (channel -> Map<commandName, lastUsedTimestamp>)
+    private commandCooldowns = new Map<string, Map<string, number>>();
+    private readonly COMMAND_COOLDOWN_MS = 5 * 1000; // 5 секунд между использованиями команды в канале
+
     // Мапа команд для чистого роутинга
     private readonly commands = new Map<string, CommandHandler>([
         ['!dick', (ch, u, m, msg) => {
@@ -645,6 +649,31 @@ export class NightBotMonitor {
     }
 
     /**
+     * Проверка cooldown для команды в канале
+     * @returns true если cooldown активен, false если можно использовать команду
+     */
+    private isCommandOnCooldown(channel: string, commandName: string): boolean {
+        const now = Date.now();
+        let channelCooldowns = this.commandCooldowns.get(channel);
+        
+        if (!channelCooldowns) {
+            channelCooldowns = new Map();
+            this.commandCooldowns.set(channel, channelCooldowns);
+        }
+        
+        const lastUsed = channelCooldowns.get(commandName);
+        if (lastUsed && now - lastUsed < this.COMMAND_COOLDOWN_MS) {
+            const secondsLeft = Math.ceil((this.COMMAND_COOLDOWN_MS - (now - lastUsed)) / 1000);
+            console.log(`⏳ Команда ${commandName} на cooldown, осталось ${secondsLeft} сек`);
+            return true;
+        }
+        
+        // Обновляем время последнего использования
+        channelCooldowns.set(commandName, now);
+        return false;
+    }
+
+    /**
      * Обработка команды !dick из чата
      */
     private async handleDickCommand(channel: string, user: string, message: string, msg: any) {
@@ -665,6 +694,11 @@ export class NightBotMonitor {
     private async handleTopDickCommand(channel: string, user: string, message: string, msg: any) {
         console.log(`🎮 Команда !top_dick от ${user} в ${channel}`);
 
+        // Проверка cooldown
+        if (this.isCommandOnCooldown(channel, 'top_dick')) {
+            return; // Игнорируем команду, если она на cooldown
+        }
+
         try {
             const response = await processTwitchTopDickCommand();
             await this.sendMessage(channel, response);
@@ -679,6 +713,11 @@ export class NightBotMonitor {
      */
     private async handleBottomDickCommand(channel: string, user: string, message: string, msg: any) {
         console.log(`🎮 Команда !bottom_dick от ${user} в ${channel}`);
+
+        // Проверка cooldown
+        if (this.isCommandOnCooldown(channel, 'bottom_dick')) {
+            return; // Игнорируем команду, если она на cooldown
+        }
 
         try {
             const response = await processTwitchBottomDickCommand();
@@ -709,6 +748,11 @@ export class NightBotMonitor {
      */
     private async handleTopPointsCommand(channel: string, user: string, message: string, msg: any) {
         console.log(`💰 Команда !top_points от ${user} в ${channel}`);
+
+        // Проверка cooldown
+        if (this.isCommandOnCooldown(channel, 'top_points')) {
+            return; // Игнорируем команду, если она на cooldown
+        }
 
         try {
             const response = await processTwitchTopPointsCommand();
