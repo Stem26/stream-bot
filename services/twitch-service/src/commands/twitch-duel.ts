@@ -277,6 +277,12 @@ async function handlePersonalChallenge(
         response: `@${challengerUsername}, ты уже вызвал @${challengerExistingChallenge.challengedDisplay} на дуэль! Дождись ответа.`
       };
     } else {
+      // Проверяем, пытается ли вызвать обратно того, кто его вызвал
+      if (challengerExistingChallenge.challenger === targetNormalized) {
+        return {
+          response: `@${challengerUsername}, @${challengerExistingChallenge.challengerDisplay} уже вызвал тебя на дуэль! Напиши !принять чтобы начать бой`
+        };
+      }
       return {
         response: `@${challengerUsername}, тебя уже вызвал @${challengerExistingChallenge.challengerDisplay} на дуэль! Напиши !принять или !отклонить`
       };
