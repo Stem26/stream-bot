@@ -54,6 +54,7 @@ services/*/.env.local
 # IDE
 .vscode/
 .idea/
+.cursor/
 *.swp
 *.swo
 *~
