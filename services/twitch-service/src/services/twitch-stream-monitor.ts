@@ -31,6 +31,7 @@ interface AnnouncementState {
     currentLinkIndex: number;
     currentStreamPeak: number | null;
     currentStreamStartTime: number | null;
+    currentStreamFollowsCount: number | null;
 }
 
 /**
@@ -42,7 +43,8 @@ function loadAnnouncementState(): AnnouncementState {
         lastLinkAnnouncementAt: null, 
         currentLinkIndex: 0,
         currentStreamPeak: null,
-        currentStreamStartTime: null
+        currentStreamStartTime: null,
+        currentStreamFollowsCount: null
     };
     
     try {
@@ -362,6 +364,10 @@ export class TwitchStreamMonitor {
                 if (this.isStreamOnline && this.currentStreamStats) {
                     this.currentStreamStats.followsCount++;
                     console.log(`📊 Follow за стрим: ${this.currentStreamStats.followsCount}`);
+                    
+                    // Сохраняем счётчик в файл
+                    this.announcementState.currentStreamFollowsCount = this.currentStreamStats.followsCount;
+                    saveAnnouncementState(this.announcementState);
                 } else if (!this.isStreamOnline) {
                     console.log(`ℹ️ Follow получен вне стрима, не учитывается в статистике`);
                 }
@@ -575,12 +581,18 @@ export class TwitchStreamMonitor {
             console.error(`🔄 Восстановлен пик зрителей из файла: ${this.announcementState.currentStreamPeak}`);
         }
         
+        // Восстанавливаем счётчик подписчиков (если бот перезапустился во время стрима)
+        const restoredFollowsCount = this.announcementState.currentStreamFollowsCount ?? 0;
+        if (restoredFollowsCount > 0) {
+            console.error(`🔄 Восстановлен счётчик подписчиков из файла: ${restoredFollowsCount}`);
+        }
+        
         this.currentStreamStats = {
             startTime: startDate,
             viewerCounts: initialCounts,
             broadcasterId,
             broadcasterName,
-            followsCount: 0
+            followsCount: restoredFollowsCount
         };
 
         console.error('📊 Запущено отслеживание количества зрителей');
@@ -768,6 +780,7 @@ export class TwitchStreamMonitor {
                 // Сбрасываем статистику текущего стрима после сохранения в историю
                 this.announcementState.currentStreamPeak = null;
                 this.announcementState.currentStreamStartTime = null;
+                this.announcementState.currentStreamFollowsCount = null;
                 saveAnnouncementState(this.announcementState);
                 console.log('🔄 Статистика текущего стрима сброшена (стрим завершён)');
             } catch (error: any) {
