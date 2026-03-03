@@ -254,7 +254,9 @@ export class TwitchStreamMonitor {
             // Один listener = один WebSocket транспорт НАВСЕГДА
             if (!TwitchStreamMonitor.sharedListener) {
                 TwitchStreamMonitor.sharedListener = new EventSubWsListener({
-                    apiClient: this.apiClient
+                    apiClient: this.apiClient,
+                    // Увеличиваем таймаут для retry при 429 (даём время Twitch закрыть старые транспорты)
+                    // По умолчанию Twurple делает retry через 10 секунд, увеличиваем до 30
                 });
                 console.log('🆕 EventSubWsListener создан (singleton)');
             }
@@ -266,9 +268,41 @@ export class TwitchStreamMonitor {
             if (!TwitchStreamMonitor.listenerStarted) {
                 if (!TwitchStreamMonitor.startPromise) {
                     TwitchStreamMonitor.startPromise = (async () => {
-                        await this.listener!.start();
-                        TwitchStreamMonitor.listenerStarted = true;
-                        console.log('✅ EventSub WebSocket подключен');
+                        // Retry логика для обработки 429 (Too Many Requests)
+                        const maxRetries = 5;
+                        let retryCount = 0;
+                        
+                        while (retryCount < maxRetries) {
+                            try {
+                                await this.listener!.start();
+                                TwitchStreamMonitor.listenerStarted = true;
+                                console.log('✅ EventSub WebSocket подключен');
+                                break;
+                            } catch (error: any) {
+                                retryCount++;
+                                
+                                // Проверяем, это ошибка 429
+                                const is429 = error?.message?.includes('429') || 
+                                              error?.message?.includes('Too Many Requests') ||
+                                              error?.message?.includes('websocket transports limit');
+                                
+                                if (is429 && retryCount < maxRetries) {
+                                    // Экспоненциальная задержка: 30с, 60с, 90с, 120с
+                                    const delayMs = 30000 * retryCount;
+                                    console.error(`⚠️ Ошибка 429: превышен лимит WebSocket транспортов`);
+                                    console.error(`   Попытка ${retryCount}/${maxRetries}`);
+                                    console.error(`   Twitch ещё закрывает старые транспорты, ждём ${delayMs/1000}с...`);
+                                    await new Promise(resolve => setTimeout(resolve, delayMs));
+                                } else {
+                                    // Для других ошибок или превышения лимита retry - прокидываем дальше
+                                    throw error;
+                                }
+                            }
+                        }
+                        
+                        if (retryCount >= maxRetries && !TwitchStreamMonitor.listenerStarted) {
+                            throw new Error('Не удалось подключиться к EventSub после нескольких попыток (429)');
+                        }
                     })();
                 }
                 
@@ -731,7 +765,7 @@ export class TwitchStreamMonitor {
                         console.log('📦 Создание бэкапа БД после окончания стрима...');
                         const { exec } = require('child_process');
                         const backupScript = require('path').join(MONOREPO_ROOT, 'scripts', 'backup-db.js');
-                        exec(`node "${backupScript}" ${adminChatId}`, (error, stdout, stderr) => {
+                        exec(`node "${backupScript}" ${adminChatId}`, (error: any, stdout: any, stderr: any) => {
                             if (error) {
                                 console.error('❌ Ошибка создания бэкапа:', error.message);
                             } else {
