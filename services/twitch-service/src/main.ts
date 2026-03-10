@@ -1,5 +1,5 @@
 import { NightBotMonitor } from './services/nightbot-monitor';
-import { TwitchStreamMonitor } from './services/twitch-stream-monitor';
+import { TwitchEventSubNative } from './services/twitch-eventsub-native';
 import { Telegraf } from 'telegraf';
 import { loadConfig } from './config/env';
 import { clearDuelQueue, resetDuelsOnStreamEnd, clearDuelChallenges } from "./commands/twitch-duel";
@@ -31,7 +31,7 @@ async function main() {
     const telegramBot = new Telegraf(config.telegram.token);
 
     // Monitor stream online/offline -> отправляет уведомления в TG + announcement в Twitch
-    const streamMonitor = new TwitchStreamMonitor(telegramBot.telegram);
+    const streamMonitor = new TwitchEventSubNative(telegramBot.telegram);
 
     await streamMonitor.connect(
         config.twitch.channel,

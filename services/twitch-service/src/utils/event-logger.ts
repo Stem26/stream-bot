@@ -30,7 +30,11 @@ type EventType =
   | 'ERROR'
   | 'BOT_START'
   | 'BOT_STOP'
-  | 'CONNECTION';
+  | 'CONNECTION'
+  | 'EVENTSUB_WEBSOCKET'
+  | 'EVENTSUB_KEEPALIVE'
+  | 'EVENTSUB_NOTIFICATION'
+  | 'EVENTSUB_RECONNECT';
 
 interface EventLogData {
   timestamp: string;

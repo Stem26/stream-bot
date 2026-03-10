@@ -1,25 +1,25 @@
-import {ApiClient} from '@twurple/api';
+import {ApiClient, UserIdResolvable} from '@twurple/api';
 import {StaticAuthProvider} from '@twurple/auth';
 import {EventSubWsListener} from '@twurple/eventsub-ws';
 import type {Telegram} from 'telegraf';
 import * as fs from 'fs';
 import * as path from 'path';
-import { ENABLE_BOT_FEATURES } from '../config/features';
-import { IS_LOCAL } from '../config/env';
-import { addStreamToHistory } from '../storage/stream-history';
-import { log } from '../utils/event-logger';
+import {ENABLE_BOT_FEATURES} from '../config/features';
+import {IS_LOCAL} from '../config/env';
+import {addStreamToHistory} from '../storage/stream-history';
+import {log} from '../utils/event-logger';
 
-// Определяем корень монорепозитория (как в twitch-players.ts)
+// Определяем корень монорепозитория (как в twitch-players.ts)  не используется сейчас
 const MONOREPO_ROOT = (() => {
-  let root = process.cwd();
-  if (fs.existsSync(path.join(root, 'package.json'))) {
-    return root;
-  }
-  root = path.resolve(process.cwd(), '../..');
-  if (fs.existsSync(path.join(root, 'package.json'))) {
-    return root;
-  }
-  return process.cwd();
+    let root = process.cwd();
+    if (fs.existsSync(path.join(root, 'package.json'))) {
+        return root;
+    }
+    root = path.resolve(process.cwd(), '../..');
+    if (fs.existsSync(path.join(root, 'package.json'))) {
+        return root;
+    }
+    return process.cwd();
 })();
 
 // Файл для хранения состояния announcement'ов (в корне монорепы)
@@ -38,20 +38,20 @@ interface AnnouncementState {
  * Загружает состояние announcement'ов из файла
  */
 function loadAnnouncementState(): AnnouncementState {
-    const defaultState: AnnouncementState = { 
-        lastWelcomeAnnouncementAt: null, 
-        lastLinkAnnouncementAt: null, 
+    const defaultState: AnnouncementState = {
+        lastWelcomeAnnouncementAt: null,
+        lastLinkAnnouncementAt: null,
         currentLinkIndex: 0,
         currentStreamPeak: null,
         currentStreamStartTime: null,
         currentStreamFollowsCount: null
     };
-    
+
     try {
         if (fs.existsSync(ANNOUNCEMENT_STATE_FILE)) {
             const data = fs.readFileSync(ANNOUNCEMENT_STATE_FILE, 'utf-8');
             const loadedState = JSON.parse(data);
-            
+
             // Мёржим загруженное состояние с дефолтным (для обратной совместимости)
             return {
                 ...defaultState,
@@ -61,7 +61,7 @@ function loadAnnouncementState(): AnnouncementState {
     } catch (error) {
         console.error('⚠️ Ошибка загрузки состояния announcements:', error);
     }
-    
+
     return defaultState;
 }
 
@@ -146,7 +146,7 @@ export class TwitchStreamMonitor {
         this.announcementState = loadAnnouncementState();
         this.currentLinkIndex = this.announcementState.currentLinkIndex;
         console.log('📋 Загружено состояние announcements:', this.announcementState);
-        
+
         // Закрывает WebSocket транспорт корректно → нет ghost sessions
         // Регистрируем обработчики только один раз (startPromise — самый надёжный lifecycle маркер)
         if (!TwitchStreamMonitor.startPromise) {
@@ -190,7 +190,7 @@ export class TwitchStreamMonitor {
     setChatSender(sender: (channel: string, message: string) => Promise<void>, channelName: string): void {
         this.chatSender = sender;
         this.channelName = channelName;
-        
+
         if (this.isStreamOnline) {
             console.log('📣 Chat sender установлен, проверяем нужно ли отправить welcome сообщение...');
             this.sendWelcomeMessage(false).catch(err => {
@@ -260,7 +260,7 @@ export class TwitchStreamMonitor {
                 });
                 console.log('🆕 EventSubWsListener создан (singleton)');
             }
-            
+
             this.listener = TwitchStreamMonitor.sharedListener;
 
             // стартуем listener только ОДИН раз за жизнь процесса
@@ -271,7 +271,7 @@ export class TwitchStreamMonitor {
                         // Retry логика для обработки 429 (Too Many Requests)
                         const maxRetries = 5;
                         let retryCount = 0;
-                        
+
                         while (retryCount < maxRetries) {
                             try {
                                 await this.listener!.start();
@@ -280,18 +280,18 @@ export class TwitchStreamMonitor {
                                 break;
                             } catch (error: any) {
                                 retryCount++;
-                                
+
                                 // Проверяем, это ошибка 429
-                                const is429 = error?.message?.includes('429') || 
-                                              error?.message?.includes('Too Many Requests') ||
-                                              error?.message?.includes('websocket transports limit');
-                                
+                                const is429 = error?.message?.includes('429') ||
+                                    error?.message?.includes('Too Many Requests') ||
+                                    error?.message?.includes('websocket transports limit');
+
                                 if (is429 && retryCount < maxRetries) {
                                     // Экспоненциальная задержка: 30с, 60с, 90с, 120с
                                     const delayMs = 30000 * retryCount;
                                     console.error(`⚠️ Ошибка 429: превышен лимит WebSocket транспортов`);
                                     console.error(`   Попытка ${retryCount}/${maxRetries}`);
-                                    console.error(`   Twitch ещё закрывает старые транспорты, ждём ${delayMs/1000}с...`);
+                                    console.error(`   Twitch ещё закрывает старые транспорты, ждём ${delayMs / 1000}с...`);
                                     await new Promise(resolve => setTimeout(resolve, delayMs));
                                 } else {
                                     // Для других ошибок или превышения лимита retry - прокидываем дальше
@@ -299,13 +299,13 @@ export class TwitchStreamMonitor {
                                 }
                             }
                         }
-                        
+
                         if (retryCount >= maxRetries && !TwitchStreamMonitor.listenerStarted) {
                             throw new Error('Не удалось подключиться к EventSub после нескольких попыток (429)');
                         }
                     })();
                 }
-                
+
                 // Ждём завершения Promise (даже если создан другим параллельным connect())
                 await TwitchStreamMonitor.startPromise;
             } else {
@@ -316,7 +316,7 @@ export class TwitchStreamMonitor {
             // Флаг static — иначе при new TwitchStreamMonitor() добавятся повторно
             if (!TwitchStreamMonitor.subscriptionsInitialized) {
                 // Подписываемся на событие начала стрима
-                this.listener.onStreamOnline(user.id, async (event) => {
+                this.listener.onStreamOnline(user.id, async (event: { broadcasterDisplayName: any; broadcasterId: UserIdResolvable; broadcasterName: string; }) => {
                 // Вызываем коллбек для запуска синхронизации зрителей (до проверки на дубли)
                 // Это гарантирует, что синхронизация запустится даже при повторном событии
                 try {
@@ -365,7 +365,7 @@ export class TwitchStreamMonitor {
             });
 
             // Подписываемся на событие завершения стрима
-            this.listener.onStreamOffline(user.id, async (event) => {
+            this.listener.onStreamOffline(user.id, async (event: { broadcasterDisplayName: any; }) => {
                 console.error(`⚫ Стрим завершился на канале ${event.broadcasterDisplayName}`);
                 this.isStreamOnline = false;
 
@@ -391,7 +391,7 @@ export class TwitchStreamMonitor {
             });
 
             // Подписываемся на событие Follow (когда пользователь нажимает "Отслеживать")
-            this.listener.onChannelFollow(user.id, this.moderatorId, async (event) => {
+            this.listener.onChannelFollow(user.id, this.moderatorId, async (event: { userDisplayName: any; userName: any; }) => {
                 console.log(`💜 Новый фоловер: ${event.userDisplayName} (@${event.userName})`);
                 
                 // Увеличиваем счётчик follow только если стрим онлайн
