@@ -77,9 +77,38 @@ export async function initDatabase(): Promise<void> {
           duel_wins INTEGER DEFAULT 0,
           duel_losses INTEGER DEFAULT 0,
           duel_draws INTEGER DEFAULT 0,
+          -- ежедневная активность дуэлей
+          duels_today INTEGER DEFAULT 0,
+          last_duel_date TEXT,
+          last_daily_quest_reward_date TEXT,
+          -- серия побед в дуэлях
+          duel_win_streak INTEGER DEFAULT 0,
+          streak_reward_active BOOLEAN DEFAULT FALSE,
           updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
         )
       `);
+
+      // Добавляем недостающие колонки для уже существующих БД
+      await client.query(
+        `ALTER TABLE twitch_player_stats
+         ADD COLUMN IF NOT EXISTS duels_today INTEGER DEFAULT 0`
+      );
+      await client.query(
+        `ALTER TABLE twitch_player_stats
+         ADD COLUMN IF NOT EXISTS last_duel_date TEXT`
+      );
+      await client.query(
+        `ALTER TABLE twitch_player_stats
+         ADD COLUMN IF NOT EXISTS last_daily_quest_reward_date TEXT`
+      );
+      await client.query(
+        `ALTER TABLE twitch_player_stats
+         ADD COLUMN IF NOT EXISTS duel_win_streak INTEGER DEFAULT 0`
+      );
+      await client.query(
+        `ALTER TABLE twitch_player_stats
+         ADD COLUMN IF NOT EXISTS streak_reward_active BOOLEAN DEFAULT FALSE`
+      );
 
       await client.query(`
         CREATE TABLE IF NOT EXISTS stream_history (

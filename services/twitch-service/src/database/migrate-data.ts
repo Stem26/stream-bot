@@ -13,6 +13,11 @@ interface TwitchPlayerData {
   duelWins?: number;
   duelLosses?: number;
   duelDraws?: number;
+  duelsToday?: number;
+  lastDuelDate?: string;
+  lastDailyQuestRewardDate?: string;
+  duelWinStreak?: number;
+  streakRewardActive?: boolean;
 }
 
 interface StreamHistoryEntry {
@@ -74,12 +79,27 @@ async function migrateTwitchPlayers(): Promise<number> {
 
       await client.query(
         `INSERT INTO twitch_player_stats (twitch_username, size, last_used, last_used_date, points,
-          duel_timeout_until, duel_cooldown_until, duel_wins, duel_losses, duel_draws)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+          duel_timeout_until, duel_cooldown_until, duel_wins, duel_losses, duel_draws,
+          duels_today, last_duel_date, last_daily_quest_reward_date,
+          duel_win_streak, streak_reward_active)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+                $11, $12, $13, $14, $15)`,
         [
-          norm, player.size, player.lastUsed, player.lastUsedDate || null, player.points || 1000,
-          player.duelTimeoutUntil || null, player.duelCooldownUntil || null,
-          player.duelWins || 0, player.duelLosses || 0, player.duelDraws || 0
+          norm,
+          player.size,
+          player.lastUsed,
+          player.lastUsedDate || null,
+          player.points || 1000,
+          player.duelTimeoutUntil || null,
+          player.duelCooldownUntil || null,
+          player.duelWins || 0,
+          player.duelLosses || 0,
+          player.duelDraws || 0,
+          player.duelsToday ?? 0,
+          player.lastDuelDate || null,
+          player.lastDailyQuestRewardDate || null,
+          player.duelWinStreak ?? 0,
+          player.streakRewardActive ?? false
         ]
       );
 
