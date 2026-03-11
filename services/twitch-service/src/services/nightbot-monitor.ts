@@ -11,6 +11,13 @@ import { IS_LOCAL } from '../config/env';
 import * as fs from 'fs';
 import * as path from 'path';
 import { log } from '../utils/event-logger';
+import {
+    fetchOverlayCharacters,
+    setOverlayPlayerCharacter,
+    triggerOverlayPlayer,
+    amnestyOverlayPlayer,
+    jumpOverlayPlayer,
+} from './overlay-api';
 
 // Файл для хранения состояния счётчиков (в корне монорепы)
 const COUNTERS_STATE_FILE = path.resolve(__dirname, '../../../../../counters-state.json');
@@ -136,6 +143,8 @@ export class NightBotMonitor {
         ['!крыса', (ch, u, m, msg) => void this.handleRatCommand(ch, u, m, msg)],
         ['!милашка', (ch, u, m, msg) => void this.handleCutieCommand(ch, u, m, msg)],
         ['!vanish', (ch, u, m, msg) => void this.handleVanishCommand(ch, u, msg)],
+        ['!jump', (ch, u, m, msg) => void this.handleJumpCommand(ch, u, msg)],
+        ['!j', (ch, u, m, msg) => void this.handleJumpCommand(ch, u, msg)],
         ['!стоп', (ch, u, m, msg) => void this.handleStopCommand(ch, u, msg)],
         ['!стопоткат', (ch, u, m, msg) => void this.handleStopRollbackCommand(ch, u, msg)],
         ['!стопсброс', (ch, u, m, msg) => void this.handleStopResetCommand(ch, u, msg)],
@@ -144,6 +153,7 @@ export class NightBotMonitor {
         ['!смертьоткат', (ch, u, m, msg) => void this.handleDeathRollbackCommand(ch, u, msg)],
         ['!смертьсброс', (ch, u, m, msg) => void this.handleDeathResetCommand(ch, u, msg)],
         ['!смертьинфо', (ch, u, m, msg) => void this.handleDeathInfoCommand(ch, u, msg)],
+        ['!персонажи', (ch, u, m, msg) => void this.handleCharactersListCommand(ch, u, msg)],
         ['!игры', (ch, u, m, msg) => void this.handleGamesCommand(ch, u, msg)],
         ['!help', (ch, u, m, msg) => void this.handleGamesCommand(ch, u, msg)]
     ]);
@@ -481,6 +491,14 @@ export class NightBotMonitor {
                 // Отслеживаем активных пользователей для команды !крыса (fallback)
                 addActiveUser(channel, username);
 
+                // Триггерим оверлей на каждое сообщение пользователя
+                triggerOverlayPlayer(user).catch((error: any) => {
+                    console.error(
+                        '⚠️ Ошибка Overlay trigger для сообщения:',
+                        error?.message || error
+                    );
+                });
+
                 const trimmedMessage = message.trim().toLowerCase();
                 console.log(`📨 ${user}: ${message}`);
 
@@ -552,6 +570,22 @@ export class NightBotMonitor {
                     }
 
                     this.handleDuelCommand(channel, user, message, msg);
+                    return;
+                }
+
+                // Команда выбора персонажа: !персонаж <имя>
+                if (trimmedMessage.startsWith('!персонаж ')) {
+                    // Проверка что стрим онлайн
+                    if (!this.isStreamOnlineCheck() && !IS_LOCAL) {
+                        console.log(`⚠️ Команда !персонаж проигнорирована: стрим оффлайн`);
+                        return;
+                    }
+
+                    if (IS_LOCAL && !this.isStreamOnlineCheck()) {
+                        console.log(`🧪 ТЕСТ в оффлайне: выполняем команду !персонаж`);
+                    }
+
+                    this.handleSetCharacterCommand(channel, user, message, msg);
                     return;
                 }
 
@@ -950,10 +984,20 @@ export class NightBotMonitor {
                 let unbannedCount = 0;
                 
                 for (const username of result.usernames) {
+                    // Пытаемся снять таймаут в Twitch
                     const success = await this.untimeoutUser(username);
                     if (success) {
                         unbannedCount++;
                     }
+
+                    // В любом случае шлём событие амнистии в оверлей для этого ника
+                    amnestyOverlayPlayer(username).catch(error => {
+                        console.error(
+                            '⚠️ Ошибка вызова Overlay amnesty для игрока:',
+                            username,
+                            (error as any)?.message || error
+                        );
+                    });
                 }
 
                 console.log(`✅ Реальных таймаутов снято: ${unbannedCount}/${result.usernames.length}`);
@@ -1000,6 +1044,20 @@ export class NightBotMonitor {
             console.log(`✅ Отправлен ответ в чат: ${result.response}`);
         } catch (error) {
             console.error('❌ Ошибка при обработке команды !милашка:', error);
+        }
+    }
+
+    /**
+     * Обработка команды !jump из чата
+     * Тригерит анимацию прыжка персонажа в оверлее
+     */
+    private async handleJumpCommand(channel: string, user: string, msg: any) {
+        console.log(`🕴 Команда !jump от ${user} в ${channel}`);
+
+        try {
+            await jumpOverlayPlayer(user);
+        } catch (error) {
+            console.error('❌ Ошибка при обработке команды !jump:', error);
         }
     }
 
@@ -1501,13 +1559,15 @@ export class NightBotMonitor {
             '!dick - вырастить письку',
             '!top_dick - топ самых длинных',
             '!bottom_dick - топ самых коротких',
-            '!очки (!points) - проверить свои очки',
-            '!топ_очки (!top_points) - топ по очкам',
+            '!очки - проверить свои очки',
+            '!топ_очки- топ по очкам',
             '!дуэль - встать в очередь на дуэль (ставка 25 очков)',
             '!дуэль @user - вызвать конкретного игрока на дуэль',
-            '!крыса - выбрать случайную крысу из чата',
-            '!милашка - выбрать случайную милашку из чата',
-            '!vanish - скрыть свои сообщения (1 сек таймаут)'
+            '!крыса/милашка - выбрать случайную крысу/милашку из чата',
+            '!vanish - скрыть свои сообщения',
+            '!персонажи - показать доступных персонажей',
+            '!персонаж <имя> - выбрать себе персонажа',
+            '!jump/!j - прыжок'
         ];
 
         const response = `📋 Доступные команды: ${commandsList.join(' • ')}`;
@@ -1517,6 +1577,80 @@ export class NightBotMonitor {
             console.log(`✅ Список команд отправлен в чат`);
         } catch (error) {
             console.error('❌ Ошибка при отправке списка команд:', error);
+        }
+    }
+
+    /**
+     * Обработка команды !персонажи
+     * Показывает список доступных публичных персонажей из Overlay API
+     */
+    private async handleCharactersListCommand(channel: string, user: string, msg: any) {
+        console.log(`🎭 Команда !персонажи от ${user} в ${channel}`);
+
+        try {
+            const characters = await fetchOverlayCharacters();
+
+            const response =
+                characters.length === 0
+                    ? 'Публичные персонажи пока не настроены.'
+                    : `Доступные персонажи: ${characters.join(', ')}`;
+
+            await this.sendMessage(channel, response);
+            console.log(`✅ Список персонажей отправлен в чат`);
+        } catch (error) {
+            console.error('❌ Ошибка при обработке команды !персонажи:', error);
+            try {
+                await this.sendMessage(
+                    channel,
+                    'Не удалось получить список персонажей :('
+                );
+            } catch {
+                // игнорируем вторичную ошибку отправки
+            }
+        }
+    }
+
+    /**
+     * Обработка команды !персонаж <имя>
+     * Устанавливает публичного персонажа для пользователя в Overlay API
+     */
+    private async handleSetCharacterCommand(
+        channel: string,
+        user: string,
+        message: string,
+        msg: any
+    ) {
+        console.log(`🎭 Команда !персонаж от ${user} в ${channel}: ${message}`);
+
+        const parts = message.trim().split(/\s+/);
+        const character = parts[1];
+
+        if (!character) {
+            const usage =
+                'Использование: !персонаж <имя>. Список доступных: !персонажи';
+            try {
+                await this.sendMessage(channel, usage);
+            } catch (error) {
+                console.error('❌ Ошибка отправки usage для !персонаж:', error);
+            }
+            return;
+        }
+
+        try {
+            await setOverlayPlayerCharacter(user, character);
+            const response = `@${user}, персонаж "${character}" установлен.`;
+            await this.sendMessage(channel, response);
+            console.log(`✅ Персонаж "${character}" установлен для ${user}`);
+        } catch (error) {
+            console.error('❌ Ошибка при обработке команды !персонаж:', error);
+            try {
+                await this.sendMessage(
+                    channel,
+                    `@${user}, не удалось установить персонажа "${character}".`
+                );
+            } catch {
+                // игнорируем вторичную ошибку отправки
+            }
         }
     }
 

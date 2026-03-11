@@ -1,5 +1,6 @@
 import { TwitchPlayersStorageDB } from '../services/TwitchPlayersStorageDB';
 import { STREAMER_USERNAME } from '../config/env';
+import { sendOverlayDuel, DuelMode } from '../services/overlay-api';
 
 // Инициализируем хранилище игроков
 const storage = new TwitchPlayersStorageDB();
@@ -373,6 +374,8 @@ async function executeDuel(
     
     await storage.saveTwitchPlayers(players);
 
+    void sendOverlayDuel(player1Username, player2Username, 'all-lose');
+
     return {
       response: `@${player1Username} и @${player2Username} сошлись в дуэли! Оба попали и убили друг друга! 💀💀 Оба получают (-${DUEL_WIN_POINTS}) очков и таймаут на 5 минут.`,
       loser: player1Username,
@@ -402,6 +405,9 @@ async function executeDuel(
     clearAllChallengesInChannel(channel, 'Оба промахнулись, cooldown 1 мин');
     
     await storage.saveTwitchPlayers(players);
+
+    // Сообщаем о результате дуэли в Overlay (оба выжили / ничья)
+    void sendOverlayDuel(player1Username, player2Username, 'all-win');
 
     return {
       response: `@${player1Username} и @${player2Username} сошлись в дуэли! Оба промахнулись! 😅 Живы оба, но позор на всю деревню! (-${DUEL_MISS_PENALTY}) очков каждому.`,
@@ -458,6 +464,10 @@ async function executeDuel(
   clearAllChallengesInChannel(channel, `Дуэль ${winner} vs ${loser}, cooldown 1 мин`);
   
   await storage.saveTwitchPlayers(players);
+
+  // Сообщаем о результате дуэли в Overlay
+  const mode: DuelMode = winner === player1Username ? 'a-win' : 'b-win';
+  void sendOverlayDuel(player1Username, player2Username, mode);
 
   return {
     response: `@${player1Username} и @${player2Username} сошлись в дуэли! Победитель @${winner} (+${DUEL_WIN_POINTS}), проигравший @${loser} (-${DUEL_WIN_POINTS}) и в таймаут на 5 минут.`,
