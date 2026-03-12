@@ -1928,7 +1928,6 @@ export class NightBotMonitor {
 
             // Отправляем как Twitch announcement с случайным цветом
             await this.sendAnnouncement(response, this.getRandomAnnouncementColor());
-            console.log(`✅ Объявление с временем отправлено: ${response}`);
         } catch (error) {
             console.error('❌ Ошибка при обработке команды !время:', error);
         }
