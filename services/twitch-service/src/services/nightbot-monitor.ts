@@ -960,14 +960,16 @@ export class NightBotMonitor {
     /**
      * Проверка кулдауна для конкретной announcement команды (БЕЗ установки нового)
      * @param commandName - название команды (например: '!дс', '!тг')
+     * @param cooldownMsOverride - кастомный кулдаун в миллисекундах (если не задан, берётся дефолтный ANNOUNCEMENT_COOLDOWN_MS)
      * @returns true если команда на кулдауне, false если можно использовать
      */
-    private isAnnouncementOnCooldown(commandName: string): boolean {
+    private isAnnouncementOnCooldown(commandName: string, cooldownMsOverride?: number): boolean {
         const now = Date.now();
         const lastUsed = this.announcementCooldowns.get(commandName);
+        const cooldownMs = cooldownMsOverride ?? this.ANNOUNCEMENT_COOLDOWN_MS;
         
-        if (lastUsed && now - lastUsed < this.ANNOUNCEMENT_COOLDOWN_MS) {
-            const secondsLeft = Math.ceil((this.ANNOUNCEMENT_COOLDOWN_MS - (now - lastUsed)) / 1000);
+        if (lastUsed && now - lastUsed < cooldownMs) {
+            const secondsLeft = Math.ceil((cooldownMs - (now - lastUsed)) / 1000);
             console.log(`⏳ Команда ${commandName} на cooldown, осталось ${secondsLeft} сек`);
             return true;
         }
@@ -1126,33 +1128,53 @@ export class NightBotMonitor {
     }
 
     /**
-     * Обработка кастомной команды из JSON
+     * Обработка кастомной команды (из БД)
+     * - Для обычных сообщений (message):
+     *   cooldown=0 → без ограничений, >0 → используем указанный кулдаун в секундах.
+     * - Для объявлений (announcement):
+     *   минимум 5 секунд даже если cooldown=0, при большем значении берём его.
      */
     private async handleCustomCommand(channel: string, user: string, command: CustomCommand, msg: any) {
         try {
             const cooldownKey = command.id;
-            
+            const rawCooldownSec = command.cooldown ?? 0;
+
             if (command.messageType === 'announcement') {
-                // Отправляем как announcement (цветное объявление)
-                if (this.isAnnouncementOnCooldown(cooldownKey)) {
-                    return; // Игнорируем команду если cooldown активен
+                // Минимум 5 секунд для объявлений
+                const effectiveCooldownSec = Math.max(5, rawCooldownSec);
+                const cooldownMs = effectiveCooldownSec * 1000;
+
+                if (this.isAnnouncementOnCooldown(cooldownKey, cooldownMs)) {
+                    return;
                 }
-                
+
                 const success = await this.sendAnnouncement(command.response, command.color);
-                
+
                 if (success) {
                     this.setAnnouncementCooldown(cooldownKey);
-                    console.log(`✅ Кастомное объявление "${command.trigger}" отправлено`);
+                    console.log(
+                        `✅ Кастомное объявление "${command.trigger}" отправлено (cooldown=${effectiveCooldownSec} сек)`,
+                    );
                 }
             } else {
-                // Отправляем как обычное сообщение в чат
-                if (this.isAnnouncementOnCooldown(cooldownKey)) {
-                    return; // Используем тот же механизм cooldown
+                // Обычное сообщение
+                const shouldCheckCooldown = rawCooldownSec > 0;
+                const cooldownMs = rawCooldownSec * 1000;
+
+                if (shouldCheckCooldown && this.isAnnouncementOnCooldown(cooldownKey, cooldownMs)) {
+                    return;
                 }
-                
+
                 await this.sendMessage(channel, command.response);
-                this.setAnnouncementCooldown(cooldownKey);
-                console.log(`✅ Кастомное сообщение "${command.trigger}" отправлено`);
+
+                if (shouldCheckCooldown) {
+                    this.setAnnouncementCooldown(cooldownKey);
+                }
+
+                console.log(
+                    `✅ Кастомное сообщение "${command.trigger}" отправлено` +
+                        (shouldCheckCooldown ? ` (cooldown=${rawCooldownSec} сек)` : ' (без кулдауна)'),
+                );
             }
         } catch (error) {
             console.error(`❌ Ошибка при обработке кастомной команды ${command.trigger}:`, error);

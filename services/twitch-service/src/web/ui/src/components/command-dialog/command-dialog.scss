@@ -85,7 +85,7 @@ command-dialog .form-group textarea {
   overflow-wrap: anywhere;
   border: 2px solid #e0e0e0;
   border-radius: 8px;
-  width: 379px;
+  width: 100%;
   min-height: 200px;
   padding: 10px;
   font-family: Menlo, Consolas, monospace;
@@ -99,6 +99,14 @@ command-dialog .form-group small {
   margin-top: 5px;
   color: #6c757d;
   font-size: 0.85em;
+}
+
+command-dialog .form-group small.error-message {
+  color: #dc3545;
+}
+
+command-dialog .form-group input.is-invalid {
+  border-color: #dc3545;
 }
 
 command-dialog .form-actions {

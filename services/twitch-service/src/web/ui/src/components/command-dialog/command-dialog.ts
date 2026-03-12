@@ -9,6 +9,7 @@ export interface CommandDialogSaveDetail {
 
 export class CommandDialogElement extends HTMLElement {
   private initialized = false;
+  private saveButton: HTMLButtonElement | null = null;
 
   connectedCallback(): void {
     if (this.initialized) return;
@@ -20,6 +21,10 @@ export class CommandDialogElement extends HTMLElement {
     });
 
     const form = this.querySelector<HTMLFormElement>('#command-form');
+    const cooldownInput = this.querySelector<HTMLInputElement>('#command-cooldown');
+    const messageTypeSelect = this.querySelector<HTMLSelectElement>('#command-message-type');
+    this.saveButton = this.querySelector<HTMLButtonElement>('.form-actions .btn.btn-success');
+
     form?.addEventListener('submit', (e) => {
       e.preventDefault();
       const detail = this.collectFormData();
@@ -32,8 +37,15 @@ export class CommandDialogElement extends HTMLElement {
       );
     });
 
-    const messageTypeSelect = this.querySelector<HTMLSelectElement>('#command-message-type');
-    messageTypeSelect?.addEventListener('change', () => this.toggleColorField());
+    messageTypeSelect?.addEventListener('change', () => {
+      this.toggleColorField();
+      this.validateCooldown();
+    });
+
+    cooldownInput?.addEventListener('input', () => this.validateCooldown());
+
+    // начальная валидация
+    this.validateCooldown();
   }
 
   openForCreate(): void {
@@ -50,6 +62,7 @@ export class CommandDialogElement extends HTMLElement {
 
     const cooldown = this.querySelector<HTMLInputElement>('#command-cooldown');
     if (cooldown) cooldown.value = '10';
+    this.validateCooldown();
     this.open();
   }
 
@@ -81,6 +94,7 @@ export class CommandDialogElement extends HTMLElement {
     if (cooldownInput) cooldownInput.value = String(command.cooldown ?? 10);
 
     this.toggleColorField();
+    this.validateCooldown();
     this.open();
   }
 
@@ -104,6 +118,37 @@ export class CommandDialogElement extends HTMLElement {
     colorField.style.display = messageTypeSelect.value === 'announcement' ? 'block' : 'none';
   }
 
+  private validateCooldown(): boolean {
+    const messageTypeSelect = this.querySelector<HTMLSelectElement>('#command-message-type');
+    const cooldownInput = this.querySelector<HTMLInputElement>('#command-cooldown');
+    const errorEl = this.querySelector<HTMLElement>('#command-cooldown-error');
+
+    if (!messageTypeSelect || !cooldownInput) {
+      return true;
+    }
+
+    const value = parseInt(cooldownInput.value, 10);
+    const isAnnouncement = messageTypeSelect.value === 'announcement';
+
+    let isValid = true;
+
+    if (isAnnouncement && (isNaN(value) || value < 5)) {
+      isValid = false;
+    }
+
+    if (!isValid) {
+      cooldownInput.classList.add('is-invalid');
+      if (errorEl) errorEl.style.display = 'block';
+      if (this.saveButton) this.saveButton.disabled = true;
+    } else {
+      cooldownInput.classList.remove('is-invalid');
+      if (errorEl) errorEl.style.display = 'none';
+      if (this.saveButton) this.saveButton.disabled = false;
+    }
+
+    return isValid;
+  }
+
   private collectFormData(): CommandDialogSaveDetail | null {
     const editIdInput = this.querySelector<HTMLInputElement>('#edit-command-id');
     const idInput = this.querySelector<HTMLInputElement>('#command-id');
@@ -116,6 +161,11 @@ export class CommandDialogElement extends HTMLElement {
     const cooldownInput = this.querySelector<HTMLInputElement>('#command-cooldown');
 
     if (!idInput || !triggerInput || !responseInput || !messageTypeSelect || !colorSelect || !cooldownInput) {
+      return null;
+    }
+
+    // если валидация кулдауна не проходит — не даём сохранить
+    if (!this.validateCooldown()) {
       return null;
     }
 
