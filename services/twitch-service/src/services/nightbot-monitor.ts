@@ -813,7 +813,7 @@ export class NightBotMonitor {
      * @returns true если cooldown активен, false если можно отправить announcement
      */
     /**
-     * Проверка кулдауна для конкретной announcement команды
+     * Проверка кулдауна для конкретной announcement команды (БЕЗ установки нового)
      * @param commandName - название команды (например: '!дс', '!тг')
      * @returns true если команда на кулдауне, false если можно использовать
      */
@@ -827,9 +827,15 @@ export class NightBotMonitor {
             return true;
         }
 
-        // Обновляем время последнего использования этой команды
-        this.announcementCooldowns.set(commandName, now);
         return false;
+    }
+
+    /**
+     * Установить кулдаун для команды (вызывается ПОСЛЕ успешной отправки)
+     * @param commandName - название команды
+     */
+    private setAnnouncementCooldown(commandName: string): void {
+        this.announcementCooldowns.set(commandName, Date.now());
     }
 
     /**
@@ -982,8 +988,12 @@ export class NightBotMonitor {
             }
             
             const text = 'Тут я мурчу в свободное время discord.com/invite/zrNsn4vAw2';
-            await this.sendAnnouncement(text, this.getRandomAnnouncementColor());
-            console.log('✅ Объявление с Discord-ссылкой отправлено');
+            const success = await this.sendAnnouncement(text, this.getRandomAnnouncementColor());
+            
+            if (success) {
+                this.setAnnouncementCooldown('!дс');
+                console.log('✅ Объявление с Discord-ссылкой отправлено');
+            }
         } catch (error) {
             console.error('❌ Ошибка при обработке команды !discord:', error);
         }
@@ -997,8 +1007,12 @@ export class NightBotMonitor {
             }
             
             const text = 'Тут можно подарить стримеру Ferrari https://fetta.app/u/kunilika666';
-            await this.sendAnnouncement(text, this.getRandomAnnouncementColor());
-            console.log('✅ Объявление с Fetta-ссылкой отправлено');
+            const success = await this.sendAnnouncement(text, this.getRandomAnnouncementColor());
+            
+            if (success) {
+                this.setAnnouncementCooldown('!фетта');
+                console.log('✅ Объявление с Fetta-ссылкой отправлено');
+            }
         } catch (error) {
             console.error('❌ Ошибка при обработке команды !fetta:', error);
         }
@@ -1012,8 +1026,12 @@ export class NightBotMonitor {
             }
             
             const text = 'Запретные фото стримера https://boosty.to/kunilika911';
-            await this.sendAnnouncement(text, this.getRandomAnnouncementColor());
-            console.log('✅ Объявление с Boosty-ссылкой отправлено');
+            const success = await this.sendAnnouncement(text, this.getRandomAnnouncementColor());
+            
+            if (success) {
+                this.setAnnouncementCooldown('!бусти');
+                console.log('✅ Объявление с Boosty-ссылкой отправлено');
+            }
         } catch (error) {
             console.error('❌ Ошибка при обработке команды !boosty:', error);
         }
@@ -1027,8 +1045,12 @@ export class NightBotMonitor {
             }
             
             const text = 'Увеличь свой шанс что я приду к тебе ночью https://donatex.gg/donate/kunilika666';
-            await this.sendAnnouncement(text, this.getRandomAnnouncementColor());
-            console.log('✅ Объявление с Donation-ссылкой отправлено');
+            const success = await this.sendAnnouncement(text, this.getRandomAnnouncementColor());
+            
+            if (success) {
+                this.setAnnouncementCooldown('!донат');
+                console.log('✅ Объявление с Donation-ссылкой отправлено');
+            }
         } catch (error) {
             console.error('❌ Ошибка при обработке команды !donation:', error);
         }
@@ -1042,8 +1064,12 @@ export class NightBotMonitor {
             }
 
             const text = '"Fairy Pixel" - VTube моделька, волшебные нейро-арты, стикеры https://t.me/FairyPixel';
-            await this.sendAnnouncement(text, this.getRandomAnnouncementColor());
-            console.log('✅ Объявление с Fairy Pixel-ссылкой отправлено');
+            const success = await this.sendAnnouncement(text, this.getRandomAnnouncementColor());
+            
+            if (success) {
+                this.setAnnouncementCooldown('!фп');
+                console.log('✅ Объявление с Fairy Pixel-ссылкой отправлено');
+            }
         } catch (error) {
             console.error('❌ Ошибка при обработке команды !fp:', error);
         }
@@ -1059,9 +1085,12 @@ export class NightBotMonitor {
             }
 
             const text = 'Тайная жизнь суккуба http://t.me/+rSBrR1FyQqBhZmU1';
-            await this.sendAnnouncement(text, this.getRandomAnnouncementColor());
+            const success = await this.sendAnnouncement(text, this.getRandomAnnouncementColor());
 
-            console.log('✅ Объявление !тг отправлено');
+            if (success) {
+                this.setAnnouncementCooldown('!тг');
+                console.log('✅ Объявление !тг отправлено');
+            }
         } catch (error) {
             console.error('❌ Ошибка при обработке команды !tg:', error);
         }
@@ -1938,7 +1967,11 @@ export class NightBotMonitor {
             const response = `${moscowTime} - Московское время | Самара - ${samaraTime}`;
 
             // Отправляем как Twitch announcement с случайным цветом
-            await this.sendAnnouncement(response, this.getRandomAnnouncementColor());
+            const success = await this.sendAnnouncement(response, this.getRandomAnnouncementColor());
+            
+            if (success) {
+                this.setAnnouncementCooldown('!время');
+            }
         } catch (error) {
             console.error('❌ Ошибка при обработке команды !время:', error);
         }
@@ -2043,11 +2076,12 @@ export class NightBotMonitor {
 
     /**
      * Отправка объявления (Announcement) в чат Twitch через Helix API
+     * @returns true если отправка успешна, false если ошибка
      */
-    private async sendAnnouncement(message: string, color: 'blue' | 'green' | 'orange' | 'purple' | 'primary' = 'primary'): Promise<void> {
+    private async sendAnnouncement(message: string, color: 'blue' | 'green' | 'orange' | 'purple' | 'primary' = 'primary'): Promise<boolean> {
         if (!this.broadcasterId || !this.moderatorId) {
             console.error('❌ Нельзя отправить объявление: broadcasterId или moderatorId не инициализированы');
-            return;
+            return false;
         }
 
         try {
@@ -2064,8 +2098,10 @@ export class NightBotMonitor {
                 1 // для объявлений делаем только одну попытку, без повторов
             );
             console.log(`✅ Объявление отправлено (${color}):`, message);
+            return true;
         } catch (error: any) {
             console.error(`⚠️ Ошибка отправки объявления (цвет: ${color}):`, error?.message || error);
+            return false;
         }
     }
 
