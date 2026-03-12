@@ -118,6 +118,7 @@ body.modal-open {
   font-size: 1.3em;
   font-weight: bold;
   color: #667eea;
+  cursor: pointer;
 }
 
 .command-status {
@@ -181,6 +182,7 @@ body.modal-open {
   margin-bottom: 15px;
   word-wrap: break-word;
   border-left: 3px solid #667eea;
+  cursor: pointer;
 }
 
 .command-aliases {
@@ -197,6 +199,7 @@ body.modal-open {
   border-radius: 12px;
   font-size: 0.85em;
   font-weight: 500;
+  cursor: pointer;
 }
 
 .command-actions {
