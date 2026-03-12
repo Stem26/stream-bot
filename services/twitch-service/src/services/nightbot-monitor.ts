@@ -121,9 +121,9 @@ export class NightBotMonitor {
     private commandCooldowns = new Map<string, Map<string, number>>();
     private readonly COMMAND_COOLDOWN_MS = 5 * 1000; // 5 секунд между использованиями команды в канале
     
-    // Общий cooldown для announcement команд (из-за лимитов Twitch API)
-    private lastAnnouncementTime: number = 0;
-    private readonly ANNOUNCEMENT_COOLDOWN_MS = 10 * 1000; // 10 секунд между announcements
+    // Отдельный cooldown для каждой announcement команды (из-за лимитов Twitch API)
+    private announcementCooldowns = new Map<string, number>(); // key = commandName, value = lastUsedTimestamp
+    private readonly ANNOUNCEMENT_COOLDOWN_MS = 10 * 1000; // 10 секунд между повторным использованием одной команды
 
     // Персональные кулдауны по пользователю (key = channel:command:user)
     private userCommandCooldowns = new Map<string, number>();
@@ -812,17 +812,23 @@ export class NightBotMonitor {
      * Проверка cooldown для announcement команд (защита от rate limit Twitch API)
      * @returns true если cooldown активен, false если можно отправить announcement
      */
-    private isAnnouncementOnCooldown(): boolean {
+    /**
+     * Проверка кулдауна для конкретной announcement команды
+     * @param commandName - название команды (например: '!дс', '!тг')
+     * @returns true если команда на кулдауне, false если можно использовать
+     */
+    private isAnnouncementOnCooldown(commandName: string): boolean {
         const now = Date.now();
+        const lastUsed = this.announcementCooldowns.get(commandName);
         
-        if (this.lastAnnouncementTime && now - this.lastAnnouncementTime < this.ANNOUNCEMENT_COOLDOWN_MS) {
-            const secondsLeft = Math.ceil((this.ANNOUNCEMENT_COOLDOWN_MS - (now - this.lastAnnouncementTime)) / 1000);
-            console.log(`⏳ Announcement на cooldown, осталось ${secondsLeft} сек`);
+        if (lastUsed && now - lastUsed < this.ANNOUNCEMENT_COOLDOWN_MS) {
+            const secondsLeft = Math.ceil((this.ANNOUNCEMENT_COOLDOWN_MS - (now - lastUsed)) / 1000);
+            console.log(`⏳ Команда ${commandName} на cooldown, осталось ${secondsLeft} сек`);
             return true;
         }
 
-        // Обновляем время последнего announcement
-        this.lastAnnouncementTime = now;
+        // Обновляем время последнего использования этой команды
+        this.announcementCooldowns.set(commandName, now);
         return false;
     }
 
@@ -971,7 +977,7 @@ export class NightBotMonitor {
     private async handleDiscordCommand(channel: string, user: string, message: string, msg: any) {
         try {
             // Проверка announcement cooldown
-            if (this.isAnnouncementOnCooldown()) {
+            if (this.isAnnouncementOnCooldown('!дс')) {
                 return; // Игнорируем команду если cooldown активен
             }
             
@@ -986,7 +992,7 @@ export class NightBotMonitor {
     private async handleFettaCommand(channel: string, user: string, message: string, msg: any) {
         try {
             // Проверка announcement cooldown
-            if (this.isAnnouncementOnCooldown()) {
+            if (this.isAnnouncementOnCooldown('!фетта')) {
                 return;
             }
             
@@ -1001,7 +1007,7 @@ export class NightBotMonitor {
     private async handleBoostyCommand(channel: string, user: string, message: string, msg: any) {
         try {
             // Проверка announcement cooldown
-            if (this.isAnnouncementOnCooldown()) {
+            if (this.isAnnouncementOnCooldown('!бусти')) {
                 return;
             }
             
@@ -1016,7 +1022,7 @@ export class NightBotMonitor {
     private async handleDonationCommand(channel: string, user: string, message: string, msg: any) {
         try {
             // Проверка announcement cooldown
-            if (this.isAnnouncementOnCooldown()) {
+            if (this.isAnnouncementOnCooldown('!донат')) {
                 return;
             }
             
@@ -1030,9 +1036,14 @@ export class NightBotMonitor {
 
     private async handleFpCommand(channel: string, user: string, message: string, msg: any) {
         try {
+            // Проверка announcement cooldown
+            if (this.isAnnouncementOnCooldown('!фп')) {
+                return;
+            }
+
             const text = '"Fairy Pixel" - VTube моделька, волшебные нейро-арты, стикеры https://t.me/FairyPixel';
-            await this.sendMessage(channel, text);
-            console.log('✅ Ссылка на Fairy Pixel отправлена');
+            await this.sendAnnouncement(text, this.getRandomAnnouncementColor());
+            console.log('✅ Объявление с Fairy Pixel-ссылкой отправлено');
         } catch (error) {
             console.error('❌ Ошибка при обработке команды !fp:', error);
         }
@@ -1043,7 +1054,7 @@ export class NightBotMonitor {
             console.log(`📣 handleTgCommand от ${user} в ${channel}`);
 
             // Проверка announcement cooldown
-            if (this.isAnnouncementOnCooldown()) {
+            if (this.isAnnouncementOnCooldown('!тг')) {
                 return;
             }
 
@@ -1901,7 +1912,7 @@ export class NightBotMonitor {
     private async handleTimeCommand(channel: string, user: string, msg: any) {
         try {
             // Проверка announcement cooldown
-            if (this.isAnnouncementOnCooldown()) {
+            if (this.isAnnouncementOnCooldown('!время')) {
                 return;
             }
             
