@@ -152,13 +152,19 @@ async function bootstrap(): Promise<void> {
     if (copySource) {
       let textToCopy = copySource.textContent?.trim() ?? '';
 
-      // Для объявлений при копировании ответа сразу формируем /announce-команду
+      // Для объявлений при копировании ответа сразу формируем /announce-команду.
+      // С учётом цветных вариантов Twitch: /announceblue, /announceorange и т.п.
       if (copySource.classList.contains('command-response') && messageType === 'announcement') {
         const colorSuffix =
           color && color !== 'primary'
-            ? ` ${color}`
-            : ''; // primary можно не указывать, Twitch возьмёт цвет по умолчанию
-        textToCopy = `/announce${colorSuffix} ${textToCopy}`;
+            ? color
+            : '';
+
+        const announceCommand = colorSuffix
+          ? `/announce${colorSuffix}`
+          : '/announce';
+
+        textToCopy = `${announceCommand} ${textToCopy}`;
       }
 
       if (textToCopy) {
