@@ -1919,16 +1919,19 @@ export class NightBotMonitor {
     private async handleLinksCommand(channel: string, user: string, msg: any) {
         console.log(`🔗 Команда !ссылки от ${user} в ${channel}`);
 
-        const promoCommands = [
-            '!boosty (!бусти)',
-            '!donation (!донат)',
-            '!fetta (!фетта)',
-            '!discord (!ds, !дискорд)',
-            '!tg (!тг)',
-            '!fp (!фп)'
+        const links = [
+            '📸Boosty (запретные фото): https://boosty.to/kunilika911',
+            '─────────────────',
+            '😻Discord (тут я мурчу): https://discord.gg/zrNsn4vAw2',
+            '─────────────────',
+            '💖Donation (шанс, что приду): https://donatex.gg/donate/kunilika666',
+            '─────────────────',
+            '🔮Telegram (тайная жизнь): http://t.me/+rSBrR1FyQqBhZmU1',
+            '─────────────────',
+            '🎁Fetta (Ferrari для стримера): https://fetta.app/u/kunilika666'
         ];
 
-        const response = `${promoCommands.join(' • ')}`;
+        const response = links.join(' ');
 
         try {
             await this.sendMessage(channel, response);
