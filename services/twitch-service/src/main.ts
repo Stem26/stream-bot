@@ -64,6 +64,7 @@ async function main() {
         nightBotMonitor.clearChattersCache();
         nightBotMonitor.clearStopCounters();
         nightBotMonitor.clearDeathCounters();
+        nightBotMonitor.clearDetectedModerators();
         nightBotMonitor.stopViewersSync();
     });
 

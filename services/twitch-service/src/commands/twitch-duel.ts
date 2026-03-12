@@ -62,14 +62,18 @@ const STREAK_REWARD_POINTS = 100;
 // Пользователи без cooldown и timeout (стример)
 const DUEL_EXEMPT_USERS = new Set([STREAMER_USERNAME?.toLowerCase()].filter(Boolean));
 
-// Пользователи, которые могут управлять дуэлями (включать/выключать)
-const DUEL_ADMINS = new Set([
+// Дополнительные пользователи, которые всегда могут управлять дуэлями (помимо модераторов)
+const EXTRA_DUEL_ADMINS = new Set([
   STREAMER_USERNAME?.toLowerCase(),
   'stem261',
-  'kunila666_bot',
-  'remax_7',
-  'violent_osling'
 ].filter(Boolean));
+
+// Динамический список админов дуэлей на основе модераторов Twitch
+let dynamicDuelAdmins = new Set<string>();
+export function setDuelAdminsFromModerators(usernames: string[]): void {
+  dynamicDuelAdmins = new Set(usernames.map(name => name.toLowerCase()));
+  console.log('✅ DUEL_ADMINS обновлён из списка модераторов:', Array.from(dynamicDuelAdmins).join(', '));
+}
 
 // Флаг состояния дуэлей (включены/выключены)
 let duelsEnabled = true;
@@ -734,7 +738,8 @@ export async function processTwitchDuelCommand(
  * Проверяет, может ли пользователь управлять дуэлями
  */
 export function canManageDuels(twitchUsername: string): boolean {
-  return DUEL_ADMINS.has(twitchUsername.toLowerCase());
+  const normalized = twitchUsername.toLowerCase();
+  return EXTRA_DUEL_ADMINS.has(normalized) || dynamicDuelAdmins.has(normalized);
 }
 
 /**

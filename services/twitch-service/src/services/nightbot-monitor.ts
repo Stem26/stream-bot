@@ -3,7 +3,7 @@ import { StaticAuthProvider } from '@twurple/auth';
 import { processTwitchDickCommand } from '../commands/twitch-dick';
 import { processTwitchTopDickCommand } from '../commands/twitch-topDick';
 import { processTwitchBottomDickCommand } from '../commands/twitch-bottomDick';
-import { processTwitchDuelCommand, enableDuels, disableDuels, pardonAllDuelTimeouts, acceptDuelChallenge, declineDuelChallenge, clearDuelChallenges } from '../commands/twitch-duel';
+import { processTwitchDuelCommand, enableDuels, disableDuels, pardonAllDuelTimeouts, acceptDuelChallenge, declineDuelChallenge, clearDuelChallenges, setDuelAdminsFromModerators } from '../commands/twitch-duel';
 import { processTwitchRatCommand, processTwitchCutieCommand, addActiveUser, setChattersAPIFunction } from '../commands/twitch-rat';
 import { processTwitchPointsCommand, processTwitchTopPointsCommand } from '../commands/twitch-points';
 import { ENABLE_BOT_FEATURES, ALLOW_LOCAL_COMMANDS } from '../config/features';
@@ -110,71 +110,112 @@ export class NightBotMonitor {
     private chattersFetchPromise: Promise<string[]> | null = null;
     // Периодический опрос chatters для синхронизации viewers (каждую минуту)
     private chattersSyncInterval: NodeJS.Timeout | null = null;
-    private readonly CHATTERS_SYNC_INTERVAL_MS = 60 * 1000; // 60 секунд (синхронно с viewers)
+    private readonly CHATTERS_SYNC_INTERVAL_MS = 60 * 1000;
     // Флаг для предотвращения параллельного запуска warmup
     private isWarmingUp: boolean = false;
+    
+    // Обнаруженные модераторы из сообщений чата (для автоматической установки DUEL_ADMINS)
+    private detectedModerators = new Set<string>();
 
     // Cooldown для команд топа (channel -> Map<commandName, lastUsedTimestamp>)
     private commandCooldowns = new Map<string, Map<string, number>>();
     private readonly COMMAND_COOLDOWN_MS = 5 * 1000; // 5 секунд между использованиями команды в канале
+    
+    // Общий cooldown для announcement команд (из-за лимитов Twitch API)
+    private lastAnnouncementTime: number = 0;
+    private readonly ANNOUNCEMENT_COOLDOWN_MS = 10 * 1000; // 10 секунд между announcements
+
+    // Персональные кулдауны по пользователю (key = channel:command:user)
+    private userCommandCooldowns = new Map<string, number>();
 
     // Мапа команд для чистого роутинга
-    private readonly commands = new Map<string, CommandHandler>([
-        ['!dick', (ch, u, m, msg) => {
+    private readonly commands = this.buildCommandsMap();
+    private buildCommandsMap(): Map<string, CommandHandler> {
+        const map = new Map<string, CommandHandler>();
+
+        const register = (aliases: string[], handler: CommandHandler) => {
+            for (const alias of aliases) map.set(alias, handler);
+        };
+
+        register(['!dick'], (ch, u, m, msg) => {
             this.dickQueue = this.dickQueue
                 .then(() => this.handleDickCommand(ch, u, m, msg))
                 .catch(err => console.error('❌ dickQueue error:', err));
-        }],
-        ['!top_dick', (ch, u, m, msg) => void this.handleTopDickCommand(ch, u, m, msg)],
-        ['!topdick', (ch, u, m, msg) => void this.handleTopDickCommand(ch, u, m, msg)],
-        ['!bottom_dick', (ch, u, m, msg) => void this.handleBottomDickCommand(ch, u, m, msg)],
-        ['!bottomdick', (ch, u, m, msg) => void this.handleBottomDickCommand(ch, u, m, msg)],
-        ['!points', (ch, u, m, msg) => void this.handlePointsCommand(ch, u, m, msg)],
-        ['!очки', (ch, u, m, msg) => void this.handlePointsCommand(ch, u, m, msg)],
-        ['!top_points', (ch, u, m, msg) => void this.handleTopPointsCommand(ch, u, m, msg)],
-        ['!toppoints', (ch, u, m, msg) => void this.handleTopPointsCommand(ch, u, m, msg)],
-        ['!топ_очки', (ch, u, m, msg) => void this.handleTopPointsCommand(ch, u, m, msg)],
-        ['!дуэль', (ch, u, m, msg) => void this.handleDuelCommand(ch, u, m, msg)],
-        ['!принять', (ch, u, m, msg) => void this.handleAcceptDuelCommand(ch, u, msg)],
-        ['!отклонить', (ch, u, m, msg) => void this.handleDeclineDuelCommand(ch, u, msg)],
-        ['!стоп_дуэль', (ch, u, m, msg) => void this.handleDisableDuelsCommand(ch, u, msg)],
-        ['!старт_дуэль', (ch, u, m, msg) => void this.handleEnableDuelsCommand(ch, u, msg)],
-        ['!амнистия', (ch, u, m, msg) => void this.handleDuelPardonCommand(ch, u, msg)],
-        ['!крыса', (ch, u, m, msg) => void this.handleRatCommand(ch, u, m, msg)],
-        ['!милашка', (ch, u, m, msg) => void this.handleCutieCommand(ch, u, m, msg)],
-        ['!vanish', (ch, u, m, msg) => void this.handleVanishCommand(ch, u, msg)],
-        ['!jump', (ch, u, m, msg) => void this.handleJumpCommand(ch, u, msg)],
-        ['!j', (ch, u, m, msg) => void this.handleJumpCommand(ch, u, msg)],
-        ['!стоп', (ch, u, m, msg) => void this.handleStopCommand(ch, u, msg)],
-        ['!стопоткат', (ch, u, m, msg) => void this.handleStopRollbackCommand(ch, u, msg)],
-        ['!стопсброс', (ch, u, m, msg) => void this.handleStopResetCommand(ch, u, msg)],
-        ['!стопинфо', (ch, u, m, msg) => void this.handleStopInfoCommand(ch, u, msg)],
-        ['!смерть', (ch, u, m, msg) => void this.handleDeathCommand(ch, u, msg)],
-        ['!смертьоткат', (ch, u, m, msg) => void this.handleDeathRollbackCommand(ch, u, msg)],
-        ['!смертьсброс', (ch, u, m, msg) => void this.handleDeathResetCommand(ch, u, msg)],
-        ['!смертьинфо', (ch, u, m, msg) => void this.handleDeathInfoCommand(ch, u, msg)],
-        ['!персонажи', (ch, u, m, msg) => void this.handleCharactersListCommand(ch, u, msg)],
-        ['!игры', (ch, u, m, msg) => void this.handleGamesCommand(ch, u, msg)],
-        ['!help', (ch, u, m, msg) => void this.handleGamesCommand(ch, u, msg)]
-    ]);
+        });
+        register(['!top_dick', '!topdick'], (ch, u, m, msg) => void this.handleTopDickCommand(ch, u, m, msg));
+        register(['!bottom_dick', '!bottomdick'], (ch, u, m, msg) => void this.handleBottomDickCommand(ch, u, m, msg)        );
+        register(['!points', '!очки'], (ch, u, m, msg) => void this.handlePointsCommand(ch, u, m, msg));
+        register(['!horny', '!хорни'], (ch, u, m, msg) => void this.handleHornyCommand(ch, u));
+        register(['!furry', '!фурри', '!фури'], (ch, u, m, msg) => void this.handleFurryCommand(ch, u));
+        register(['!fetta', '!фетта'], (ch, u, m, msg) => void this.handleFettaCommand(ch, u, m, msg));
+        register(['!boosty', '!бусти'], (ch, u, m, msg) => void this.handleBoostyCommand(ch, u, m, msg));
+        register(['!donation', '!донат'], (ch, u, m, msg) => void this.handleDonationCommand(ch, u, m, msg));
+        register(['!fp', '!фп'], (ch, u, m, msg) => void this.handleFpCommand(ch, u, m, msg));
+        register(['!discord', '!ds', '!дискорд', '!дс'], (ch, u, m, msg) => void this.handleDiscordCommand(ch, u, m, msg));
+        register(['!tg', '!тг'], (ch, u, m, msg) => void this.handleTgCommand(ch, u, m, msg));
+        register(['!top_points', '!toppoints', '!топ_очки'], (ch, u, m, msg) => void this.handleTopPointsCommand(ch, u, m, msg));
+        register(['!дуэль'], (ch, u, m, msg) => void this.handleDuelCommand(ch, u, m, msg));
+        register(['!принять'], (ch, u, m, msg) => void this.handleAcceptDuelCommand(ch, u, msg));
+        register(['!отклонить'], (ch, u, m, msg) => void this.handleDeclineDuelCommand(ch, u, msg));
+        register(['!стоп_дуэль'], (ch, u, m, msg) => void this.handleDisableDuelsCommand(ch, u, msg));
+        register(['!старт_дуэль'], (ch, u, m, msg) => void this.handleEnableDuelsCommand(ch, u, msg));
+        register(['!амнистия'], (ch, u, m, msg) => void this.handleDuelPardonCommand(ch, u, msg));
+        register(['!крыса'], (ch, u, m, msg) => void this.handleRatCommand(ch, u, m, msg));
+        register(['!милашка'], (ch, u, m, msg) => void this.handleCutieCommand(ch, u, m, msg));
+        register(['!vanish'], (ch, u, m, msg) => void this.handleVanishCommand(ch, u, msg));
+        register(['!стоп'], (ch, u, m, msg) => void this.handleStopCommand(ch, u, msg));
+        register(['!стопоткат'], (ch, u, m, msg) => void this.handleStopRollbackCommand(ch, u, msg));
+        register(['!стопсброс'], (ch, u, m, msg) => void this.handleStopResetCommand(ch, u, msg));
+        register(['!стопинфо'], (ch, u, m, msg) => void this.handleStopInfoCommand(ch, u, msg));
+        register(['!смерть'], (ch, u, m, msg) => void this.handleDeathCommand(ch, u, msg));
+        register(['!смертьоткат'], (ch, u, m, msg) => void this.handleDeathRollbackCommand(ch, u, msg));
+        register(['!смертьсброс'], (ch, u, m, msg) => void this.handleDeathResetCommand(ch, u, msg));
+        register(['!смертьинфо'], (ch, u, m, msg) => void this.handleDeathInfoCommand(ch, u, msg));
+        register(['!персонажи'], (ch, u, m, msg) => void this.handleCharactersListCommand(ch, u, msg));
+        register(['!игры', '!help'], (ch, u, m, msg) => void this.handleGamesCommand(ch, u, msg));
+        register(['!ссылки', '!links'], (ch, u, m, msg) => void this.handleLinksCommand(ch, u, msg));
+        register(['!время'], (ch, u, m, msg) => void this.handleTimeCommand(ch, u, msg));
+
+        return map;
+    }
+
+    private isBroadcaster(user: string): boolean {
+        return user.trim().toLowerCase() === this.channelName;
+    }
+
+    private async getUserIdCached(username: string): Promise<string | null> {
+        const normalizedUsername = username.trim().toLowerCase();
+
+        let userId = this.userIdCache.get(normalizedUsername);
+        if (userId) return userId;
+
+        try {
+            const userData = await this.helix<{ data: Array<{ id: string }> }>(
+                `https://api.twitch.tv/helix/users?login=${encodeURIComponent(normalizedUsername)}`
+            );
+
+            if (!userData?.data?.length) return null;
+
+            userId = userData.data[0].id;
+            this.userIdCache.set(normalizedUsername, userId);
+            return userId;
+        } catch (error: any) {
+            console.error(`❌ Ошибка получения userId для ${normalizedUsername}:`, error?.message || error);
+            return null;
+        }
+    }
 
     constructor() {
         // Загружаем состояние счётчиков при создании
         const countersState = loadCountersState();
 
-        // Восстанавливаем stopCounters из файла
         for (const [username, count] of Object.entries(countersState.stopCounters)) {
             this.stopCounters.set(username, count);
         }
 
-        // Восстанавливаем deathCounters из файла
         for (const [username, count] of Object.entries(countersState.deathCounters)) {
             this.deathCounters.set(username, count);
         }
-
-        console.log('📋 Загружены счётчики из файла:');
-        console.log(`   !стоп: ${this.stopCounters.size} записей`);
-        console.log(`   !смерть: ${this.deathCounters.size} записей`);
     }
 
     /**
@@ -215,12 +256,28 @@ export class NightBotMonitor {
                     throw error;
                 }
 
-                return (await res.json()) as T;
+                // Некоторые Helix endpoints (например, announcements) могут возвращать 204 или пустое тело
+                const contentLength = res.headers.get('content-length');
+                if (res.status === 204 || contentLength === '0') {
+                    return undefined as T;
+                }
+
+                // Пробуем распарсить JSON; если тело пустое/битое — логируем и бросаем осмысленную ошибку
+                try {
+                    return (await res.json()) as T;
+                } catch (parseError: any) {
+                    const text = await res.text().catch(() => '');
+                    const error = new Error(
+                        `Failed to parse Helix JSON response (status ${res.status}): ${parseError?.message || parseError}. Body: ${text}`
+                    );
+                    (error as any).status = res.status;
+                    throw error;
+                }
 
             } catch (error) {
                 lastError = error as Error;
                 const status = (error as any).status;
-                
+
                 // КРИТИЧНО: 429 Rate Limit НЕ должен попадать в общий блок 4xx
                 // 429 нужно ОБЯЗАТЕЛЬНО ретраить, иначе бот ломается при burst нагрузке
                 if (status === 429) {
@@ -234,13 +291,13 @@ export class NightBotMonitor {
                     await new Promise(resolve => setTimeout(resolve, delayMs));
                     continue;
                 }
-                
+
                 // Не делаем retry на остальных 4xx ошибках (клиентские ошибки, бессмысленно повторять)
                 // ВАЖНО: status !== 429 явно исключает rate limit из этой проверки
                 if (status && status >= 400 && status < 500 && status !== 429) {
                     throw lastError;
                 }
-                
+
                 // Если это последняя попытка - пробрасываем ошибку
                 if (attempt === maxRetries - 1) {
                     throw lastError;
@@ -249,7 +306,7 @@ export class NightBotMonitor {
                 // Exponential backoff для 5xx и network errors: 1s, 2s, 4s, 8s...
                 const delayMs = 1000 * Math.pow(2, attempt);
                 console.log(`⚠️ Helix API ошибка (попытка ${attempt + 1}/${maxRetries}), повтор через ${delayMs}мс:`, lastError.message);
-                
+
                 await new Promise(resolve => setTimeout(resolve, delayMs));
             }
         }
@@ -381,6 +438,12 @@ export class NightBotMonitor {
      */
     async connect(channelName: string, accessToken: string, clientId: string) {
         try {
+            // Если уже подключены, не подключаемся повторно
+            if (this.chatClient) {
+                console.log('⚠️ ChatClient уже подключен, пропускаем повторное подключение');
+                return true;
+            }
+
             // Нормализуем имя канала сразу (убираем # и приводим к lowercase)
             this.channelName = channelName.replace(/^#/, '').toLowerCase();
             this.accessToken = accessToken;
@@ -423,7 +486,7 @@ export class NightBotMonitor {
             this.chatClient.onConnect(() => {
                 console.log('✅ Успешно подключились к Twitch чату!');
                 
-                // При переподключении перезапускаем синхронизацию зрителей если стрим онлайн
+                // Модераторы будут обнаружены автоматически когда напишут сообщение в чат
                 if (this.isStreamOnlineCheck()) {
                     console.log('🔄 Переподключение к чату: проверяем синхронизацию зрителей...');
                     this.warmupChattersCache();
@@ -486,6 +549,25 @@ export class NightBotMonitor {
                 // Игнорируем сообщения от ботов из blacklist
                 if (BOT_BLACKLIST.has(username)) {
                     return;
+                }
+
+                // Проверяем роли пользователя из тегов сообщения (в реальном времени)
+                const isMod = msg.userInfo.isMod;
+                const isBroadcaster = msg.userInfo.isBroadcaster;
+                const isModNow = isMod || isBroadcaster;
+                const wasModBefore = this.detectedModerators.has(username);
+                
+                // Если пользователь модератор - добавляем в список админов дуэлей
+                if (isModNow && !wasModBefore) {
+                    console.log(`🛡️ Обнаружен модератор в чате: ${username}`);
+                    this.detectedModerators.add(username);
+                    setDuelAdminsFromModerators(Array.from(this.detectedModerators));
+                }
+                // Если пользователь больше НЕ модератор, но был в списке - удаляем (сняли модерку)
+                else if (!isModNow && wasModBefore) {
+                    console.log(`⚠️ У пользователя ${username} забрали права модератора - удаляем из админов`);
+                    this.detectedModerators.delete(username);
+                    setDuelAdminsFromModerators(Array.from(this.detectedModerators));
                 }
 
                 // Отслеживаем активных пользователей для команды !крыса (fallback)
@@ -617,9 +699,11 @@ export class NightBotMonitor {
                 }
             });
 
-            // Отслеживаем серии просмотров (watch streaks) через низкоуровневый IRC
+            // Отслеживаем серии просмотров (watch streaks) и другие события через низкоуровневый IRC
             // @twurple пока не имеет специального обработчика для viewermilestone
             this.chatClient.irc.onAnyMessage((ircMessage) => {
+                const raw = ircMessage as any;
+                
                 if (ircMessage.command === 'USERNOTICE') {
                     const msgId = ircMessage.tags.get('msg-id');
 
@@ -689,21 +773,39 @@ export class NightBotMonitor {
     private isCommandOnCooldown(channel: string, commandName: string): boolean {
         const now = Date.now();
         let channelCooldowns = this.commandCooldowns.get(channel);
-        
+
         if (!channelCooldowns) {
             channelCooldowns = new Map();
             this.commandCooldowns.set(channel, channelCooldowns);
         }
-        
+
         const lastUsed = channelCooldowns.get(commandName);
         if (lastUsed && now - lastUsed < this.COMMAND_COOLDOWN_MS) {
             const secondsLeft = Math.ceil((this.COMMAND_COOLDOWN_MS - (now - lastUsed)) / 1000);
             console.log(`⏳ Команда ${commandName} на cooldown, осталось ${secondsLeft} сек`);
             return true;
         }
-        
+
         // Обновляем время последнего использования
         channelCooldowns.set(commandName, now);
+        return false;
+    }
+
+    /**
+     * Проверка cooldown для announcement команд (защита от rate limit Twitch API)
+     * @returns true если cooldown активен, false если можно отправить announcement
+     */
+    private isAnnouncementOnCooldown(): boolean {
+        const now = Date.now();
+        
+        if (this.lastAnnouncementTime && now - this.lastAnnouncementTime < this.ANNOUNCEMENT_COOLDOWN_MS) {
+            const secondsLeft = Math.ceil((this.ANNOUNCEMENT_COOLDOWN_MS - (now - this.lastAnnouncementTime)) / 1000);
+            console.log(`⏳ Announcement на cooldown, осталось ${secondsLeft} сек`);
+            return true;
+        }
+
+        // Обновляем время последнего announcement
+        this.lastAnnouncementTime = now;
         return false;
     }
 
@@ -774,6 +876,166 @@ export class NightBotMonitor {
             console.log(`✅ Отправлен ответ в чат: ${response}`);
         } catch (error) {
             console.error('❌ Ошибка при обработке команды !points:', error);
+        }
+    }
+
+    private async handleHornyCommand(channel: string, user: string) {
+        try {
+            // Стример без личного КД, для остальных — 1 раз в минуту
+            if (!this.isBroadcaster(user)) {
+                const key = `${channel}:horny:${user.toLowerCase()}`;
+                const lastUsed = this.userCommandCooldowns.get(key);
+                const now = Date.now();
+                const COOLDOWN_MS = 60 * 1000;
+
+                if (lastUsed && now - lastUsed < COOLDOWN_MS) {
+                    return;
+                }
+
+                this.userCommandCooldowns.set(key, now);
+            }
+
+            const userId = await this.getUserIdCached(user);
+
+            const min = -69;
+            const max = 666;
+
+            let value: number;
+            if (userId === '897528838') {
+                // Для стримера: 90% случаев 666, 10% случаев 665
+                const roll = Math.random();
+                value = roll < 0.1 ? 665 : 666;
+            } else {
+                value = Math.floor(Math.random() * (max - min + 1)) + min;
+            }
+
+            await this.sendMessage(channel, `${user} хорни на ${value}%`);
+        } catch (error) {
+            console.error('❌ Ошибка при обработке команды !horny:', error);
+        }
+    }
+
+    private async handleFurryCommand(channel: string, user: string) {
+        try {
+            // Стример без личного КД, для остальных — 1 раз в минуту
+            if (!this.isBroadcaster(user)) {
+                const key = `${channel}:furry:${user.toLowerCase()}`;
+                const lastUsed = this.userCommandCooldowns.get(key);
+                const now = Date.now();
+                const COOLDOWN_MS = 60 * 1000;
+
+                if (lastUsed && now - lastUsed < COOLDOWN_MS) {
+                    return;
+                }
+
+                this.userCommandCooldowns.set(key, now);
+            }
+
+            const userId = await this.getUserIdCached(user);
+
+            const min = 1;
+            const max = 100;
+
+            let value: number;
+            if (userId === '897528838') {
+                // Для стримера: 90% случаев -100, 10% случаев +100
+                const roll = Math.random();
+                value = roll < 0.1 ? 100 : -100;
+            } else {
+                value = Math.floor(Math.random() * (max - min + 1)) + min;
+            }
+
+            await this.sendMessage(channel, `${user} ты на ${value}% фурри`);
+        } catch (error) {
+            console.error('❌ Ошибка при обработке команды !furry:', error);
+        }
+    }
+
+    private async handleDiscordCommand(channel: string, user: string, message: string, msg: any) {
+        try {
+            // Проверка announcement cooldown
+            if (this.isAnnouncementOnCooldown()) {
+                return; // Игнорируем команду если cooldown активен
+            }
+            
+            const text = 'Тут я мурчу в свободное время discord.com/invite/zrNsn4vAw2';
+            await this.sendAnnouncement(text, this.getRandomAnnouncementColor());
+            console.log('✅ Объявление с Discord-ссылкой отправлено');
+        } catch (error) {
+            console.error('❌ Ошибка при обработке команды !discord:', error);
+        }
+    }
+
+    private async handleFettaCommand(channel: string, user: string, message: string, msg: any) {
+        try {
+            // Проверка announcement cooldown
+            if (this.isAnnouncementOnCooldown()) {
+                return;
+            }
+            
+            const text = 'Тут можно подарить стримеру Ferrari https://fetta.app/u/kunilika666';
+            await this.sendAnnouncement(text, this.getRandomAnnouncementColor());
+            console.log('✅ Объявление с Fetta-ссылкой отправлено');
+        } catch (error) {
+            console.error('❌ Ошибка при обработке команды !fetta:', error);
+        }
+    }
+
+    private async handleBoostyCommand(channel: string, user: string, message: string, msg: any) {
+        try {
+            // Проверка announcement cooldown
+            if (this.isAnnouncementOnCooldown()) {
+                return;
+            }
+            
+            const text = 'Запретные фото стримера https://boosty.to/kunilika911';
+            await this.sendAnnouncement(text, this.getRandomAnnouncementColor());
+            console.log('✅ Объявление с Boosty-ссылкой отправлено');
+        } catch (error) {
+            console.error('❌ Ошибка при обработке команды !boosty:', error);
+        }
+    }
+
+    private async handleDonationCommand(channel: string, user: string, message: string, msg: any) {
+        try {
+            // Проверка announcement cooldown
+            if (this.isAnnouncementOnCooldown()) {
+                return;
+            }
+            
+            const text = 'Увеличь свой шанс что я приду к тебе ночью https://donatex.gg/donate/kunilika666';
+            await this.sendAnnouncement(text, this.getRandomAnnouncementColor());
+            console.log('✅ Объявление с Donation-ссылкой отправлено');
+        } catch (error) {
+            console.error('❌ Ошибка при обработке команды !donation:', error);
+        }
+    }
+
+    private async handleFpCommand(channel: string, user: string, message: string, msg: any) {
+        try {
+            const text = '"Fairy Pixel" - VTube моделька, волшебные нейро-арты, стикеры https://t.me/FairyPixel';
+            await this.sendMessage(channel, text);
+            console.log('✅ Ссылка на Fairy Pixel отправлена');
+        } catch (error) {
+            console.error('❌ Ошибка при обработке команды !fp:', error);
+        }
+    }
+
+    private async handleTgCommand(channel: string, user: string, message: string, msg: any) {
+        try {
+            console.log(`📣 handleTgCommand от ${user} в ${channel}`);
+
+            // Проверка announcement cooldown
+            if (this.isAnnouncementOnCooldown()) {
+                return;
+            }
+
+            const text = 'Тайная жизнь суккуба http://t.me/+rSBrR1FyQqBhZmU1';
+            await this.sendAnnouncement(text, this.getRandomAnnouncementColor());
+
+            console.log('✅ Объявление !тг отправлено');
+        } catch (error) {
+            console.error('❌ Ошибка при обработке команды !tg:', error);
         }
     }
 
@@ -924,15 +1186,20 @@ export class NightBotMonitor {
 
     /**
      * Обработка команды !стоп_дуэль из чата
-     * Отключает дуэли (только для админов, без ответа в чат)
+     * Отключает дуэли (только для админов)
      */
     private async handleDisableDuelsCommand(channel: string, user: string, msg: any) {
-        console.log(`🛑 Команда !стоп_дуэль от ${user} в ${channel}`);
+        console.log(`Команда !стоп_дуэль от ${user} в ${channel}`);
         log('COMMAND', { command: '!стоп_дуэль', username: user, channel });
 
         try {
-            disableDuels(user);
-            // Ничего не отправляем в чат
+            const success = disableDuels(user);
+            if (success) {
+                const response = 'Дуэли остановлены';
+                await this.sendMessage(channel, response);
+                console.log(`✅ Отправлен ответ в чат: ${response}`);
+            }
+            // Если нет прав - молча игнорируем
         } catch (error) {
             console.error('❌ Ошибка при обработке команды !стоп_дуэль:', error);
         }
@@ -940,15 +1207,20 @@ export class NightBotMonitor {
 
     /**
      * Обработка команды !старт_дуэль из чата
-     * Включает дуэли (только для админов, без ответа в чат)
+     * Включает дуэли (только для админов)
      */
     private async handleEnableDuelsCommand(channel: string, user: string, msg: any) {
         console.log(`✅ Команда !старт_дуэль от ${user} в ${channel}`);
         log('COMMAND', { command: '!старт_дуэль', username: user, channel });
 
         try {
-            enableDuels(user);
-            // Ничего не отправляем в чат
+            const success = enableDuels(user);
+            if (success) {
+                const response = 'Дуэли возобновлены';
+                await this.sendMessage(channel, response);
+                console.log(`✅ Отправлен ответ в чат: ${response}`);
+            }
+            // Если нет прав - молча игнорируем
         } catch (error) {
             console.error('❌ Ошибка при обработке команды !старт_дуэль:', error);
         }
@@ -1557,16 +1829,19 @@ export class NightBotMonitor {
 
         const commandsList = [
             '!dick - вырастить письку',
-            '!top_dick - топ самых длинных',
-            '!bottom_dick - топ самых коротких',
-            '!очки - проверить свои очки',
-            '!топ_очки- топ по очкам',
-            '!дуэль - встать в очередь на дуэль (ставка 25 очков)',
+            '!top_dick - топ длинных',
+            '!bottom_dick - топ коротких',
+            '!очки - свои очки',
+            '!топ_очки - топ очки',
+            '!хорни/!horny',
+            '!фурри/!фури/!furry',
+            '!ссылки - список всех ссылок',
+            '!дуэль - встать в очередь на дуэль',
             '!дуэль @user - вызвать конкретного игрока на дуэль',
-            '!крыса/милашка - выбрать случайную крысу/милашку из чата',
+            '!крыса/!милашка - выбрать случайную крысу/милашку из чата',
             '!vanish - скрыть свои сообщения',
-            '!персонажи - показать доступных персонажей',
-            '!персонаж <имя> - выбрать себе персонажа',
+            '!персонажи - показать персонажей',
+            '!персонаж <имя> - выбрать персонажа',
             '!jump/!j - прыжок'
         ];
 
@@ -1577,6 +1852,68 @@ export class NightBotMonitor {
             console.log(`✅ Список команд отправлен в чат`);
         } catch (error) {
             console.error('❌ Ошибка при отправке списка команд:', error);
+        }
+    }
+
+    /**
+     * Обработка команды !ссылки / !links
+     * Отправляет список всех ссылочных команд отдельным сообщением
+     */
+    private async handleLinksCommand(channel: string, user: string, msg: any) {
+        console.log(`🔗 Команда !ссылки от ${user} в ${channel}`);
+
+        const promoCommands = [
+            '!boosty (!бусти)',
+            '!donation (!донат)',
+            '!fetta (!фетта)',
+            '!discord (!ds, !дискорд)',
+            '!tg (!тг)',
+            '!fp (!фп)'
+        ];
+
+        const response = `${promoCommands.join(' • ')}`;
+
+        try {
+            await this.sendMessage(channel, response);
+            console.log(`✅ Список ссылок отправлен в чат`);
+        } catch (error) {
+            console.error('❌ Ошибка при отправке списка ссылок:', error);
+        }
+    }
+
+    private async handleTimeCommand(channel: string, user: string, msg: any) {
+        try {
+            // Проверка announcement cooldown
+            if (this.isAnnouncementOnCooldown()) {
+                return;
+            }
+            
+            const now = new Date();
+
+            const moscowFormatter = new Intl.DateTimeFormat('ru-RU', {
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: false,
+                timeZone: 'Europe/Moscow'
+            });
+
+            const samaraFormatter = new Intl.DateTimeFormat('ru-RU', {
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: false,
+                timeZone: 'Europe/Samara'
+            });
+
+            const moscowTime = moscowFormatter.format(now);
+            const samaraTime = samaraFormatter.format(now);
+
+            const response = `${moscowTime} - Московское время | Самара - ${samaraTime}`;
+
+            // Отправляем как Twitch announcement с случайным цветом
+            await this.sendAnnouncement(response, this.getRandomAnnouncementColor());
+            console.log(`✅ Объявление с временем отправлено: ${response}`);
+        } catch (error) {
+            console.error('❌ Ошибка при обработке команды !время:', error);
         }
     }
 
@@ -1678,6 +2015,63 @@ export class NightBotMonitor {
     }
 
     /**
+     * Отправка объявления (Announcement) в чат Twitch через Helix API
+     * Если API вернёт ошибку (например, неподдерживаемый цвет) - отправит обычное сообщение
+     */
+    private async sendAnnouncement(message: string, color: 'blue' | 'green' | 'orange' | 'purple' | 'primary' = 'primary'): Promise<void> {
+        if (!this.broadcasterId || !this.moderatorId) {
+            console.error('❌ Нельзя отправить объявление: broadcasterId или moderatorId не инициализированы');
+            return;
+        }
+
+        try {
+            await this.helix(
+                `https://api.twitch.tv/helix/chat/announcements?broadcaster_id=${this.broadcasterId}&moderator_id=${this.moderatorId}`,
+                {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        message,
+                        color
+                    })
+                },
+                1 // для объявлений делаем только одну попытку, без повторов
+            );
+            console.log(`✅ Объявление отправлено (${color}):`, message);
+        } catch (error: any) {
+            console.error(`⚠️ Ошибка отправки объявления (цвет: ${color}):`, error?.message || error);
+            // Fallback: отправляем как обычное сообщение если API не поддерживает цвет
+            try {
+                await this.sendMessage(this.channelName, message);
+                console.log('✅ Сообщение отправлено как обычное (fallback)');
+            } catch (fallbackError) {
+                console.error('❌ Не удалось отправить даже обычное сообщение:', fallbackError);
+            }
+        }
+    }
+
+    /**
+     * Получить случайный допустимый цвет объявления Twitch
+     * 
+     * Список цветов взят из официальной документации Twitch Helix API:
+     * https://dev.twitch.tv/docs/api/reference/#send-chat-announcement
+     * 
+     * На данный момент (2024) поддерживаются только эти 5 цветов.
+     * Если Twitch добавит новые цвета в будущем, API вернёт ошибку и fallback на 'primary'.
+     */
+    private getRandomAnnouncementColor(): 'blue' | 'green' | 'orange' | 'purple' | 'primary' {
+        const colors: Array<'blue' | 'green' | 'orange' | 'purple' | 'primary'> = [
+            'blue',
+            'green',
+            'orange',
+            'purple',
+            'primary'
+        ];
+        const idx = Math.floor(Math.random() * colors.length);
+        return colors[idx];
+    }
+
+    /**
      * Обработчик сообщений от Nightbot
      */
     private handleNightbotMessage(channel: string, message: string, msg: any) {
@@ -1757,6 +2151,16 @@ export class NightBotMonitor {
         this.deathCounters.clear();
         this.saveCounters();
         console.log('🧹 Счётчики !смерть очищены и сохранены');
+    }
+
+    /**
+     * Очистить список обнаруженных модераторов (вызывается при окончании стрима)
+     * Нужно для актуализации прав - если модератора сняли, он не должен оставаться в списке админов
+     */
+    clearDetectedModerators(): void {
+        this.detectedModerators.clear();
+        setDuelAdminsFromModerators([]);
+        console.log('🧹 Список обнаруженных модераторов очищен');
     }
 
     /**
@@ -1853,6 +2257,7 @@ export class NightBotMonitor {
     async disconnect() {
         if (this.chatClient) {
             await this.chatClient.quit();
+            this.chatClient = null;
             console.log('🔌 Отключено от Twitch чата');
             log('CONNECTION', {
                 service: 'NightBotMonitor',
