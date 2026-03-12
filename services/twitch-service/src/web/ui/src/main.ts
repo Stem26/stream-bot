@@ -32,7 +32,12 @@ function renderCommands(data: CommandsData): void {
   container.innerHTML = data.commands
     .map(
       (cmd) => `
-      <div class="command-card ${cmd.enabled ? '' : 'disabled'}" data-id="${cmd.id}">
+      <div
+        class="command-card ${cmd.enabled ? '' : 'disabled'}"
+        data-id="${cmd.id}"
+        data-message-type="${cmd.messageType}"
+        data-color="${cmd.color}"
+      >
         <div class="command-header">
           <div class="command-trigger">${cmd.trigger}</div>
           <div class="command-status">
@@ -137,12 +142,25 @@ async function bootstrap(): Promise<void> {
     const id = card.dataset.id;
     if (!id) return;
 
+    const messageType = card.dataset.messageType;
+    const color = card.dataset.color;
+
     // Копирование текста по клику на триггер / алиасы / ответ
     const copySource = target.closest<HTMLElement>(
       '.command-trigger, .command-response, .alias-tag',
     );
     if (copySource) {
-      const textToCopy = copySource.textContent?.trim();
+      let textToCopy = copySource.textContent?.trim() ?? '';
+
+      // Для объявлений при копировании ответа сразу формируем /announce-команду
+      if (copySource.classList.contains('command-response') && messageType === 'announcement') {
+        const colorSuffix =
+          color && color !== 'primary'
+            ? ` ${color}`
+            : ''; // primary можно не указывать, Twitch возьмёт цвет по умолчанию
+        textToCopy = `/announce${colorSuffix} ${textToCopy}`;
+      }
+
       if (textToCopy) {
         try {
           if (navigator.clipboard && navigator.clipboard.writeText) {
