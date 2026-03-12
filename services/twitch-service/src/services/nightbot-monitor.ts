@@ -687,9 +687,11 @@ export class NightBotMonitor {
                 // Проверяем, есть ли команда в мапе
                 const commandHandler = this.commands.get(trimmedMessage);
                 if (commandHandler) {
+                    console.log(`🎯 Обработка команды: ${trimmedMessage}`);
+                    
                     // Промо-команды и информационные команды работают всегда
                     const isAlwaysAvailable = this.ALWAYS_AVAILABLE_COMMANDS.has(trimmedMessage);
-                    
+
                     // Игровые команды работают только когда стрим онлайн (или локально для теста)
                     if (!isAlwaysAvailable && !this.isStreamOnlineCheck() && !IS_LOCAL) {
                         console.log(`⚠️ Команда ${trimmedMessage} проигнорирована: стрим оффлайн (игровая команда)`);
@@ -2031,7 +2033,6 @@ export class NightBotMonitor {
 
     /**
      * Отправка объявления (Announcement) в чат Twitch через Helix API
-     * Если API вернёт ошибку (например, неподдерживаемый цвет) - отправит обычное сообщение
      */
     private async sendAnnouncement(message: string, color: 'blue' | 'green' | 'orange' | 'purple' | 'primary' = 'primary'): Promise<void> {
         if (!this.broadcasterId || !this.moderatorId) {
@@ -2055,13 +2056,6 @@ export class NightBotMonitor {
             console.log(`✅ Объявление отправлено (${color}):`, message);
         } catch (error: any) {
             console.error(`⚠️ Ошибка отправки объявления (цвет: ${color}):`, error?.message || error);
-            // Fallback: отправляем как обычное сообщение если API не поддерживает цвет
-            try {
-                await this.sendMessage(this.channelName, message);
-                console.log('✅ Сообщение отправлено как обычное (fallback)');
-            } catch (fallbackError) {
-                console.error('❌ Не удалось отправить даже обычное сообщение:', fallbackError);
-            }
         }
     }
 
