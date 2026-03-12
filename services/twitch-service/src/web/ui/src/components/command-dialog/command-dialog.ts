@@ -164,8 +164,13 @@ export class CommandDialogElement extends HTMLElement {
       return null;
     }
 
-    // если валидация кулдауна не проходит — не даём сохранить
-    if (!this.validateCooldown()) {
+    const messageType = messageTypeSelect.value as MessageType;
+    const parsedCooldown = parseInt(cooldownInput.value, 10);
+    const cooldown = Number.isNaN(parsedCooldown) ? 0 : parsedCooldown;
+
+    // Жёсткая валидация кулдауна перед сохранением
+    if (messageType === 'announcement' && cooldown < 5) {
+      this.validateCooldown(); // обновим UI-ошибку
       return null;
     }
 
@@ -189,9 +194,9 @@ export class CommandDialogElement extends HTMLElement {
       aliases,
       response,
       description: descriptionInput?.value.trim() ?? '',
-      messageType: messageTypeSelect.value as MessageType,
+      messageType,
       color: colorSelect.value as CommandColor,
-      cooldown: parseInt(cooldownInput.value, 10) || 10,
+      cooldown,
       enabled: true,
     };
 
