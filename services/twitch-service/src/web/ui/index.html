@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Управление командами Twitch бота</title>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <h1>🎮 Управление командами</h1>
+    <p>Twitch бот - кастомные команды чата</p>
+  </div>
+  <div class="controls"
+       style="margin-top: 20px; display: flex; align-items: center; justify-content: space-between; gap: 16px;">
+    <div>
+      <h2 style="margin-bottom: 6px; font-size: 1.1em;">Все ссылки (!ссылки)</h2>
+      <p style="font-size: 0.9em; color: #555;">
+        Редактировать общий текст, который отправляется при команде !ссылки
+      </p>
+    </div>
+    <button class="btn btn-small" id="all-links-btn">Все ссылки</button>
+  </div>
+  <div id="alert-container"></div>
+  <div class="controls">
+    <button class="btn" id="add-command-btn">+ Добавить команду</button>
+  </div>
+  <div id="commands-container" class="commands-grid">
+    <div class="loading">Загрузка команд...</div>
+  </div>
+
+  <div class="empty-state" id="empty-state" style="display: none;">
+    <h3>Команды не найдены</h3>
+    <p>Создайте свою первую команду, нажав на кнопку выше</p>
+  </div>
+</div>
+
+<command-dialog></command-dialog>
+<link-dialog></link-dialog>
+
+<script type="module" src="/src/main.ts"></script>
+</body>
+</html>
+

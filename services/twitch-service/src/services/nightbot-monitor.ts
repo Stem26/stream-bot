@@ -10,6 +10,7 @@ import { ENABLE_BOT_FEATURES, ALLOW_LOCAL_COMMANDS } from '../config/features';
 import { IS_LOCAL } from '../config/env';
 import * as fs from 'fs';
 import * as path from 'path';
+import { query } from '../database/database';
 import { log } from '../utils/event-logger';
 import {
     fetchOverlayCharacters,
@@ -22,9 +23,35 @@ import {
 // Файл для хранения состояния счётчиков (в корне монорепы)
 const COUNTERS_STATE_FILE = path.resolve(__dirname, '../../../../../counters-state.json');
 
+// Общая директория данных Twitch-сервиса (ту же использует и web/server.ts)
+// Через process.cwd(), чтобы и в dev, и в prod использовать один и тот же src/data.
+const DATA_DIR = path.resolve(process.cwd(), 'src/data');
+
+// Файл с общим текстом всех ссылок (для команды !ссылки)
+const LINKS_CONFIG_FILE = path.join(DATA_DIR, 'links-config.json');
+
+// Файл для хранения кастомных команд
+const CUSTOM_COMMANDS_FILE = path.join(DATA_DIR, 'custom-commands.json');
+
 interface CountersState {
     stopCounters: Record<string, number>;
     deathCounters: Record<string, number>;
+}
+
+interface LinksConfig {
+    allLinksText: string;
+}
+
+interface CustomCommand {
+    id: string;
+    trigger: string;
+    aliases: string[];
+    response: string;
+    enabled: boolean;
+    cooldown: number;
+    messageType: 'announcement' | 'message';
+    color: 'primary' | 'blue' | 'green' | 'orange' | 'purple';
+    description: string;
 }
 
 /**
@@ -52,6 +79,68 @@ function saveCountersState(state: CountersState): void {
         fs.writeFileSync(COUNTERS_STATE_FILE, JSON.stringify(state, null, 2));
     } catch (error) {
         console.error('⚠️ Ошибка сохранения состояния счётчиков:', error);
+    }
+}
+
+function loadLinksConfig(): LinksConfig {
+    try {
+        if (fs.existsSync(LINKS_CONFIG_FILE)) {
+            const data = fs.readFileSync(LINKS_CONFIG_FILE, 'utf-8');
+            const parsed = JSON.parse(data) as LinksConfig;
+            return {
+                allLinksText: parsed.allLinksText || ''
+            };
+        }
+    } catch (error) {
+        console.error('⚠️ Ошибка загрузки links-config:', error);
+    }
+    return {
+        allLinksText: ''
+    };
+}
+
+async function loadCustomCommandsFromDb(): Promise<CustomCommand[]> {
+    try {
+        const rows = await query<{
+            id: string;
+            trigger: string;
+            aliases: string[] | null;
+            response: string;
+            enabled: boolean;
+            cooldown: number;
+            message_type: string;
+            color: string;
+            description: string;
+        }>(
+            `SELECT id,
+                    trigger,
+                    aliases,
+                    response,
+                    enabled,
+                    cooldown,
+                    message_type,
+                    color,
+                    description
+             FROM custom_commands`,
+        );
+
+        const mapped: CustomCommand[] = rows.map((row) => ({
+            id: row.id,
+            trigger: row.trigger,
+            aliases: row.aliases ?? [],
+            response: row.response,
+            enabled: row.enabled,
+            cooldown: row.cooldown,
+            messageType: (row.message_type as CustomCommand['messageType']) ?? 'announcement',
+            color: (row.color as CustomCommand['color']) ?? 'primary',
+            description: row.description ?? '',
+        }));
+
+        console.log(`📋 Загружено ${mapped.length} кастомных команд из БД`);
+        return mapped;
+    } catch (error) {
+        console.error('⚠️ Ошибка загрузки кастомных команд из БД:', error);
+        return [];
     }
 }
 
@@ -128,6 +217,9 @@ export class NightBotMonitor {
     // Персональные кулдауны по пользователю (key = channel:command:user)
     private userCommandCooldowns = new Map<string, number>();
 
+    // Конфиг общего текста ссылок для команды !ссылки
+    private linksConfig: LinksConfig = { allLinksText: '' };
+
     // Команды, которые работают всегда (не требуют активного стрима)
     private readonly ALWAYS_AVAILABLE_COMMANDS = new Set([
         '!discord', '!ds', '!дискорд', '!дс',
@@ -143,6 +235,9 @@ export class NightBotMonitor {
 
     // Мапа команд для чистого роутинга
     private readonly commands = this.buildCommandsMap();
+    // Кастомные команды из JSON (обновляются динамически)
+    private customCommands: Map<string, CustomCommand> = new Map();
+    
     private buildCommandsMap(): Map<string, CommandHandler> {
         const map = new Map<string, CommandHandler>();
 
@@ -160,12 +255,8 @@ export class NightBotMonitor {
         register(['!points', '!очки'], (ch, u, m, msg) => void this.handlePointsCommand(ch, u, m, msg));
         register(['!horny', '!хорни'], (ch, u, m, msg) => void this.handleHornyCommand(ch, u));
         register(['!furry', '!фурри', '!фури'], (ch, u, m, msg) => void this.handleFurryCommand(ch, u));
-        register(['!fetta', '!фетта'], (ch, u, m, msg) => void this.handleFettaCommand(ch, u, m, msg));
-        register(['!boosty', '!бусти'], (ch, u, m, msg) => void this.handleBoostyCommand(ch, u, m, msg));
-        register(['!donation', '!донат'], (ch, u, m, msg) => void this.handleDonationCommand(ch, u, m, msg));
-        register(['!fp', '!фп'], (ch, u, m, msg) => void this.handleFpCommand(ch, u, m, msg));
-        register(['!discord', '!ds', '!дискорд', '!дс'], (ch, u, m, msg) => void this.handleDiscordCommand(ch, u, m, msg));
-        register(['!tg', '!тг'], (ch, u, m, msg) => void this.handleTgCommand(ch, u, m, msg));
+        // Удалены хардкодные команды !fetta, !boosty, !donation, !fp, !discord, !tg
+        // Они теперь загружаются из custom-commands.json
         register(['!top_points', '!toppoints', '!топ_очки'], (ch, u, m, msg) => void this.handleTopPointsCommand(ch, u, m, msg));
         register(['!дуэль'], (ch, u, m, msg) => void this.handleDuelCommand(ch, u, m, msg));
         register(['!принять'], (ch, u, m, msg) => void this.handleAcceptDuelCommand(ch, u, msg));
@@ -229,6 +320,51 @@ export class NightBotMonitor {
         for (const [username, count] of Object.entries(countersState.deathCounters)) {
             this.deathCounters.set(username, count);
         }
+
+        // Загружаем конфиг ссылок
+        this.linksConfig = loadLinksConfig();
+
+        // Загружаем кастомные команды
+        this.reloadCustomCommands();
+    }
+    
+    /**
+     * Перезагружает кастомные команды из БД
+     */
+    public reloadCustomCommands(): void {
+        loadCustomCommandsFromDb()
+            .then((commands) => {
+                this.customCommands.clear();
+
+                for (const cmd of commands) {
+                    if (!cmd.enabled) continue;
+
+                    const triggerLower = cmd.trigger.toLowerCase();
+                    this.customCommands.set(triggerLower, cmd);
+
+                    for (const alias of cmd.aliases) {
+                        const aliasLower = alias.toLowerCase();
+                        this.customCommands.set(aliasLower, cmd);
+                    }
+                }
+
+                const enabledCount = commands.filter((c) => c.enabled).length;
+                console.log(`✅ Перезагружено ${enabledCount}/${commands.length} кастомных команд`);
+            })
+            .catch((error) => {
+                console.error('❌ Ошибка перезагрузки кастомных команд:', error);
+            });
+    }
+
+    /**
+     * Перезагружает конфиг ссылок из файла
+     */
+    public reloadLinksConfig(): void {
+        this.linksConfig = loadLinksConfig();
+        const preview = this.linksConfig.allLinksText
+            ? this.linksConfig.allLinksText.substring(0, 80).replace(/\s+/g, ' ')
+            : '(пусто)';
+        console.log(`✅ Конфиг ссылок перезагружен, длина=${this.linksConfig.allLinksText.length} символов, превью: ${preview}`);
     }
 
     /**
@@ -699,11 +835,20 @@ export class NightBotMonitor {
                     }
 
                     // Локально показываем что тестируем в оффлайне
-                    if (IS_LOCAL && !this.isStreamOnlineCheck() && !isAlwaysAvailable) {
-                        console.log(`🧪 ТЕСТ в оффлайне: выполняем игровую команду ${trimmedMessage}`);
+                    if (IS_LOCAL && !this.isStreamOnlineCheck()) {
+                        console.log(`🧪 ТЕСТ в оффлайне: выполняем команду ${trimmedMessage}`);
                     }
 
                     commandHandler(channel, user, message, msg);
+                    return;
+                }
+                
+                // Проверяем кастомные команды из JSON
+                const customCommand = this.customCommands.get(trimmedMessage);
+                if (customCommand) {
+                    console.log(`🎨 Обработка кастомной команды: ${trimmedMessage} (id: ${customCommand.id})`);
+                    this.handleCustomCommand(channel, user, customCommand, msg);
+                    return;
                 }
             });
 
@@ -977,6 +1122,40 @@ export class NightBotMonitor {
             await this.sendMessage(channel, `${user} ты на ${value}% фурри`);
         } catch (error) {
             console.error('❌ Ошибка при обработке команды !furry:', error);
+        }
+    }
+
+    /**
+     * Обработка кастомной команды из JSON
+     */
+    private async handleCustomCommand(channel: string, user: string, command: CustomCommand, msg: any) {
+        try {
+            const cooldownKey = command.id;
+            
+            if (command.messageType === 'announcement') {
+                // Отправляем как announcement (цветное объявление)
+                if (this.isAnnouncementOnCooldown(cooldownKey)) {
+                    return; // Игнорируем команду если cooldown активен
+                }
+                
+                const success = await this.sendAnnouncement(command.response, command.color);
+                
+                if (success) {
+                    this.setAnnouncementCooldown(cooldownKey);
+                    console.log(`✅ Кастомное объявление "${command.trigger}" отправлено`);
+                }
+            } else {
+                // Отправляем как обычное сообщение в чат
+                if (this.isAnnouncementOnCooldown(cooldownKey)) {
+                    return; // Используем тот же механизм cooldown
+                }
+                
+                await this.sendMessage(channel, command.response);
+                this.setAnnouncementCooldown(cooldownKey);
+                console.log(`✅ Кастомное сообщение "${command.trigger}" отправлено`);
+            }
+        } catch (error) {
+            console.error(`❌ Ошибка при обработке кастомной команды ${command.trigger}:`, error);
         }
     }
 
@@ -1924,19 +2103,28 @@ export class NightBotMonitor {
             return;
         }
 
-        const links = [
-            '📸Boosty (запретные фото): https://boosty.to/kunilika911',
-            '─────────────────',
-            '😻Discord (тут я мурчу): https://discord.gg/zrNsn4vAw2',
-            '─────────────────',
-            '💖Donation (шанс, что приду): https://donatex.gg/donate/kunilika666',
-            '─────────────────',
-            '🔮Telegram (тайная жизнь): http://t.me/+rSBrR1FyQqBhZmU1',
-            '─────────────────',
-            '🎁Fetta (Ferrari для стримера): https://fetta.app/u/kunilika666'
-        ];
+        // Если в конфиге задан кастомный текст — используем его
+        const trimmedConfig = (this.linksConfig.allLinksText || '').trim();
+        let response: string;
 
-        const response = links.join(' ');
+        if (trimmedConfig.length > 0) {
+            response = trimmedConfig;
+        } else {
+            // Фолбэк на старый хардкод, чтобы ничего не сломать
+            const links = [
+                '📸Boosty (запретные фото): https://boosty.to/kunilika911',
+                '─────────────────',
+                '😻Discord (тут я мурчу): https://discord.gg/zrNsn4vAw2',
+                '─────────────────',
+                '💖Donation (шанс, что приду): https://donatex.gg/donate/kunilika666',
+                '─────────────────',
+                '🔮Telegram (тайная жизнь): http://t.me/+rSBrR1FyQqBhZmU1',
+                '─────────────────',
+                '🎁Fetta (Ferrari для стримера): https://fetta.app/u/kunilika666'
+            ];
+
+            response = links.join(' ');
+        }
 
         try {
             await this.sendMessage(channel, response);

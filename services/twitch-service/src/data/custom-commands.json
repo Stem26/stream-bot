@@ -1,0 +1,95 @@
+{
+  "commands": [
+    {
+      "id": "discord",
+      "trigger": "!discord",
+      "aliases": [
+        "!ds",
+        "!дискорд",
+        "!дс"
+      ],
+      "response": "Тут я мурчу в свободное время discord.com/invite/zrNsn4vAw2",
+      "enabled": true,
+      "cooldown": 10,
+      "messageType": "announcement",
+      "color": "purple",
+      "description": "Ссылка на Discord сервер"
+    },
+    {
+      "id": "boosty",
+      "trigger": "!boosty",
+      "aliases": [
+        "!бусти"
+      ],
+      "response": "Запретные фото стримера https://boosty.to/kunilika911",
+      "enabled": true,
+      "cooldown": 10,
+      "messageType": "announcement",
+      "color": "orange",
+      "description": "Ссылка на Boosty"
+    },
+    {
+      "id": "donation",
+      "trigger": "!donation",
+      "aliases": [
+        "!донат"
+      ],
+      "response": "Увеличь свой шанс что я приду к тебе ночью https://donatex.gg/donate/kunilika666",
+      "enabled": true,
+      "cooldown": 10,
+      "messageType": "announcement",
+      "color": "orange",
+      "description": "Ссылка на донаты"
+    },
+    {
+      "id": "telegram",
+      "trigger": "!tg",
+      "aliases": [
+        "!тг"
+      ],
+      "response": "Тайная жизнь стримера t.me/+rSBrR1FyQqBhZmU1",
+      "enabled": true,
+      "cooldown": 10,
+      "messageType": "announcement",
+      "color": "blue",
+      "description": "Ссылка на Telegram канал"
+    },
+    {
+      "id": "fetta",
+      "trigger": "!fetta",
+      "aliases": [
+        "!фетта"
+      ],
+      "response": "Исполни желание стримера https://fetta.app/u/kunilika666",
+      "enabled": true,
+      "cooldown": 10,
+      "messageType": "message",
+      "color": "green",
+      "description": "Ссылка на Fetta"
+    },
+    {
+      "id": "fp",
+      "trigger": "!fp",
+      "aliases": [
+        "!фп"
+      ],
+      "response": "\"Fairy Pixel\" - VTube моделька, волшебные нейро-арты, стикеры https://t.me/FairyPixel",
+      "enabled": true,
+      "cooldown": 30,
+      "messageType": "message",
+      "color": "primary",
+      "description": "Ответ про ФП"
+    },
+    {
+      "id": "чай",
+      "trigger": "!чай",
+      "aliases": [],
+      "response": "ЧАЙ С РД",
+      "description": "",
+      "messageType": "announcement",
+      "color": "blue",
+      "cooldown": 10,
+      "enabled": true
+    }
+  ]
+}

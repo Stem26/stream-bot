@@ -65,6 +65,7 @@ export async function initDatabase(): Promise<void> {
     const client = await getPool().connect();
 
     try {
+      // Основные таблицы Twitch бота
       await client.query(`
         CREATE TABLE IF NOT EXISTS twitch_player_stats (
           twitch_username TEXT PRIMARY KEY,
@@ -126,7 +127,24 @@ export async function initDatabase(): Promise<void> {
       await client.query(`CREATE INDEX IF NOT EXISTS idx_twitch_player_stats_last_used ON twitch_player_stats(last_used_date)`);
       await client.query(`CREATE INDEX IF NOT EXISTS idx_stream_history_date ON stream_history(stream_date DESC)`);
 
-      console.log('[DATABASE] Таблицы Twitch бота созданы');
+      // Таблица кастомных команд бота
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS custom_commands (
+          id TEXT PRIMARY KEY,
+          trigger TEXT NOT NULL UNIQUE,
+          aliases TEXT[] NOT NULL DEFAULT '{}',
+          response TEXT NOT NULL,
+          enabled BOOLEAN NOT NULL DEFAULT TRUE,
+          cooldown INTEGER NOT NULL DEFAULT 10,
+          message_type TEXT NOT NULL DEFAULT 'announcement',
+          color TEXT NOT NULL DEFAULT 'primary',
+          description TEXT NOT NULL DEFAULT ''
+        )
+      `);
+
+      await client.query(`CREATE INDEX IF NOT EXISTS idx_custom_commands_enabled ON custom_commands(enabled)`);
+
+      console.log('[DATABASE] Таблицы Twitch бота созданы/обновлены');
     } finally {
       client.release();
     }

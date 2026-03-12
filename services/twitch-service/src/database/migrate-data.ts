@@ -28,6 +28,18 @@ interface StreamHistoryEntry {
   followsCount?: number;
 }
 
+interface CustomCommandJson {
+  id: string;
+  trigger: string;
+  aliases: string[];
+  response: string;
+  enabled: boolean;
+  cooldown: number;
+  messageType: 'announcement' | 'message';
+  color: 'primary' | 'blue' | 'green' | 'orange' | 'purple';
+  description: string;
+}
+
 const SERVICE_ROOT = (() => {
   let root = process.cwd();
   if (fs.existsSync(path.join(root, 'package.json'))) return root;
@@ -39,6 +51,7 @@ const SERVICE_ROOT = (() => {
 const MONOREPO_ROOT = path.resolve(SERVICE_ROOT, '..', '..');
 const TWITCH_PLAYERS_JSON = path.join(MONOREPO_ROOT, 'twitch-players.json');
 const STREAM_HISTORY_JSON = path.join(MONOREPO_ROOT, 'stream-history.json');
+const CUSTOM_COMMANDS_JSON = path.join(SERVICE_ROOT, 'src', 'data', 'custom-commands.json');
 const FORCE_MODE = process.argv.includes('--force');
 
 async function migrateTwitchPlayers(): Promise<number> {
@@ -166,6 +179,71 @@ async function migrateStreamHistory(): Promise<number> {
   return migratedCount;
 }
 
+async function migrateCustomCommands(): Promise<number> {
+  if (!fs.existsSync(CUSTOM_COMMANDS_JSON)) {
+    console.log('⚠️  custom-commands.json не найден, пропускаем миграцию команд');
+    return 0;
+  }
+
+  const jsonRaw = fs.readFileSync(CUSTOM_COMMANDS_JSON, 'utf-8');
+  const parsed = JSON.parse(jsonRaw) as { commands: CustomCommandJson[] };
+  const commands = parsed.commands ?? [];
+  console.log(`\n📊 Найдено кастомных команд: ${commands.length}`);
+
+  const pool = getPool();
+  const client = await pool.connect();
+  let migratedCount = 0;
+
+  try {
+    const res = await client.query('SELECT COUNT(*)::int AS cnt FROM custom_commands');
+    const existingCount = res.rows[0]?.cnt ?? 0;
+
+    if (existingCount > 0 && !FORCE_MODE) {
+      console.log(`⏭️  В таблице custom_commands уже есть ${existingCount} записей, пропускаем импорт`);
+      return 0;
+    }
+
+    if (FORCE_MODE) {
+      console.log('🔄 Режим --force: очищаем custom_commands и импортируем заново');
+      await client.query('DELETE FROM custom_commands');
+    }
+
+    for (const cmd of commands) {
+      await client.query(
+        `INSERT INTO custom_commands
+          (id, trigger, aliases, response, enabled, cooldown, message_type, color, description)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         ON CONFLICT (id) DO UPDATE SET
+           trigger = EXCLUDED.trigger,
+           aliases = EXCLUDED.aliases,
+           response = EXCLUDED.response,
+           enabled = EXCLUDED.enabled,
+           cooldown = EXCLUDED.cooldown,
+           message_type = EXCLUDED.message_type,
+           color = EXCLUDED.color,
+           description = EXCLUDED.description`,
+        [
+          cmd.id,
+          cmd.trigger,
+          cmd.aliases ?? [],
+          cmd.response,
+          cmd.enabled ?? true,
+          cmd.cooldown ?? 10,
+          cmd.messageType ?? 'announcement',
+          cmd.color ?? 'primary',
+          cmd.description ?? '',
+        ],
+      );
+      migratedCount++;
+      console.log(`✅ Импортирована команда: ${cmd.id} (${cmd.trigger})`);
+    }
+
+    return migratedCount;
+  } finally {
+    client.release();
+  }
+}
+
 async function migrateData() {
   console.log('🚀 Запуск миграции данных Twitch бота из JSON в PostgreSQL...');
   if (FORCE_MODE) {
@@ -177,11 +255,13 @@ async function migrateData() {
 
     const playersCount = await migrateTwitchPlayers();
     const historyCount = await migrateStreamHistory();
+    const commandsCount = await migrateCustomCommands();
 
     console.log('\n📈 Результаты миграции:');
     console.log(`   ✅ Twitch игроков: ${playersCount}`);
     console.log(`   ✅ Записей истории: ${historyCount}`);
-    console.log(`   📊 Всего: ${playersCount + historyCount}`);
+    console.log(`   ✅ Кастомных команд: ${commandsCount}`);
+    console.log(`   📊 Всего: ${playersCount + historyCount + commandsCount}`);
 
     console.log('\nℹ️  Старые JSON файлы можно удалить после проверки работы БД');
 

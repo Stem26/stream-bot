@@ -6,6 +6,7 @@ import { clearDuelQueue, resetDuelsOnStreamEnd, clearDuelChallenges } from "./co
 import { clearActiveUsers } from "./commands/twitch-rat";
 import { log } from './utils/event-logger';
 import { initDatabase, closeDatabase } from './database/database';
+import { startWebServer, setOnCommandsChangedCallback } from './web/server';
 
 async function main() {
     const config = loadConfig();
@@ -27,6 +28,16 @@ async function main() {
         throw error;
     }
 
+    // Запуск веб-сервера для управления командами
+    console.log('🌐 Запуск веб-интерфейса...');
+    try {
+        await startWebServer();
+        console.log('✅ Веб-интерфейс запущен');
+    } catch (error) {
+        console.error('❌ Ошибка запуска веб-сервера:', error);
+        // Не падаем если веб-сервер не запустился - бот может работать без него
+    }
+
     // Telegram client (без polling!)
     const telegramBot = new Telegraf(config.telegram.token);
 
@@ -43,6 +54,12 @@ async function main() {
 
     // Chat monitor / commands / moderation
     const nightBotMonitor = new NightBotMonitor();
+
+    // Устанавливаем колбэк для перезагрузки команд и ссылок при изменениях через веб-интерфейс
+    setOnCommandsChangedCallback(() => {
+        nightBotMonitor.reloadCustomCommands();
+        nightBotMonitor.reloadLinksConfig();
+    });
 
     // Связываем проверку статуса стрима: команды работают только когда стрим онлайн
     nightBotMonitor.setStreamStatusCheck(() => streamMonitor.getStreamStatus());
