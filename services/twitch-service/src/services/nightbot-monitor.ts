@@ -128,6 +128,19 @@ export class NightBotMonitor {
     // Персональные кулдауны по пользователю (key = channel:command:user)
     private userCommandCooldowns = new Map<string, number>();
 
+    // Команды, которые работают всегда (не требуют активного стрима)
+    private readonly ALWAYS_AVAILABLE_COMMANDS = new Set([
+        '!discord', '!ds', '!дискорд', '!дс',
+        '!tg', '!тг',
+        '!boosty', '!бусти',
+        '!donation', '!донат',
+        '!fetta', '!фетта',
+        '!fp', '!фп',
+        '!ссылки', '!links',
+        '!игры', '!help',
+        '!время'
+    ]);
+
     // Мапа команд для чистого роутинга
     private readonly commands = this.buildCommandsMap();
     private buildCommandsMap(): Map<string, CommandHandler> {
@@ -674,16 +687,18 @@ export class NightBotMonitor {
                 // Проверяем, есть ли команда в мапе
                 const commandHandler = this.commands.get(trimmedMessage);
                 if (commandHandler) {
-                    // Команды работают только когда стрим онлайн
-                    // Локально можем тестировать и в оффлайне (если ENABLE_BOT_FEATURES=true)
-                    if (!this.isStreamOnlineCheck() && !IS_LOCAL) {
-                        console.log(`⚠️ Команда ${trimmedMessage} проигнорирована: стрим оффлайн`);
+                    // Промо-команды и информационные команды работают всегда
+                    const isAlwaysAvailable = this.ALWAYS_AVAILABLE_COMMANDS.has(trimmedMessage);
+                    
+                    // Игровые команды работают только когда стрим онлайн (или локально для теста)
+                    if (!isAlwaysAvailable && !this.isStreamOnlineCheck() && !IS_LOCAL) {
+                        console.log(`⚠️ Команда ${trimmedMessage} проигнорирована: стрим оффлайн (игровая команда)`);
                         return;
                     }
 
                     // Локально показываем что тестируем в оффлайне
-                    if (IS_LOCAL && !this.isStreamOnlineCheck()) {
-                        console.log(`🧪 ТЕСТ в оффлайне: выполняем команду ${trimmedMessage}`);
+                    if (IS_LOCAL && !this.isStreamOnlineCheck() && !isAlwaysAvailable) {
+                        console.log(`🧪 ТЕСТ в оффлайне: выполняем игровую команду ${trimmedMessage}`);
                     }
 
                     commandHandler(channel, user, message, msg);
