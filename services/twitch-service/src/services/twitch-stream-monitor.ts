@@ -1,5 +1,6 @@
 import {ApiClient, UserIdResolvable} from '@twurple/api';
 import {StaticAuthProvider} from '@twurple/auth';
+import {EventSubWsListener} from '@twurple/eventsub-ws';
 import type {Telegram} from 'telegraf';
 import * as fs from 'fs';
 import * as path from 'path';

@@ -27,6 +27,7 @@
     "@twurple/api": "^8.0.3",
     "@twurple/auth": "^8.0.3",
     "@twurple/chat": "^8.0.3",
+    "@twurple/eventsub-ws": "^8.0.3",
     "axios": "^1.6.7",
     "dotenv": "^16.4.5",
     "pg": "^8.11.3",
