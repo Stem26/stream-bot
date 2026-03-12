@@ -137,6 +137,26 @@ async function bootstrap(): Promise<void> {
     const id = card.dataset.id;
     if (!id) return;
 
+    // Копирование текста по клику на триггер / алиасы / ответ
+    const copySource = target.closest<HTMLElement>(
+      '.command-trigger, .command-response, .alias-tag',
+    );
+    if (copySource) {
+      const textToCopy = copySource.textContent?.trim();
+      if (textToCopy) {
+        try {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(textToCopy);
+          }
+          showAlert('Текст скопирован в буфер обмена');
+        } catch (error) {
+          // тихо игнорируем, если что-то пошло не так
+          console.error('Clipboard copy failed', error);
+        }
+      }
+      return; // не открываем карточку на редактирование
+    }
+
     const action = target.dataset.action;
 
     if (!action) {
