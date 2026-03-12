@@ -1919,6 +1919,11 @@ export class NightBotMonitor {
     private async handleLinksCommand(channel: string, user: string, msg: any) {
         console.log(`🔗 Команда !ссылки от ${user} в ${channel}`);
 
+        // Проверка cooldown
+        if (this.isAnnouncementOnCooldown('!ссылки')) {
+            return;
+        }
+
         const links = [
             '📸Boosty (запретные фото): https://boosty.to/kunilika911',
             '─────────────────',
@@ -1935,6 +1940,7 @@ export class NightBotMonitor {
 
         try {
             await this.sendMessage(channel, response);
+            this.setAnnouncementCooldown('!ссылки');
             console.log(`✅ Список ссылок отправлен в чат`);
         } catch (error) {
             console.error('❌ Ошибка при отправке списка ссылок:', error);
