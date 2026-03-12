@@ -1,6 +1,5 @@
 import {ApiClient, UserIdResolvable} from '@twurple/api';
 import {StaticAuthProvider} from '@twurple/auth';
-import {EventSubWsListener} from '@twurple/eventsub-ws';
 import type {Telegram} from 'telegraf';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -361,7 +360,7 @@ export class TwitchStreamMonitor {
 
                 await this.handleStreamOnline(event, telegramChannelId);
 
-                this.startViewerCountTracking(event.broadcasterId, event.broadcasterName, startDate);
+                this.startViewerCountTracking(String(event.broadcasterId), event.broadcasterName, startDate);
             });
 
             // Подписываемся на событие завершения стрима
