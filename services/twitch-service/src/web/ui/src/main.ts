@@ -278,7 +278,7 @@ async function loadLeaderboard(page: number = 1): Promise<void> {
               <td class="username">${p.twitch_username}</td>
               <td class="points">${p.points}</td>
               <td class="stats">
-                ${p.duel_wins || 0}П / ${p.duel_losses || 0}Пр / ${p.duel_draws || 0}Н
+                Побед: ${p.duel_wins || 0} | Проигрышей: ${p.duel_losses || 0} | Ничьих: ${p.duel_draws || 0}
               </td>
             </tr>
           `
