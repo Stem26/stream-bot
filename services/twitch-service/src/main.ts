@@ -81,6 +81,7 @@ async function main() {
     // Запускаем синхронизацию зрителей при начале стрима
     streamMonitor.setOnStreamOnlineCallback(() => {
         nightBotMonitor.startViewersSync();
+        nightBotMonitor.enableCountersOnStreamStart();
     });
 
     // Очищаем очередь на дуэли, активных пользователей и счётчики при окончании стрима

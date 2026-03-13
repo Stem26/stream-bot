@@ -230,7 +230,10 @@ export class NightBotMonitor {
         '!fp', '!фп',
         '!ссылки', '!links',
         '!игры', '!help',
-        '!время'
+        '!время',
+        // Счётчики (управляются через enabled флаг в БД)
+        '!смерть', '!смертьинфо', '!смертьоткат', '!смертьсброс',
+        '!стоп', '!стопинфо', '!стопоткат', '!стопсброс'
     ]);
 
     // Мапа команд для чистого роутинга
@@ -2501,39 +2504,51 @@ export class NightBotMonitor {
     }
 
     /**
-     * Очистить счётчики команды !стоп (вызывается при окончании стрима)
+     * Выключить все счётчики (вызывается при окончании стрима)
      */
     clearStopCounters(): void {
-        query('UPDATE counters SET value = 0 WHERE id = $1', ['stop'])
+        query('UPDATE counters SET enabled = false WHERE id = $1', ['stop'])
             .then(() => {
-                console.log('🧹 Счётчик !стоп сброшен в БД');
+                console.log('🧹 Счётчик !стоп выключен (можно включить вручную в веб для теста)');
                 this.reloadCounters();
             })
             .catch((err) => {
-                console.error('❌ Ошибка сброса счётчика !стоп:', err);
+                console.error('❌ Ошибка выключения счётчика !стоп:', err);
             });
         
-        // Очищаем старую систему в памяти (на всякий случай)
         this.stopCounters.clear();
         this.saveCounters();
     }
 
     /**
-     * Очистить счётчики команды !смерть (вызывается при окончании стрима)
+     * Выключить счётчик смертей (вызывается при окончании стрима)
      */
     clearDeathCounters(): void {
-        query('UPDATE counters SET value = 0 WHERE id = $1', ['death'])
+        query('UPDATE counters SET enabled = false WHERE id = $1', ['death'])
             .then(() => {
-                console.log('🧹 Счётчик !смерть сброшен в БД');
+                console.log('🧹 Счётчик !смерть выключен (можно включить вручную в веб для теста)');
                 this.reloadCounters();
             })
             .catch((err) => {
-                console.error('❌ Ошибка сброса счётчика !смерть:', err);
+                console.error('❌ Ошибка выключения счётчика !смерть:', err);
             });
         
-        // Очищаем старую систему в памяти (на всякий случай)
         this.deathCounters.clear();
         this.saveCounters();
+    }
+
+    /**
+     * Включить все счётчики при начале стрима
+     */
+    enableCountersOnStreamStart(): void {
+        query('UPDATE counters SET enabled = true')
+            .then(() => {
+                console.log('✅ Все счётчики включены (стрим начался)');
+                this.reloadCounters();
+            })
+            .catch((err) => {
+                console.error('❌ Ошибка включения счётчиков:', err);
+            });
     }
 
     /**
