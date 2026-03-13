@@ -163,7 +163,12 @@ npm run build:twitch
 pm2 restart twitch-bot
 pm2 logs twitch-bot --lines 50
 ```
-
+```aiignore
+cd D:\Projects\stream-bot\services\twitch-service
+npm run build:web
+npm run build
+npm start
+```
 ---
 
 ## Прочее

@@ -31,10 +31,12 @@ function renderCommands(data: CommandsData): void {
 
   container.innerHTML = data.commands
     .map(
-      (cmd) => `
+      (cmd) => {
+        const encodedId = encodeURIComponent(cmd.id);
+        return `
       <div
         class="command-card ${cmd.enabled ? '' : 'disabled'}"
-        data-id="${cmd.id}"
+        data-id="${encodedId}"
         data-message-type="${cmd.messageType}"
         data-color="${cmd.color}"
       >
@@ -46,9 +48,10 @@ function renderCommands(data: CommandsData): void {
                 ? `<span class="color-badge ${cmd.color}">${cmd.color}</span>`
                 : '<span class="color-badge" style="background: #6c757d;">сообщение</span>'
             }
-            <span class="status-badge ${cmd.enabled ? 'enabled' : 'disabled'}">
-              ${cmd.enabled ? 'Вкл' : 'Выкл'}
-            </span>
+            <div class="status-toggle ${cmd.enabled ? 'on' : 'off'}" data-action="toggle">
+              <div class="status-toggle-circle"></div>
+              <span class="status-toggle-text">${cmd.enabled ? 'ВКЛ' : 'ВЫКЛ'}</span>
+            </div>
           </div>
         </div>
 
@@ -67,14 +70,13 @@ function renderCommands(data: CommandsData): void {
         }
 
         <div class="command-actions">
-          <button class="btn btn-small btn-secondary" data-action="toggle">
-            ${cmd.enabled ? '⏸ Выкл' : '▶ Вкл'}
-          </button>
+          <button class="btn btn-small" data-action="send" ${cmd.enabled ? '' : 'disabled'}>🚀 В чат</button>
           <button class="btn btn-small" data-action="edit">✏️ Изменить</button>
           <button class="btn btn-small btn-danger" data-action="delete">🗑️ Удалить</button>
         </div>
       </div>
-    `,
+    `;
+      },
     )
     .join('');
 }
@@ -139,8 +141,9 @@ async function bootstrap(): Promise<void> {
     const card = target.closest<HTMLElement>('.command-card');
     if (!card) return;
 
-    const id = card.dataset.id;
-    if (!id) return;
+    const encodedId = card.dataset.id;
+    if (!encodedId) return;
+    const id = decodeURIComponent(encodedId);
 
     const messageType = card.dataset.messageType;
     const color = card.dataset.color;
@@ -181,7 +184,8 @@ async function bootstrap(): Promise<void> {
       return; // не открываем карточку на редактирование
     }
 
-    const action = target.dataset.action;
+    const actionEl = target.closest<HTMLElement>('[data-action]');
+    const action = actionEl?.dataset.action;
 
     if (!action) {
       // клик по карточке открывает редактирование
@@ -209,6 +213,23 @@ async function bootstrap(): Promise<void> {
       } catch (error) {
         if (error instanceof Error) {
           showAlert(`Ошибка: ${error.message}`, 'error');
+        }
+      }
+    }
+
+    if (action === 'send') {
+      if (card.classList.contains('disabled')) {
+        showAlert('Команда выключена. Включи её, чтобы отправить в чат.', 'error');
+        return;
+      }
+      try {
+        await fetch(`/api/commands/${encodeURIComponent(id)}/send`, {
+          method: 'POST',
+        });
+        showAlert('Команда отправлена в чат');
+      } catch (error) {
+        if (error instanceof Error) {
+          showAlert(`Ошибка отправки команды: ${error.message}`, 'error');
         }
       }
     }
@@ -274,6 +295,17 @@ async function bootstrap(): Promise<void> {
     } catch (error) {
       if (error instanceof Error) {
         showAlert(`Ошибка сохранения ссылок: ${error.message}`, 'error');
+      }
+    }
+  });
+
+  linkDialog.addEventListener('send', async () => {
+    try {
+      await fetch('/api/links/send', { method: 'POST' });
+      showAlert('Ссылки отправлены в чат');
+    } catch (error) {
+      if (error instanceof Error) {
+        showAlert(`Ошибка отправки ссылок: ${error.message}`, 'error');
       }
     }
   });

@@ -10,6 +10,7 @@ export interface CommandDialogSaveDetail {
 export class CommandDialogElement extends HTMLElement {
   private initialized = false;
   private saveButton: HTMLButtonElement | null = null;
+  private escHandler?: (event: KeyboardEvent) => void;
 
   connectedCallback(): void {
     if (this.initialized) return;
@@ -54,14 +55,22 @@ export class CommandDialogElement extends HTMLElement {
     const editIdInput = this.querySelector<HTMLInputElement>('#edit-command-id');
     const idInput = this.querySelector<HTMLInputElement>('#command-id');
     const form = this.querySelector<HTMLFormElement>('#command-form');
+    const messageTypeSelect = this.querySelector<HTMLSelectElement>('#command-message-type');
+    const colorSelect = this.querySelector<HTMLSelectElement>('#command-color');
 
     modalTitle && (modalTitle.textContent = 'Добавить команду');
     form?.reset();
     if (editIdInput) editIdInput.value = '';
     if (idInput) idInput.disabled = false;
 
+    // значения по умолчанию
+    if (messageTypeSelect) messageTypeSelect.value = 'message';
+    if (colorSelect) colorSelect.value = 'primary';
+
     const cooldown = this.querySelector<HTMLInputElement>('#command-cooldown');
-    if (cooldown) cooldown.value = '10';
+    if (cooldown) cooldown.value = '0';
+
+    this.toggleColorField();
     this.validateCooldown();
     this.open();
   }
@@ -108,6 +117,15 @@ export class CommandDialogElement extends HTMLElement {
     const modal = this.querySelector<HTMLElement>('.modal');
     modal?.classList.add('active');
     document.body.classList.add('modal-open');
+
+    if (!this.escHandler) {
+      this.escHandler = (event: KeyboardEvent) => {
+        if (event.key === 'Escape') {
+          this.close();
+        }
+      };
+      document.addEventListener('keydown', this.escHandler);
+    }
   }
 
   private toggleColorField(): void {
@@ -209,6 +227,12 @@ export class CommandDialogElement extends HTMLElement {
   private ensureInit(): void {
     if (!this.initialized) {
       this.connectedCallback();
+    }
+  }
+
+  disconnectedCallback(): void {
+    if (this.escHandler) {
+      document.removeEventListener('keydown', this.escHandler);
     }
   }
 }

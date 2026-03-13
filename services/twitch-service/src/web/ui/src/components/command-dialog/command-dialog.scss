@@ -7,9 +7,8 @@ command-dialog .modal {
   height: 100%;
   background: rgba(0, 0, 0, 0.5);
   z-index: 1000;
-  align-items: flex-start;
+  align-items: center;
   justify-content: center;
-  padding-top: 60px;
 
   &.active {
     display: flex;
@@ -21,12 +20,28 @@ command-dialog .modal-content {
   border-radius: 0;
   padding: 30px;
   max-width: 600px;
-  overflow-y: auto;
   width: 510px;
-  height: 90vh;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+command-dialog #command-form {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+command-dialog .modal-body {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
 }
 
 command-dialog .modal-header {
+  flex-shrink: 0;
   margin-bottom: 20px;
   display: flex;
   justify-content: space-between;
@@ -110,9 +125,12 @@ command-dialog .form-group input.is-invalid {
 }
 
 command-dialog .form-actions {
+  flex-shrink: 0;
   display: flex;
   gap: 10px;
   justify-content: flex-end;
-  margin-top: 25px;
+  margin-top: 0;
+  padding-top: 20px;
+  border-top: 1px solid #e0e0e0;
 }
 

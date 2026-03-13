@@ -1,23 +1,26 @@
 <div class="modal">
   <div class="modal-content">
     <div class="modal-header">
-      <h2>Все ссылки (!ссылки)</h2>
+      <h2>Все ссылки</h2>
       <button type="button" class="modal-close-btn" data-close>×</button>
     </div>
     <form id="links-form">
-      <div class="form-group">
-        <label for="all-links-text">Текст, который бот отправит по команде !ссылки</label>
-        <textarea
-          id="all-links-text"
-          placeholder="Например: 📸Boosty ... 😻Discord ... 💖Donation ...">
-        </textarea>
-        <small>Текст отправляется одним сообщением, как на Twitch. Используй пробелы и разделители (───),
-          чтобы контролировать визуальные переносы.
-        </small>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="all-links-text">Текст, который бот отправит по команде !ссылки</label>
+          <textarea
+            id="all-links-text"
+            placeholder="Например: 📸Boosty ... 😻Discord ... 💖Donation ...">
+          </textarea>
+          <small>Текст отправляется одним сообщением, как на Twitch. Используй пробелы и разделители (───),
+            чтобы контролировать визуальные переносы.
+          </small>
+        </div>
       </div>
       <div class="form-actions">
         <button type="button" class="btn btn-secondary" data-close>Отмена</button>
         <button type="submit" class="btn btn-success">Сохранить</button>
+        <button type="button" class="btn" data-send>🚀 В чат</button>
       </div>
     </form>
   </div>

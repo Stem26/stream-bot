@@ -357,6 +357,31 @@ export class NightBotMonitor {
     }
 
     /**
+     * Выполнить кастомную команду по ID (используется веб-интерфейсом)
+     */
+    public async executeCustomCommandById(id: string): Promise<void> {
+        try {
+            const commands = await loadCustomCommandsFromDb();
+            const command = commands.find((c) => c.id === id);
+
+            if (!command) {
+                console.log(`⚠️ Кастомная команда с id="${id}" не найдена`);
+                return;
+            }
+
+            if (!this.channelName) {
+                console.log(`⚠️ Нельзя выполнить кастомную команду "${id}" — чат ещё не подключен`);
+                return;
+            }
+
+            console.log(`🧷 Ручной запуск кастомной команды из UI: ${command.trigger} (id: ${id})`);
+            await this.handleCustomCommand(`#${this.channelName}`, this.channelName, command, null);
+        } catch (error) {
+            console.error(`❌ Ошибка при ручном запуске кастомной команды ${id}:`, error);
+        }
+    }
+
+    /**
      * Перезагружает конфиг ссылок из файла
      */
     public reloadLinksConfig(): void {
@@ -365,6 +390,23 @@ export class NightBotMonitor {
             ? this.linksConfig.allLinksText.substring(0, 80).replace(/\s+/g, ' ')
             : '(пусто)';
         console.log(`✅ Конфиг ссылок перезагружен, длина=${this.linksConfig.allLinksText.length} символов, превью: ${preview}`);
+    }
+
+    /**
+     * Ручной запуск ответа !ссылки из веб-интерфейса (как обычное сообщение, не объявление)
+     */
+    public async executeLinksFromUi(): Promise<void> {
+        try {
+            if (!this.channelName) {
+                console.log('⚠️ Нельзя выполнить !ссылки из UI — чат ещё не подключен');
+                return;
+            }
+
+            console.log('🧷 Ручной запуск команды !ссылки из UI');
+            await this.handleLinksCommand(`#${this.channelName}`, this.channelName, null);
+        } catch (error) {
+            console.error('❌ Ошибка при ручном запуске !ссылки из UI:', error);
+        }
     }
 
     /**

@@ -7,6 +7,7 @@ export interface LinkDialogSaveDetail {
 
 export class LinkDialogElement extends HTMLElement {
   private initialized = false;
+  private escHandler?: (event: KeyboardEvent) => void;
 
   connectedCallback(): void {
     if (this.initialized) return;
@@ -29,6 +30,17 @@ export class LinkDialogElement extends HTMLElement {
         }),
       );
     });
+
+    const sendBtn = this.querySelector<HTMLButtonElement>('[data-send]');
+    sendBtn?.addEventListener('click', (e) => {
+      e.preventDefault();
+      this.dispatchEvent(
+        new CustomEvent<null>('send', {
+          detail: null,
+          bubbles: true,
+        }),
+      );
+    });
   }
 
   open(initialText: string): void {
@@ -40,6 +52,15 @@ export class LinkDialogElement extends HTMLElement {
     const modal = this.querySelector<HTMLElement>('.modal');
     modal?.classList.add('active');
     document.body.classList.add('modal-open');
+
+    if (!this.escHandler) {
+      this.escHandler = (event: KeyboardEvent) => {
+        if (event.key === 'Escape') {
+          this.close();
+        }
+      };
+      document.addEventListener('keydown', this.escHandler);
+    }
   }
 
   close(): void {
@@ -51,6 +72,12 @@ export class LinkDialogElement extends HTMLElement {
   private ensureInit(): void {
     if (!this.initialized) {
       this.connectedCallback();
+    }
+  }
+
+  disconnectedCallback(): void {
+    if (this.escHandler) {
+      document.removeEventListener('keydown', this.escHandler);
     }
   }
 }

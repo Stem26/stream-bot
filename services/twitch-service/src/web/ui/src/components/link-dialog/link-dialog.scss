@@ -37,11 +37,25 @@ link-dialog .modal-content {
   border-radius: 0;
   padding: 30px;
   max-width: 600px;
-  overflow-y: auto;
+  max-height: 80vh;
   width: 510px;
+  display: flex;
+  flex-direction: column;
+}
+
+link-dialog #links-form {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+link-dialog .modal-body {
+  flex: 1;
+  overflow-y: auto;
 }
 
 link-dialog .modal-header {
+  flex-shrink: 0;
   margin-bottom: 20px;
   display: flex;
   justify-content: space-between;
@@ -86,9 +100,12 @@ link-dialog .form-group small {
 }
 
 link-dialog .form-actions {
+  flex-shrink: 0;
   display: flex;
   gap: 10px;
-  justify-content: flex-end;
-  margin-top: 25px;
+  justify-content: center;
+  margin-top: 0;
+  padding-top: 20px;
+  border-top: 1px solid #e0e0e0;
 }
 

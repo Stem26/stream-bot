@@ -15,9 +15,14 @@ const MONOREPO_ROOT = (() => {
   return cwd;
 })();
 
-const envFile = process.env.NODE_ENV === 'development' ? '.env.local' : '.env';
+// Локально всегда используем .env.local, если он существует рядом с монорепой.
+// На проде .env.local обычно нет, поэтому берём .env.
+const localEnvPath = path.join(MONOREPO_ROOT, '.env.local');
+const envFile = fs.existsSync(localEnvPath) ? '.env.local' : '.env';
 dotenv.config({ path: path.join(MONOREPO_ROOT, envFile) });
 
+// Всегда сначала пробуем TWITCH_DATABASE_URL (для Twitch-сервиса),
+// иначе падаем обратно на общий DATABASE_URL (продовый fallback).
 const DATABASE_URL = process.env.TWITCH_DATABASE_URL || process.env.DATABASE_URL;
 
 let pool: Pool | null = null;

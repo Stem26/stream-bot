@@ -379,16 +379,59 @@ app.patch('/api/commands/:id/toggle', async (req: Request, res: Response) => {
     }
 });
 
+// Ручной запуск команды (отправка в чат)
+app.post('/api/commands/:id/send', async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+
+    const command = await getCommandByIdFromDb(id);
+    if (!command) {
+      return res.status(404).json({ error: 'Команда не найдена' });
+    }
+    if (!command.enabled) {
+      return res.status(400).json({ error: 'Команда выключена и не может быть отправлена' });
+    }
+
+        await executeCommandById(id);
+
+        res.json({ success: true });
+    } catch (error) {
+        console.error('❌ Ошибка ручного запуска команды:', error);
+        res.status(500).json({ error: 'Ошибка ручного запуска команды' });
+    }
+});
+
+// Ручная отправка текста всех ссылок (!ссылки) в чат
+app.post('/api/links/send', async (req: Request, res: Response) => {
+    try {
+        await executeLinks();
+        res.json({ success: true });
+    } catch (error) {
+        console.error('❌ Ошибка ручной отправки ссылок:', error);
+        res.status(500).json({ error: 'Ошибка отправки ссылок' });
+    }
+});
+
 // Корневой маршрут - отдаём HTML интерфейс
 app.get('/', (req: Request, res: Response) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// Колбэк для уведомления об изменениях команд
+// Колбэки для связи с Twitch-сервисом
 let onCommandsChangedCallback: (() => void) | null = null;
+let onCommandExecuteCallback: ((id: string) => void | Promise<void>) | null = null;
+let onLinksSendCallback: (() => void | Promise<void>) | null = null;
 
 export function setOnCommandsChangedCallback(callback: () => void) {
     onCommandsChangedCallback = callback;
+}
+
+export function setOnCommandExecuteCallback(callback: (id: string) => void | Promise<void>) {
+    onCommandExecuteCallback = callback;
+}
+
+export function setOnLinksSendCallback(callback: () => void | Promise<void>) {
+    onLinksSendCallback = callback;
 }
 
 function notifyCommandsChanged() {
@@ -396,6 +439,20 @@ function notifyCommandsChanged() {
         onCommandsChangedCallback();
         console.log('📢 Уведомление об изменении команд отправлено');
     }
+}
+
+async function executeCommandById(id: string): Promise<void> {
+    if (!onCommandExecuteCallback) {
+        throw new Error('onCommandExecuteCallback is not set');
+    }
+    await onCommandExecuteCallback(id);
+}
+
+async function executeLinks(): Promise<void> {
+    if (!onLinksSendCallback) {
+        throw new Error('onLinksSendCallback is not set');
+    }
+    await onLinksSendCallback();
 }
 
 // Запуск сервера

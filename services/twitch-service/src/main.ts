@@ -6,7 +6,7 @@ import { clearDuelQueue, resetDuelsOnStreamEnd, clearDuelChallenges } from "./co
 import { clearActiveUsers } from "./commands/twitch-rat";
 import { log } from './utils/event-logger';
 import { initDatabase, closeDatabase } from './database/database';
-import { startWebServer, setOnCommandsChangedCallback } from './web/server';
+import { startWebServer, setOnCommandsChangedCallback, setOnCommandExecuteCallback, setOnLinksSendCallback } from './web/server';
 
 async function main() {
     const config = loadConfig();
@@ -59,6 +59,16 @@ async function main() {
     setOnCommandsChangedCallback(() => {
         nightBotMonitor.reloadCustomCommands();
         nightBotMonitor.reloadLinksConfig();
+    });
+
+    // Колбэк для ручного запуска команды из веб-интерфейса
+    setOnCommandExecuteCallback(async (id: string) => {
+        await nightBotMonitor.executeCustomCommandById(id);
+    });
+
+    // Колбэк для ручной отправки !ссылки из веб-интерфейса
+    setOnLinksSendCallback(async () => {
+        await nightBotMonitor.executeLinksFromUi();
     });
 
     // Связываем проверку статуса стрима: команды работают только когда стрим онлайн
