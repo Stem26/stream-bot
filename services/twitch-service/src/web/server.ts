@@ -710,7 +710,11 @@ app.get('/api/leaderboard', async (req: Request, res: Response) => {
 
         // Получаем записи для текущей страницы
         const players = await query<any>(
-            `SELECT twitch_username, points, duel_wins, duel_losses, duel_draws
+            `SELECT twitch_username, 
+                    COALESCE(points, 0) as points,
+                    COALESCE(duel_wins, 0) as duel_wins,
+                    COALESCE(duel_losses, 0) as duel_losses,
+                    COALESCE(duel_draws, 0) as duel_draws
              FROM twitch_player_stats
              WHERE points > 0 OR duel_wins > 0
              ORDER BY points DESC, duel_wins DESC

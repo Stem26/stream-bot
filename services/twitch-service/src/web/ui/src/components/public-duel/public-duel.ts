@@ -1,5 +1,6 @@
 import template from './public-duel.html?raw';
 import './public-duel.scss';
+import chevronIcon from '../../icons/24px_chevron_left.svg?raw';
 
 interface LeaderboardPlayer {
   twitch_username: string;
@@ -28,6 +29,13 @@ export class PublicDuelElement extends HTMLElement {
     if (this.initialized) return;
     this.initialized = true;
     this.innerHTML = template;
+    
+    // Вставляем SVG иконку
+    const backBtn = this.querySelector('.back-btn');
+    if (backBtn) {
+      backBtn.innerHTML = chevronIcon;
+    }
+    
     this.loadLeaderboard();
   }
 

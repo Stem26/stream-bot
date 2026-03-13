@@ -24,10 +24,10 @@ public-duel .back-btn {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   z-index: 1000;
 
-  img {
+  svg {
     width: 24px;
     height: 24px;
-    filter: invert(43%) sepia(92%) saturate(1352%) hue-rotate(220deg) brightness(98%) contrast(89%);
+    fill: #667eea;
   }
 
   &:hover {
