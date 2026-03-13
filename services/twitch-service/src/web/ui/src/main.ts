@@ -54,16 +54,21 @@ function renderCommands(data: CommandsData): void {
   const emptyState = document.getElementById('empty-state');
   if (!container || !emptyState) return;
 
-  if (data.commands.length === 0) {
-    container.style.display = 'none';
-    emptyState.style.display = 'block';
-    return;
-  }
-
+  // Всегда показываем контейнер
   container.style.display = 'grid';
   emptyState.style.display = 'none';
 
-  container.innerHTML = data.commands
+  // Создаем карточку для добавления команды
+  const addCommandCard = `
+    <div class="command-card add-command-card" id="add-command-card-trigger">
+      <div class="add-command-content">
+        <div class="add-command-icon">➕</div>
+        <div class="add-command-text">Добавить команду</div>
+      </div>
+    </div>
+  `;
+
+  const commandCards = data.commands
     .map(
       (cmd) => {
         const encodedId = encodeURIComponent(cmd.id);
@@ -113,6 +118,9 @@ function renderCommands(data: CommandsData): void {
       },
     )
     .join('');
+
+  // Добавляем карточку "+" в начало + остальные команды
+  container.innerHTML = addCommandCard + commandCards;
 }
 
 async function loadCommands(): Promise<void> {
@@ -230,7 +238,6 @@ async function initLinks(linkDialog: LinkDialogElement): Promise<void> {
 }
 
 async function bootstrap(): Promise<void> {
-  const addCommandBtn = document.getElementById('add-command-btn');
   const allLinksBtn = document.getElementById('all-links-btn');
   const commandsContainer = document.getElementById('commands-container');
 
@@ -238,7 +245,7 @@ async function bootstrap(): Promise<void> {
   const linkDialog = document.querySelector<LinkDialogElement>('link-dialog');
   const counterDialog = document.querySelector<CounterDialogElement>('counter-dialog');
 
-  if (!addCommandBtn || !allLinksBtn || !commandsContainer || !commandDialog || !linkDialog || !counterDialog) {
+  if (!allLinksBtn || !commandsContainer || !commandDialog || !linkDialog || !counterDialog) {
     return;
   }
 
@@ -250,6 +257,14 @@ async function bootstrap(): Promise<void> {
   await loadCommands();
   await loadCounters();
   await loadDuelsStatus();
+
+  // Кнопка "Добавить команду" (карточка)
+  document.addEventListener('click', (event) => {
+    const target = event.target as HTMLElement;
+    if (target.closest('#add-command-card-trigger')) {
+      commandDialog.openForCreate();
+    }
+  });
 
   // Кнопка добавления счётчика
   const addCounterBtn = document.getElementById('add-counter-btn');

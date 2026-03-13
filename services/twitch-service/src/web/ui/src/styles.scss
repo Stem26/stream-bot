@@ -97,6 +97,44 @@ body.modal-open {
   position: relative;
   display: flex;
   flex-direction: column;
+
+  &.add-command-card {
+    cursor: pointer;
+    border: 2px dashed #667eea;
+    background: linear-gradient(135deg, rgba(102, 126, 234, 0.05) 0%, rgba(118, 75, 162, 0.05) 100%);
+    min-height: 200px;
+    justify-content: center;
+    align-items: center;
+
+    .add-command-content {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .add-command-icon {
+      font-size: 48px;
+      color: #667eea;
+    }
+
+    .add-command-text {
+      font-size: 18px;
+      font-weight: 600;
+      color: #667eea;
+    }
+
+    &:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 8px 30px rgba(102, 126, 234, 0.3);
+      border-color: #764ba2;
+
+      .add-command-icon,
+      .add-command-text {
+        color: #764ba2;
+      }
+    }
+  }
 }
 
 .command-card:hover {
