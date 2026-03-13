@@ -1723,6 +1723,13 @@ export class NightBotMonitor {
         console.log(`🛑 Команда !стоп от ${user} в ${channel}`);
 
         try {
+            // Проверяем что счётчик включен
+            const check = await query('SELECT enabled FROM counters WHERE id = $1', ['stop']);
+            if (!check[0]?.enabled) {
+                console.log('⚠️ Счётчик !стоп выключен, команда проигнорирована');
+                return;
+            }
+
             // Инкрементируем счётчик в БД
             await query('UPDATE counters SET value = value + 1 WHERE id = $1', ['stop']);
             
@@ -1751,6 +1758,13 @@ export class NightBotMonitor {
         console.log(`🎯 Команда !стоп${targetValue} от ${user} в ${channel}`);
 
         try {
+            // Проверяем что счётчик включен
+            const check = await query('SELECT enabled FROM counters WHERE id = $1', ['stop']);
+            if (!check[0]?.enabled) {
+                console.log('⚠️ Счётчик !стоп выключен, команда проигнорирована');
+                return;
+            }
+
             if (targetValue < 0 || targetValue > 9999) {
                 const response = `Значение должно быть от 0 до 9999`;
                 await this.sendMessage(channel, response);
@@ -1787,7 +1801,11 @@ export class NightBotMonitor {
 
         try {
             // Получаем текущее значение из БД
-            const result = await query('SELECT value FROM counters WHERE id = $1', ['stop']);
+            const result = await query('SELECT value, enabled FROM counters WHERE id = $1', ['stop']);
+            if (!result[0]?.enabled) {
+                console.log('⚠️ Счётчик !стоп выключен, команда проигнорирована');
+                return;
+            }
             const currentCount = result[0]?.value || 0;
 
             if (currentCount === 0) {
@@ -1835,7 +1853,11 @@ export class NightBotMonitor {
 
         try {
             // Получаем текущее значение из БД
-            const result = await query('SELECT value FROM counters WHERE id = $1', ['stop']);
+            const result = await query('SELECT value, enabled FROM counters WHERE id = $1', ['stop']);
+            if (!result[0]?.enabled) {
+                console.log('⚠️ Счётчик !стоп выключен, команда проигнорирована');
+                return;
+            }
             const currentCount = result[0]?.value || 0;
 
             if (currentCount === 0) {
@@ -1869,7 +1891,11 @@ export class NightBotMonitor {
 
         try {
             // Получаем данные счётчика из БД
-            const result = await query('SELECT value, response_template FROM counters WHERE id = $1', ['stop']);
+            const result = await query('SELECT value, response_template, enabled FROM counters WHERE id = $1', ['stop']);
+            if (!result[0]?.enabled) {
+                console.log('⚠️ Счётчик !стоп выключен, команда проигнорирована');
+                return;
+            }
             const currentCount = result[0]?.value || 0;
             const template = result[0]?.response_template || 'Количество стопов: {value}';
 
@@ -1898,6 +1924,13 @@ export class NightBotMonitor {
         console.log(`💀 Команда !смерть от ${user} в ${channel}`);
 
         try {
+            // Проверяем что счётчик включен
+            const check = await query('SELECT enabled FROM counters WHERE id = $1', ['death']);
+            if (!check[0]?.enabled) {
+                console.log('⚠️ Счётчик !смерть выключен, команда проигнорирована');
+                return;
+            }
+
             // Инкрементируем счётчик в БД
             await query('UPDATE counters SET value = value + 1 WHERE id = $1', ['death']);
             
@@ -1926,6 +1959,13 @@ export class NightBotMonitor {
         console.log(`🎯 Команда !смерть${targetValue} от ${user} в ${channel}`);
 
         try {
+            // Проверяем что счётчик включен
+            const check = await query('SELECT enabled FROM counters WHERE id = $1', ['death']);
+            if (!check[0]?.enabled) {
+                console.log('⚠️ Счётчик !смерть выключен, команда проигнорирована');
+                return;
+            }
+
             if (targetValue < 0 || targetValue > 9999) {
                 const response = `Значение должно быть от 0 до 9999`;
                 await this.sendMessage(channel, response);
@@ -1962,7 +2002,11 @@ export class NightBotMonitor {
 
         try {
             // Получаем текущее значение из БД
-            const result = await query('SELECT value FROM counters WHERE id = $1', ['death']);
+            const result = await query('SELECT value, enabled FROM counters WHERE id = $1', ['death']);
+            if (!result[0]?.enabled) {
+                console.log('⚠️ Счётчик !смерть выключен, команда проигнорирована');
+                return;
+            }
             const currentCount = result[0]?.value || 0;
 
             if (currentCount === 0) {
@@ -2010,7 +2054,11 @@ export class NightBotMonitor {
 
         try {
             // Получаем текущее значение из БД
-            const result = await query('SELECT value FROM counters WHERE id = $1', ['death']);
+            const result = await query('SELECT value, enabled FROM counters WHERE id = $1', ['death']);
+            if (!result[0]?.enabled) {
+                console.log('⚠️ Счётчик !смерть выключен, команда проигнорирована');
+                return;
+            }
             const currentCount = result[0]?.value || 0;
 
             if (currentCount === 0) {
@@ -2044,7 +2092,11 @@ export class NightBotMonitor {
 
         try {
             // Получаем данные счётчика из БД
-            const result = await query('SELECT value, response_template FROM counters WHERE id = $1', ['death']);
+            const result = await query('SELECT value, response_template, enabled FROM counters WHERE id = $1', ['death']);
+            if (!result[0]?.enabled) {
+                console.log('⚠️ Счётчик !смерть выключен, команда проигнорирована');
+                return;
+            }
             const currentCount = result[0]?.value || 0;
             const template = result[0]?.response_template || 'Смертей: {value}';
 
