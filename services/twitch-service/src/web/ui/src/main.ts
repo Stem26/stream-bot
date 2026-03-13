@@ -239,9 +239,13 @@ async function loadDuelsStatus(): Promise<void> {
   }
 }
 
-async function loadLeaderboard(): Promise<void> {
+let currentLeaderboardPage = 1;
+const leaderboardPageSize = 50;
+
+async function loadLeaderboard(page: number = 1): Promise<void> {
   try {
-    const response = await fetch('/api/leaderboard');
+    currentLeaderboardPage = page;
+    const response = await fetch(`/api/leaderboard?page=${page}&limit=${leaderboardPageSize}`);
     const data = await response.json();
     const container = document.getElementById('leaderboard-table');
     
@@ -251,6 +255,9 @@ async function loadLeaderboard(): Promise<void> {
       container.innerHTML = '<p style="text-align: center; color: #6c757d;">Пока нет данных</p>';
       return;
     }
+
+    const { pagination } = data;
+    const startRank = (pagination.page - 1) * pagination.limit;
 
     const tableHTML = `
       <table class="leaderboard-table">
@@ -267,7 +274,7 @@ async function loadLeaderboard(): Promise<void> {
             .map(
               (p: any, index: number) => `
             <tr>
-              <td class="rank">${index + 1}</td>
+              <td class="rank">${startRank + index + 1}</td>
               <td class="username">${p.twitch_username}</td>
               <td class="points">${p.points}</td>
               <td class="stats">
@@ -279,9 +286,37 @@ async function loadLeaderboard(): Promise<void> {
             .join('')}
         </tbody>
       </table>
+      <div class="pagination">
+        <button 
+          class="btn btn-small" 
+          id="prev-page-btn" 
+          ${pagination.page <= 1 ? 'disabled' : ''}
+        >← Назад</button>
+        <span class="pagination-info">
+          Страница ${pagination.page} из ${pagination.totalPages} (всего: ${pagination.total})
+        </span>
+        <button 
+          class="btn btn-small" 
+          id="next-page-btn"
+          ${pagination.page >= pagination.totalPages ? 'disabled' : ''}
+        >Вперёд →</button>
+      </div>
     `;
 
     container.innerHTML = tableHTML;
+
+    // Добавляем обработчики для кнопок пагинации
+    document.getElementById('prev-page-btn')?.addEventListener('click', () => {
+      if (currentLeaderboardPage > 1) {
+        loadLeaderboard(currentLeaderboardPage - 1);
+      }
+    });
+
+    document.getElementById('next-page-btn')?.addEventListener('click', () => {
+      if (currentLeaderboardPage < pagination.totalPages) {
+        loadLeaderboard(currentLeaderboardPage + 1);
+      }
+    });
   } catch (error) {
     console.error('Ошибка загрузки таблицы лидеров:', error);
   }

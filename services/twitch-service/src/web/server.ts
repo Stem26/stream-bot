@@ -696,15 +696,37 @@ app.patch('/api/counters/:id/increment', async (req: Request, res: Response) => 
 
 app.get('/api/leaderboard', async (req: Request, res: Response) => {
     try {
+        const page = parseInt(req.query.page as string) || 1;
+        const limit = parseInt(req.query.limit as string) || 100;
+        const offset = (page - 1) * limit;
+
+        // Получаем общее количество записей
+        const totalResult = await queryOne<{ count: string }>(
+            `SELECT COUNT(*) as count
+             FROM twitch_player_stats
+             WHERE points > 0 OR duel_wins > 0`
+        );
+        const total = parseInt(totalResult?.count || '0', 10);
+
+        // Получаем записи для текущей страницы
         const players = await query<any>(
             `SELECT twitch_username, points, duel_wins, duel_losses, duel_draws
              FROM twitch_player_stats
              WHERE points > 0 OR duel_wins > 0
              ORDER BY points DESC, duel_wins DESC
-             LIMIT 100`
+             LIMIT $1 OFFSET $2`,
+            [limit, offset]
         );
         
-        res.json({ players });
+        res.json({ 
+            players,
+            pagination: {
+                page,
+                limit,
+                total,
+                totalPages: Math.ceil(total / limit)
+            }
+        });
     } catch (error) {
         console.error('❌ Ошибка загрузки таблицы лидеров:', error);
         res.status(500).json({ error: 'Ошибка загрузки таблицы' });

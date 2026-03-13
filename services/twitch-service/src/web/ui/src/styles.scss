@@ -596,3 +596,26 @@ body.modal-open {
   }
 }
 
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 24px;
+  padding: 16px;
+
+  .pagination-info {
+    font-size: 0.9em;
+    color: #6c757d;
+  }
+
+  .btn {
+    min-width: 100px;
+
+    &:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+  }
+}
+
