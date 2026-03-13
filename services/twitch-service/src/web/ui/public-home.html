@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>kunilika666 - Twitch стример</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .container {
+      max-width: 600px;
+      width: 100%;
+      text-align: center;
+    }
+
+    .header {
+      margin-bottom: 50px;
+    }
+
+    .avatar {
+      width: 140px;
+      height: 140px;
+      border-radius: 50%;
+      border: 5px solid white;
+      margin: 0 auto 25px;
+      background: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 64px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    }
+
+    .username {
+      font-size: 42px;
+      font-weight: 800;
+      color: white;
+      margin-bottom: 12px;
+      text-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    }
+
+    .bio {
+      font-size: 18px;
+      color: rgba(255, 255, 255, 0.95);
+      text-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    }
+
+    .menu-grid {
+      display: grid;
+      gap: 20px;
+      margin-top: 40px;
+    }
+
+    .menu-btn {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 24px 32px;
+      background: white;
+      border: none;
+      border-radius: 20px;
+      text-decoration: none;
+      color: #2d3748;
+      font-weight: 700;
+      font-size: 20px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+      transition: all 0.3s ease;
+      cursor: pointer;
+    }
+
+    .menu-btn:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25);
+    }
+
+    .menu-btn:active {
+      transform: translateY(-2px);
+    }
+
+    .menu-btn-content {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+    }
+
+    .menu-btn-icon {
+      font-size: 36px;
+    }
+
+    .menu-btn-text {
+      text-align: left;
+    }
+
+    .menu-btn-title {
+      font-size: 20px;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    .menu-btn-subtitle {
+      font-size: 14px;
+      color: #6c757d;
+      font-weight: 400;
+    }
+
+    .menu-btn-arrow {
+      font-size: 28px;
+      opacity: 0.5;
+      transition: transform 0.3s ease;
+    }
+
+    .menu-btn:hover .menu-btn-arrow {
+      transform: translateX(8px);
+    }
+
+    .footer {
+      margin-top: 60px;
+      color: rgba(255, 255, 255, 0.7);
+      font-size: 14px;
+    }
+
+    @media (max-width: 768px) {
+      .avatar {
+        width: 110px;
+        height: 110px;
+        font-size: 52px;
+      }
+
+      .username {
+        font-size: 32px;
+      }
+
+      .bio {
+        font-size: 16px;
+      }
+
+      .menu-btn {
+        padding: 20px 24px;
+      }
+
+      .menu-btn-icon {
+        font-size: 32px;
+      }
+
+      .menu-btn-title {
+        font-size: 18px;
+      }
+
+      .menu-btn-subtitle {
+        font-size: 13px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="avatar">🎮</div>
+      <h1 class="username">kunilika666</h1>
+      <p class="bio">Twitch стример | Игры и общение с чатом</p>
+    </div>
+
+    <div class="menu-grid">
+      <a href="/public/duel" class="menu-btn">
+        <div class="menu-btn-content">
+          <span class="menu-btn-icon">🏆</span>
+          <div class="menu-btn-text">
+            <div class="menu-btn-title">Таблица лидеров</div>
+            <div class="menu-btn-subtitle">Результаты дуэлей</div>
+          </div>
+        </div>
+        <span class="menu-btn-arrow">→</span>
+      </a>
+
+      <a href="/public/links" class="menu-btn">
+        <div class="menu-btn-content">
+          <span class="menu-btn-icon">🔗</span>
+          <div class="menu-btn-text">
+            <div class="menu-btn-title">Все ссылки</div>
+            <div class="menu-btn-subtitle">Соцсети, донаты, контакты</div>
+          </div>
+        </div>
+        <span class="menu-btn-arrow">→</span>
+      </a>
+    </div>
+
+    <div class="footer">
+      Сделано с ❤️ для стримов
+    </div>
+  </div>
+</body>
+</html>

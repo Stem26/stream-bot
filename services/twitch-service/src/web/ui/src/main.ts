@@ -33,42 +33,20 @@ function setupTabs(): void {
 
       // Убираем active у всех кнопок и контента
       tabButtons.forEach((b) => b.classList.remove('active'));
-      tabContents.forEach((c) => c.classList.remove('active'));
+      tabContents.forEach((c) => {
+        c.classList.remove('active');
+        c.style.display = 'none';
+      });
 
       // Добавляем active к выбранным
       btn.classList.add('active');
       const targetContent = document.getElementById(`tab-${targetTab}`);
       if (targetContent) {
         targetContent.classList.add('active');
+        targetContent.style.display = 'block';
       }
     });
   });
-}
-
-async function checkAuth(): Promise<boolean> {
-  try {
-    // Пробуем загрузить защищенный endpoint
-    const response = await fetch('/api/commands');
-    return response.ok;
-  } catch (error) {
-    return false;
-  }
-}
-
-function showAdminContent(): void {
-  document.querySelectorAll<HTMLElement>('.admin-only').forEach((el) => {
-    el.style.display = '';
-  });
-}
-
-function hideAdminContent(): void {
-  document.querySelectorAll<HTMLElement>('.admin-only').forEach((el) => {
-    el.style.display = 'none';
-  });
-  
-  // Переключаемся на публичную вкладку
-  const leaderboardTab = document.querySelector<HTMLButtonElement>('[data-tab="leaderboard"]');
-  leaderboardTab?.click();
 }
 
 function renderCommands(data: CommandsData): void {
@@ -239,90 +217,6 @@ async function loadDuelsStatus(): Promise<void> {
   }
 }
 
-let currentLeaderboardPage = 1;
-const leaderboardPageSize = 50;
-
-async function loadLeaderboard(page: number = 1): Promise<void> {
-  try {
-    currentLeaderboardPage = page;
-    const response = await fetch(`/api/leaderboard?page=${page}&limit=${leaderboardPageSize}`);
-    const data = await response.json();
-    const container = document.getElementById('leaderboard-table');
-    
-    if (!container) return;
-
-    if (!data.players || data.players.length === 0) {
-      container.innerHTML = '<p style="text-align: center; color: #6c757d;">Пока нет данных</p>';
-      return;
-    }
-
-    const { pagination } = data;
-    const startRank = (pagination.page - 1) * pagination.limit;
-
-    const tableHTML = `
-      <table class="leaderboard-table">
-        <thead>
-          <tr>
-            <th>#</th>
-            <th>Игрок</th>
-            <th>Очки</th>
-            <th>Статистика</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${data.players
-            .map(
-              (p: any, index: number) => `
-            <tr>
-              <td class="rank">${startRank + index + 1}</td>
-              <td class="username">${p.twitch_username}</td>
-              <td class="points">${p.points}</td>
-              <td class="stats">
-                Побед: ${p.duel_wins || 0} | Проигрышей: ${p.duel_losses || 0} | Ничьих: ${p.duel_draws || 0}
-              </td>
-            </tr>
-          `
-            )
-            .join('')}
-        </tbody>
-      </table>
-      <div class="pagination">
-        <button 
-          class="btn btn-small" 
-          id="prev-page-btn" 
-          ${pagination.page <= 1 ? 'disabled' : ''}
-        >← Назад</button>
-        <span class="pagination-info">
-          Страница ${pagination.page} из ${pagination.totalPages} (всего: ${pagination.total})
-        </span>
-        <button 
-          class="btn btn-small" 
-          id="next-page-btn"
-          ${pagination.page >= pagination.totalPages ? 'disabled' : ''}
-        >Вперёд →</button>
-      </div>
-    `;
-
-    container.innerHTML = tableHTML;
-
-    // Добавляем обработчики для кнопок пагинации
-    document.getElementById('prev-page-btn')?.addEventListener('click', () => {
-      if (currentLeaderboardPage > 1) {
-        loadLeaderboard(currentLeaderboardPage - 1);
-      }
-    });
-
-    document.getElementById('next-page-btn')?.addEventListener('click', () => {
-      if (currentLeaderboardPage < pagination.totalPages) {
-        loadLeaderboard(currentLeaderboardPage + 1);
-      }
-    });
-  } catch (error) {
-    console.error('Ошибка загрузки таблицы лидеров:', error);
-  }
-}
-
-
 async function initLinks(linkDialog: LinkDialogElement): Promise<void> {
   try {
     const config = await fetchLinksConfig();
@@ -351,25 +245,11 @@ async function bootstrap(): Promise<void> {
   // Переключение вкладок
   setupTabs();
   
-  // Проверяем авторизацию (Nginx Basic Auth)
-  const isAuthorized = await checkAuth();
-  
-  if (isAuthorized) {
-    showAdminContent();
-  } else {
-    hideAdminContent();
-  }
-
-  // Публичный контент всегда загружается
-  await loadLeaderboard();
+  // Загружаем данные
   await initLinks(linkDialog);
-  
-  // Админский контент загружаем только если авторизованы
-  if (isAuthorized) {
-    await loadCommands();
-    await loadCounters();
-    await loadDuelsStatus();
-  }
+  await loadCommands();
+  await loadCounters();
+  await loadDuelsStatus();
 
   // Кнопка добавления счётчика
   const addCounterBtn = document.getElementById('add-counter-btn');

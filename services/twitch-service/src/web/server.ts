@@ -797,9 +797,31 @@ app.post('/api/admin/pardon-all', async (req: Request, res: Response) => {
     }
 });
 
-// Корневой маршрут - отдаём HTML интерфейс
+// === Публичные страницы ===
+
+// Главная страница - редирект на /public
 app.get('/', (req: Request, res: Response) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+    res.redirect('/public');
+});
+
+// Публичная главная
+app.get('/public', (req: Request, res: Response) => {
+    res.sendFile(path.join(__dirname, 'public', 'public-home.html'));
+});
+
+// Таблица лидеров
+app.get('/public/duel', (req: Request, res: Response) => {
+    res.sendFile(path.join(__dirname, 'public', 'public-duel.html'));
+});
+
+// Страница со ссылками
+app.get('/public/links', (req: Request, res: Response) => {
+    res.sendFile(path.join(__dirname, 'public', 'public-links.html'));
+});
+
+// === Админ-панель (защищена Nginx Basic Auth) ===
+app.get('/admin', (req: Request, res: Response) => {
+    res.sendFile(path.join(__dirname, 'public', 'admin.html'));
 });
 
 // Колбэки для связи с Twitch-сервисом
