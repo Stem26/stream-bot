@@ -62,7 +62,7 @@ function renderCommands(data: CommandsData): void {
   const addCommandCard = `
     <div class="command-card add-command-card" id="add-command-card-trigger">
       <div class="add-command-content">
-        <div class="add-command-icon">➕</div>
+        <div class="add-command-icon">+</div>
         <div class="add-command-text">Добавить команду</div>
       </div>
     </div>
