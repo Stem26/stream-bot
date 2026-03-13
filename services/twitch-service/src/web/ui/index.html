@@ -16,13 +16,22 @@
 
   <!-- Вкладки -->
   <div class="tabs">
-    <button class="tab-btn active" data-tab="commands">📝 Команды</button>
-    <button class="tab-btn" data-tab="counters">🔢 Счётчики</button>
-    <button class="tab-btn" data-tab="admin">⚙️ Админ</button>
+    <button class="tab-btn active" data-tab="leaderboard">🏆 Таблица</button>
+    <button class="tab-btn admin-only" data-tab="commands" style="display: none;">📝 Команды</button>
+    <button class="tab-btn admin-only" data-tab="counters" style="display: none;">🔢 Счётчики</button>
+    <button class="tab-btn admin-only" data-tab="admin" style="display: none;">⚙️ Админ</button>
+  </div>
+
+  <!-- Вкладка: Таблица лидеров (публичная) -->
+  <div class="tab-content active" id="tab-leaderboard">
+    <div class="leaderboard-container">
+      <h2>🏆 Таблица лидеров дуэлей</h2>
+      <div id="leaderboard-table" class="loading">Загрузка...</div>
+    </div>
   </div>
 
   <!-- Вкладка: Команды -->
-  <div class="tab-content active" id="tab-commands">
+  <div class="tab-content admin-only" id="tab-commands" style="display: none;">
     <div class="controls"
          style="margin-top: 20px; display: flex; align-items: center; justify-content: space-between; gap: 16px;">
       <div>
@@ -47,7 +56,7 @@
   </div>
 
   <!-- Вкладка: Счётчики -->
-  <div class="tab-content" id="tab-counters">
+  <div class="tab-content admin-only" id="tab-counters" style="display: none;">
     <div class="controls">
       <button class="btn" id="add-counter-btn">+ Добавить счётчик</button>
     </div>
@@ -62,7 +71,7 @@
   </div>
 
   <!-- Вкладка: Админ -->
-  <div class="tab-content" id="tab-admin">
+  <div class="tab-content admin-only" id="tab-admin" style="display: none;">
     <div class="admin-section">
       <h3>Управление дуэлями</h3>
       <div class="admin-actions">

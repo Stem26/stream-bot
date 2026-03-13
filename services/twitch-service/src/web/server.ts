@@ -692,6 +692,43 @@ app.patch('/api/counters/:id/increment', async (req: Request, res: Response) => 
     }
 });
 
+// === API для таблицы лидеров (публичное) ===
+
+app.get('/api/leaderboard', async (req: Request, res: Response) => {
+    try {
+        const players = await query<any>(
+            `SELECT twitch_username, points, duel_wins, duel_losses, duel_draws
+             FROM twitch_player_stats
+             WHERE points > 0 OR duel_wins > 0
+             ORDER BY points DESC, duel_wins DESC
+             LIMIT 100`
+        );
+        
+        res.json({ players });
+    } catch (error) {
+        console.error('❌ Ошибка загрузки таблицы лидеров:', error);
+        res.status(500).json({ error: 'Ошибка загрузки таблицы' });
+    }
+});
+
+// === API для авторизации ===
+
+app.post('/api/auth/login', (req: Request, res: Response) => {
+    try {
+        const { password } = req.body;
+        const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
+        
+        if (password === adminPassword) {
+            res.json({ success: true });
+        } else {
+            res.status(401).json({ success: false, error: 'Неверный пароль' });
+        }
+    } catch (error) {
+        console.error('❌ Ошибка авторизации:', error);
+        res.status(500).json({ error: 'Ошибка авторизации' });
+    }
+});
+
 // === API для админ-панели ===
 
 // Получить статус дуэлей

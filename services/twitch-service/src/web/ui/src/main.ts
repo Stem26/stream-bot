@@ -45,6 +45,32 @@ function setupTabs(): void {
   });
 }
 
+async function checkAuth(): Promise<boolean> {
+  try {
+    // Пробуем загрузить защищенный endpoint
+    const response = await fetch('/api/commands');
+    return response.ok;
+  } catch (error) {
+    return false;
+  }
+}
+
+function showAdminContent(): void {
+  document.querySelectorAll<HTMLElement>('.admin-only').forEach((el) => {
+    el.style.display = '';
+  });
+}
+
+function hideAdminContent(): void {
+  document.querySelectorAll<HTMLElement>('.admin-only').forEach((el) => {
+    el.style.display = 'none';
+  });
+  
+  // Переключаемся на публичную вкладку
+  const leaderboardTab = document.querySelector<HTMLButtonElement>('[data-tab="leaderboard"]');
+  leaderboardTab?.click();
+}
+
 function renderCommands(data: CommandsData): void {
   const container = document.getElementById('commands-container');
   const emptyState = document.getElementById('empty-state');
@@ -213,6 +239,54 @@ async function loadDuelsStatus(): Promise<void> {
   }
 }
 
+async function loadLeaderboard(): Promise<void> {
+  try {
+    const response = await fetch('/api/leaderboard');
+    const data = await response.json();
+    const container = document.getElementById('leaderboard-table');
+    
+    if (!container) return;
+
+    if (!data.players || data.players.length === 0) {
+      container.innerHTML = '<p style="text-align: center; color: #6c757d;">Пока нет данных</p>';
+      return;
+    }
+
+    const tableHTML = `
+      <table class="leaderboard-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Игрок</th>
+            <th>Очки</th>
+            <th>Статистика</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${data.players
+            .map(
+              (p: any, index: number) => `
+            <tr>
+              <td class="rank">${index + 1}</td>
+              <td class="username">${p.twitch_username}</td>
+              <td class="points">${p.points}</td>
+              <td class="stats">
+                ${p.duel_wins || 0}П / ${p.duel_losses || 0}Пр / ${p.duel_draws || 0}Н
+              </td>
+            </tr>
+          `
+            )
+            .join('')}
+        </tbody>
+      </table>
+    `;
+
+    container.innerHTML = tableHTML;
+  } catch (error) {
+    console.error('Ошибка загрузки таблицы лидеров:', error);
+  }
+}
+
 
 async function initLinks(linkDialog: LinkDialogElement): Promise<void> {
   try {
@@ -241,11 +315,26 @@ async function bootstrap(): Promise<void> {
 
   // Переключение вкладок
   setupTabs();
+  
+  // Проверяем авторизацию (Nginx Basic Auth)
+  const isAuthorized = await checkAuth();
+  
+  if (isAuthorized) {
+    showAdminContent();
+  } else {
+    hideAdminContent();
+  }
 
+  // Публичный контент всегда загружается
+  await loadLeaderboard();
   await initLinks(linkDialog);
-  await loadCommands();
-  await loadCounters();
-  await loadDuelsStatus();
+  
+  // Админский контент загружаем только если авторизованы
+  if (isAuthorized) {
+    await loadCommands();
+    await loadCounters();
+    await loadDuelsStatus();
+  }
 
   // Кнопка добавления счётчика
   const addCounterBtn = document.getElementById('add-counter-btn');
