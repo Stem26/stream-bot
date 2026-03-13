@@ -3,7 +3,7 @@ import { resolve } from 'path';
 
 export default defineConfig({
   root: resolve(__dirname, 'src/web/ui'),
-  base: './',
+  base: '/',
   build: {
     outDir: resolve(__dirname, 'dist/src/web/public'),
     emptyOutDir: true,
