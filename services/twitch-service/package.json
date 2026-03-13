@@ -22,7 +22,8 @@
     "test:run": "vitest run",
     "db:migrate": "ts-node src/database/migrate.ts",
     "db:migrate-data": "ts-node src/database/migrate-data.ts",
-    "db:migrate-data:force": "ts-node src/database/migrate-data.ts --force"
+    "db:migrate-data:force": "ts-node src/database/migrate-data.ts --force",
+    "db:check-counters": "ts-node src/scripts/check-counters.ts"
   },
   "keywords": [
     "twitch",
