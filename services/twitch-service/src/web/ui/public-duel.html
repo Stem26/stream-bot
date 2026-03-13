@@ -5,22 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Таблица лидеров - kunilika666</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-  <link rel="stylesheet" href="/assets/public-duel.css" />
 </head>
 <body>
-  <a href="/" class="back-btn">
-    <img src="/src/icons/24px_chevron_left.svg" alt="Назад" />
-  </a>
-  
-  <div class="container">
-    <div class="header">
-      <h1>🏆 Таблица лидеров дуэлей</h1>
-      <p>Статистика побед и поражений</p>
-    </div>
-
-    <div id="leaderboard-table" class="loading">Загрузка...</div>
-  </div>
-
-  <script type="module" src="/src/public-duel.ts"></script>
+  <public-duel></public-duel>
+  <script type="module" src="/src/public-duel-entry.ts"></script>
 </body>
 </html>

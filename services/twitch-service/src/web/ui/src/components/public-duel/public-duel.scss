@@ -1,0 +1,260 @@
+public-duel {
+  display: block;
+  padding: 20px;
+}
+
+public-duel .back-btn {
+  position: fixed;
+  top: 20px;
+  left: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  background: white;
+  color: #667eea;
+  text-decoration: none;
+  border-radius: 50%;
+  font-weight: 700;
+  font-size: 18px;
+  line-height: 1;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  z-index: 1000;
+
+  img {
+    width: 24px;
+    height: 24px;
+    filter: invert(43%) sepia(92%) saturate(1352%) hue-rotate(220deg) brightness(98%) contrast(89%);
+  }
+
+  &:hover {
+    transform: translateY(-2px) scale(1.05);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  }
+
+  &:active {
+    transform: translateY(0) scale(1);
+  }
+}
+
+public-duel .public-duel-container {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+public-duel .header {
+  text-align: center;
+  margin-bottom: 40px;
+  color: white;
+  position: relative;
+
+  h1 {
+    font-size: 42px;
+    font-weight: 800;
+    margin-bottom: 12px;
+    text-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  }
+
+  p {
+    font-size: 18px;
+    opacity: 0.95;
+    text-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  }
+}
+
+public-duel .loading,
+public-duel .empty-message {
+  text-align: center;
+  padding: 60px 20px;
+  color: white;
+  font-size: 18px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 20px;
+  backdrop-filter: blur(10px);
+}
+
+public-duel .leaderboard-table {
+  width: 100%;
+  background: white;
+  overflow: hidden;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+  border-radius: 20px;
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  thead {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+
+    th {
+      padding: 20px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      font-size: 14px;
+      text-align: left;
+    }
+  }
+
+  tbody {
+    tr {
+      border-bottom: 1px solid #e9ecef;
+      transition: background 0.2s ease;
+
+      &:hover {
+        background: #f8f9fa;
+      }
+
+      &:last-child {
+        border-bottom: none;
+      }
+    }
+
+    td {
+      padding: 18px 20px;
+      text-align: left;
+    }
+
+    .rank {
+      font-weight: 700;
+      color: #667eea;
+      font-size: 18px;
+    }
+
+    .name {
+      font-weight: 600;
+      color: #2d3748;
+      font-size: 16px;
+    }
+
+    .size {
+      font-weight: 700;
+      color: #764ba2;
+      font-size: 16px;
+    }
+
+    .stats {
+      color: #6c757d;
+      font-size: 14px;
+    }
+  }
+}
+
+public-duel .pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 20px;
+  padding: 24px;
+  background: white;
+  border-top: 2px solid #e9ecef;
+}
+
+public-duel .pagination-btn {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  padding: 10px 24px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+public-duel .pagination-info {
+  color: #2d3748;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+@media (max-width: 768px) {
+  public-duel {
+    padding: 16px;
+  }
+
+  public-duel .back-btn {
+    top: 15px;
+    left: 15px;
+    width: 36px;
+    height: 36px;
+
+    img {
+      width: 20px;
+      height: 20px;
+    }
+  }
+
+  public-duel .header {
+    h1 {
+      font-size: 28px;
+    }
+
+    p {
+      font-size: 14px;
+    }
+  }
+
+  public-duel .leaderboard-table {
+    font-size: 14px;
+
+    thead th {
+      padding: 12px 8px;
+      font-size: 12px;
+    }
+
+    tbody td {
+      padding: 12px 8px;
+    }
+
+    .rank {
+      font-size: 16px;
+    }
+
+    .name {
+      font-size: 14px;
+    }
+
+    .size {
+      font-size: 14px;
+    }
+
+    .stats-col {
+      display: none;
+    }
+
+    .stats {
+      display: none;
+    }
+  }
+
+  public-duel .pagination {
+    padding: 16px;
+    gap: 12px;
+  }
+
+  public-duel .pagination-btn {
+    padding: 8px 16px;
+    font-size: 13px;
+  }
+
+  public-duel .pagination-info {
+    font-size: 13px;
+  }
+}
