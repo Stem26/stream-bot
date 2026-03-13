@@ -2590,16 +2590,16 @@ export class NightBotMonitor {
     }
 
     /**
-     * Включить игровые счётчики при начале стрима (только death и stop)
+     * Сбросить и включить игровые счётчики при начале стрима (только death и stop)
      */
     enableCountersOnStreamStart(): void {
-        query('UPDATE counters SET enabled = true WHERE id IN ($1, $2)', ['death', 'stop'])
+        query('UPDATE counters SET enabled = true, value = 0 WHERE id IN ($1, $2)', ['death', 'stop'])
             .then(() => {
-                console.log('✅ Игровые счётчики включены: !смерть, !стоп (стрим начался)');
+                console.log('✅ Игровые счётчики сброшены и включены: !смерть = 0, !стоп = 0 (стрим начался)');
                 this.reloadCounters();
             })
             .catch((err) => {
-                console.error('❌ Ошибка включения счётчиков:', err);
+                console.error('❌ Ошибка сброса счётчиков:', err);
             });
     }
 
