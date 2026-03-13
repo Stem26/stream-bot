@@ -13,7 +13,7 @@
     "build:telegram": "npm --workspace services/telegram-service run build",
     "build:twitch": "npm --workspace services/twitch-service run build",
     "start:telegram": "npm --workspace services/telegram-service run start",
-    "start:twitch": "npm --workspace services/twitch-service run start",
+    "start:twitch": "cross-env NODE_ENV=production npm --workspace services/twitch-service run start",
     "nightbot:send": "npm --workspace services/twitch-service run nightbot:send",
     "twitch:announcement:test": "npm --workspace services/twitch-service run twitch:announcement:test",
     "twitch:token:check": "npm --workspace services/twitch-service run twitch:token:check",
@@ -35,6 +35,7 @@
   "author": "",
   "license": "MIT",
   "devDependencies": {
+    "cross-env": "^10.1.0",
     "dotenv": "^17.3.1",
     "form-data": "^4.0.1",
     "pg": "^8.18.0",
