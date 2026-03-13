@@ -3,7 +3,7 @@ import { StaticAuthProvider } from '@twurple/auth';
 import { processTwitchDickCommand } from '../commands/twitch-dick';
 import { processTwitchTopDickCommand } from '../commands/twitch-topDick';
 import { processTwitchBottomDickCommand } from '../commands/twitch-bottomDick';
-import { processTwitchDuelCommand, enableDuels, disableDuels, pardonAllDuelTimeouts, acceptDuelChallenge, declineDuelChallenge, clearDuelChallenges, setDuelAdminsFromModerators } from '../commands/twitch-duel';
+import { processTwitchDuelCommand, enableDuels, disableDuels, pardonAllDuelTimeouts, acceptDuelChallenge, declineDuelChallenge, clearDuelChallenges, setDuelAdminsFromModerators, areDuelsEnabled } from '../commands/twitch-duel';
 import { processTwitchRatCommand, processTwitchCutieCommand, addActiveUser, setChattersAPIFunction } from '../commands/twitch-rat';
 import { processTwitchPointsCommand, processTwitchTopPointsCommand } from '../commands/twitch-points';
 import { ENABLE_BOT_FEATURES, ALLOW_LOCAL_COMMANDS } from '../config/features';
@@ -2611,6 +2611,52 @@ export class NightBotMonitor {
         this.detectedModerators.clear();
         setDuelAdminsFromModerators([]);
         console.log('🧹 Список обнаруженных модераторов очищен');
+    }
+
+    /**
+     * Включить дуэли (для веб-интерфейса)
+     */
+    enableDuelsFromWeb(): void {
+        const streamerName = this.channelName || 'kunilika666';
+        const result = enableDuels(streamerName);
+        if (result) {
+            console.log('✅ Дуэли включены через веб-интерфейс');
+        }
+    }
+
+    /**
+     * Выключить дуэли (для веб-интерфейса)
+     */
+    disableDuelsFromWeb(): void {
+        const streamerName = this.channelName || 'kunilika666';
+        const result = disableDuels(streamerName);
+        if (result) {
+            console.log('🛑 Дуэли выключены через веб-интерфейс');
+        }
+    }
+
+    /**
+     * Амнистия - простить всех (для веб-интерфейса)
+     */
+    async pardonAllFromWeb(): Promise<void> {
+        const streamerName = this.channelName || 'kunilika666';
+        const result = await pardonAllDuelTimeouts(streamerName);
+        if (result.success) {
+            console.log(`✅ Амнистия: снято таймаутов - ${result.count}`);
+            if (this.chatSender && this.channelName) {
+                const message = result.count > 0
+                    ? `🕊️ Амнистия! Сняты таймауты с ${result.count} игроков`
+                    : '🕊️ Амнистия объявлена, но таймаутов не было';
+                await this.sendMessage(`#${this.channelName}`, message);
+            }
+        }
+    }
+
+    /**
+     * Получить статус дуэлей (для веб-интерфейса)
+     */
+    getDuelsStatus(): boolean {
+        return areDuelsEnabled();
     }
 
     /**

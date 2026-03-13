@@ -767,6 +767,13 @@ export function enableDuels(twitchUsername: string): boolean {
 }
 
 /**
+ * Получить статус дуэлей
+ */
+export function areDuelsEnabled(): boolean {
+  return duelsEnabled;
+}
+
+/**
  * Очистка очереди на дуэли (вызывается при окончании стрима)
  */
 export function clearDuelQueue(): void {

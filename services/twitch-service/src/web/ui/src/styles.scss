@@ -361,6 +361,51 @@ body.modal-open {
   }
 }
 
+// Админ панель
+.admin-section {
+  background: white;
+  border-radius: 15px;
+  padding: 25px;
+  margin-bottom: 20px;
+  box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
+
+  h3 {
+    color: #333;
+    margin-bottom: 15px;
+    font-size: 1.3em;
+  }
+}
+
+.admin-actions {
+  display: flex;
+  gap: 15px;
+  flex-wrap: wrap;
+  margin-bottom: 15px;
+}
+
+.admin-info {
+  padding: 15px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border-left: 4px solid #667eea;
+
+  p {
+    margin: 0;
+    color: #333;
+  }
+
+  span {
+    font-weight: bold;
+    color: #667eea;
+  }
+}
+
+.admin-description {
+  color: #6c757d;
+  font-size: 0.9em;
+  margin-top: 10px;
+}
+
 // Счётчики
 .counter-card {
   .counter-value-display {

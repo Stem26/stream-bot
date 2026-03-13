@@ -6,7 +6,7 @@ import { clearDuelQueue, resetDuelsOnStreamEnd, clearDuelChallenges } from "./co
 import { clearActiveUsers } from "./commands/twitch-rat";
 import { log } from './utils/event-logger';
 import { initDatabase, closeDatabase } from './database/database';
-import { startWebServer, setOnCommandsChangedCallback, setOnCommandExecuteCallback, setOnLinksSendCallback } from './web/server';
+import { startWebServer, setOnCommandsChangedCallback, setOnCommandExecuteCallback, setOnLinksSendCallback, setOnEnableDuelsCallback, setOnDisableDuelsCallback, setOnPardonAllCallback, setGetDuelsStatusCallback } from './web/server';
 
 async function main() {
     const config = loadConfig();
@@ -70,6 +70,23 @@ async function main() {
     // Колбэк для ручной отправки !ссылки из веб-интерфейса
     setOnLinksSendCallback(async () => {
         await nightBotMonitor.executeLinksFromUi();
+    });
+
+    // Колбэки для админ-панели
+    setOnEnableDuelsCallback(() => {
+        nightBotMonitor.enableDuelsFromWeb();
+    });
+
+    setOnDisableDuelsCallback(() => {
+        nightBotMonitor.disableDuelsFromWeb();
+    });
+
+    setOnPardonAllCallback(async () => {
+        await nightBotMonitor.pardonAllFromWeb();
+    });
+
+    setGetDuelsStatusCallback(() => {
+        return nightBotMonitor.getDuelsStatus();
     });
 
     // Связываем проверку статуса стрима: команды работают только когда стрим онлайн

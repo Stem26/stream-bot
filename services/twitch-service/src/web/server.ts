@@ -692,6 +692,52 @@ app.patch('/api/counters/:id/increment', async (req: Request, res: Response) => 
     }
 });
 
+// === API для админ-панели ===
+
+// Получить статус дуэлей
+app.get('/api/admin/duels/status', (req: Request, res: Response) => {
+    try {
+        const enabled = getDuelsStatus();
+        res.json({ enabled });
+    } catch (error) {
+        console.error('❌ Ошибка получения статуса дуэлей:', error);
+        res.status(500).json({ error: 'Ошибка получения статуса' });
+    }
+});
+
+// Включить дуэли
+app.post('/api/admin/duels/enable', async (req: Request, res: Response) => {
+    try {
+        await executeEnableDuels();
+        res.json({ success: true, message: 'Дуэли включены' });
+    } catch (error) {
+        console.error('❌ Ошибка включения дуэлей:', error);
+        res.status(500).json({ error: 'Ошибка включения дуэлей' });
+    }
+});
+
+// Выключить дуэли
+app.post('/api/admin/duels/disable', async (req: Request, res: Response) => {
+    try {
+        await executeDisableDuels();
+        res.json({ success: true, message: 'Дуэли выключены' });
+    } catch (error) {
+        console.error('❌ Ошибка выключения дуэлей:', error);
+        res.status(500).json({ error: 'Ошибка выключения дуэлей' });
+    }
+});
+
+// Амнистия - снять все таймауты
+app.post('/api/admin/pardon-all', async (req: Request, res: Response) => {
+    try {
+        await executePardonAll();
+        res.json({ success: true, message: 'Амнистия выполнена' });
+    } catch (error) {
+        console.error('❌ Ошибка амнистии:', error);
+        res.status(500).json({ error: 'Ошибка выполнения амнистии' });
+    }
+});
+
 // Корневой маршрут - отдаём HTML интерфейс
 app.get('/', (req: Request, res: Response) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
@@ -701,6 +747,10 @@ app.get('/', (req: Request, res: Response) => {
 let onCommandsChangedCallback: (() => void) | null = null;
 let onCommandExecuteCallback: ((id: string) => void | Promise<void>) | null = null;
 let onLinksSendCallback: (() => void | Promise<void>) | null = null;
+let onEnableDuelsCallback: (() => void | Promise<void>) | null = null;
+let onDisableDuelsCallback: (() => void | Promise<void>) | null = null;
+let onPardonAllCallback: (() => void | Promise<void>) | null = null;
+let getDuelsStatusCallback: (() => boolean) | null = null;
 
 export function setOnCommandsChangedCallback(callback: () => void) {
     onCommandsChangedCallback = callback;
@@ -712,6 +762,22 @@ export function setOnCommandExecuteCallback(callback: (id: string) => void | Pro
 
 export function setOnLinksSendCallback(callback: () => void | Promise<void>) {
     onLinksSendCallback = callback;
+}
+
+export function setOnEnableDuelsCallback(callback: () => void | Promise<void>) {
+    onEnableDuelsCallback = callback;
+}
+
+export function setOnDisableDuelsCallback(callback: () => void | Promise<void>) {
+    onDisableDuelsCallback = callback;
+}
+
+export function setOnPardonAllCallback(callback: () => void | Promise<void>) {
+    onPardonAllCallback = callback;
+}
+
+export function setGetDuelsStatusCallback(callback: () => boolean) {
+    getDuelsStatusCallback = callback;
 }
 
 function notifyCommandsChanged() {
@@ -733,6 +799,34 @@ async function executeLinks(): Promise<void> {
         throw new Error('onLinksSendCallback is not set');
     }
     await onLinksSendCallback();
+}
+
+async function executeEnableDuels(): Promise<void> {
+    if (!onEnableDuelsCallback) {
+        throw new Error('onEnableDuelsCallback is not set');
+    }
+    await onEnableDuelsCallback();
+}
+
+async function executeDisableDuels(): Promise<void> {
+    if (!onDisableDuelsCallback) {
+        throw new Error('onDisableDuelsCallback is not set');
+    }
+    await onDisableDuelsCallback();
+}
+
+async function executePardonAll(): Promise<void> {
+    if (!onPardonAllCallback) {
+        throw new Error('onPardonAllCallback is not set');
+    }
+    await onPardonAllCallback();
+}
+
+function getDuelsStatus(): boolean {
+    if (!getDuelsStatusCallback) {
+        return false;
+    }
+    return getDuelsStatusCallback();
 }
 
 // Запуск сервера

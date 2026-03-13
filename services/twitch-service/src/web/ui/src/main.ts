@@ -199,6 +199,20 @@ async function loadCounters(): Promise<void> {
   }
 }
 
+async function loadDuelsStatus(): Promise<void> {
+  try {
+    const response = await fetch('/api/admin/duels/status');
+    const data = await response.json();
+    const statusEl = document.getElementById('duels-status');
+    if (statusEl) {
+      statusEl.textContent = data.enabled ? '✅ Включены' : '❌ Выключены';
+      statusEl.style.color = data.enabled ? '#28a745' : '#dc3545';
+    }
+  } catch (error) {
+    console.error('Ошибка загрузки статуса дуэлей:', error);
+  }
+}
+
 
 async function initLinks(linkDialog: LinkDialogElement): Promise<void> {
   try {
@@ -231,6 +245,7 @@ async function bootstrap(): Promise<void> {
   await initLinks(linkDialog);
   await loadCommands();
   await loadCounters();
+  await loadDuelsStatus();
 
   // Кнопка добавления счётчика
   const addCounterBtn = document.getElementById('add-counter-btn');
@@ -533,6 +548,47 @@ async function bootstrap(): Promise<void> {
     } catch (error) {
       if (error instanceof Error) {
         showAlert(`Ошибка отправки ссылок: ${error.message}`, 'error');
+      }
+    }
+  });
+
+  // Админ панель - кнопки управления дуэлями
+  const enableDuelsBtn = document.getElementById('enable-duels-btn');
+  const disableDuelsBtn = document.getElementById('disable-duels-btn');
+  const pardonAllBtn = document.getElementById('pardon-all-btn');
+
+  enableDuelsBtn?.addEventListener('click', async () => {
+    try {
+      await fetch('/api/admin/duels/enable', { method: 'POST' });
+      showAlert('Дуэли включены');
+      await loadDuelsStatus();
+    } catch (error) {
+      if (error instanceof Error) {
+        showAlert(`Ошибка: ${error.message}`, 'error');
+      }
+    }
+  });
+
+  disableDuelsBtn?.addEventListener('click', async () => {
+    try {
+      await fetch('/api/admin/duels/disable', { method: 'POST' });
+      showAlert('Дуэли выключены');
+      await loadDuelsStatus();
+    } catch (error) {
+      if (error instanceof Error) {
+        showAlert(`Ошибка: ${error.message}`, 'error');
+      }
+    }
+  });
+
+  pardonAllBtn?.addEventListener('click', async () => {
+    if (!confirm('Простить всех игроков (снять таймауты дуэлей)?')) return;
+    try {
+      await fetch('/api/admin/pardon-all', { method: 'POST' });
+      showAlert('Амнистия выполнена, все таймауты сняты');
+    } catch (error) {
+      if (error instanceof Error) {
+        showAlert(`Ошибка: ${error.message}`, 'error');
       }
     }
   });

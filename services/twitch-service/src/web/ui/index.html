@@ -18,6 +18,7 @@
   <div class="tabs">
     <button class="tab-btn active" data-tab="commands">📝 Команды</button>
     <button class="tab-btn" data-tab="counters">🔢 Счётчики</button>
+    <button class="tab-btn" data-tab="admin">⚙️ Админ</button>
   </div>
 
   <!-- Вкладка: Команды -->
@@ -57,6 +58,28 @@
     <div class="empty-state" id="empty-counters-state" style="display: none;">
       <h3>Счётчики не найдены</h3>
       <p>Создайте свой первый счётчик, нажав на кнопку выше</p>
+    </div>
+  </div>
+
+  <!-- Вкладка: Админ -->
+  <div class="tab-content" id="tab-admin">
+    <div class="admin-section">
+      <h3>Управление дуэлями</h3>
+      <div class="admin-actions">
+        <button class="btn btn-success" id="enable-duels-btn">▶️ Включить дуэли</button>
+        <button class="btn btn-danger" id="disable-duels-btn">⏸️ Выключить дуэли</button>
+      </div>
+      <div class="admin-info">
+        <p>Статус дуэлей: <span id="duels-status">Загрузка...</span></p>
+      </div>
+    </div>
+
+    <div class="admin-section">
+      <h3>Амнистия</h3>
+      <div class="admin-actions">
+        <button class="btn" id="pardon-all-btn">🕊️ Простить всех (снять таймауты)</button>
+      </div>
+      <p class="admin-description">Снимает таймауты дуэлей со всех игроков</p>
     </div>
   </div>
 </div>
