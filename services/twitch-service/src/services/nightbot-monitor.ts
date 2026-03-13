@@ -2647,7 +2647,18 @@ export class NightBotMonitor {
         const streamerName = this.channelName || 'kunilika666';
         const result = await pardonAllDuelTimeouts(streamerName);
         if (result.success) {
-            console.log(`✅ Амнистия: снято таймаутов - ${result.count}`);
+            console.log(`✅ Амнистия: снято таймаутов в БД - ${result.count}`);
+            
+            // Снимаем реальные таймауты в Twitch через API
+            let unbannedCount = 0;
+            for (const username of result.usernames) {
+                const success = await this.untimeoutUser(username);
+                if (success) {
+                    unbannedCount++;
+                }
+            }
+            
+            console.log(`✅ Реальных таймаутов снято через Twitch API: ${unbannedCount}/${result.usernames.length}`);
         }
     }
 
