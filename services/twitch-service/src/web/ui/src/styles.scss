@@ -582,17 +582,130 @@ body.modal-open {
     grid-template-columns: 1fr;
   }
 
-  .header h1 {
-    font-size: 1.8em;
+  .container {
+    padding: 15px;
+    max-width: 100%;
+  }
+
+  .header {
+    padding: 20px 10px;
+    
+    h1 {
+      font-size: 1.5em;
+    }
+    
+    p {
+      font-size: 0.9em;
+    }
   }
 
   .tabs {
-    padding: 15px 15px 0 15px;
+    padding: 10px 0 0 0;
+    gap: 6px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    position: relative;
+
+    &::-webkit-scrollbar {
+      height: 3px;
+    }
   }
 
   .tab-btn {
-    padding: 10px 16px;
+    padding: 8px 12px;
+    font-size: 13px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  // Адаптация таблицы лидеров под мобилку
+  .leaderboard-table {
     font-size: 14px;
+
+    th, td {
+      padding: 10px 6px;
+    }
+
+    // Скрываем колонку со статистикой на мобилке
+    th:nth-child(4),
+    td:nth-child(4) {
+      display: none;
+    }
+
+    .rank {
+      font-size: 0.9em;
+      min-width: 35px;
+    }
+
+    .username {
+      font-size: 0.95em;
+      word-break: break-word;
+    }
+
+    .points {
+      font-size: 1.1em;
+      min-width: 50px;
+    }
+  }
+
+  .leaderboard-container {
+    padding: 15px 5px;
+
+    h2 {
+      font-size: 1.3em;
+      margin-bottom: 15px;
+    }
+  }
+
+  // Пагинация на мобилке
+  .pagination {
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px;
+
+    .pagination-info {
+      font-size: 0.85em;
+      text-align: center;
+    }
+
+    .btn {
+      min-width: 80px;
+      font-size: 14px;
+      padding: 8px 12px;
+    }
+
+    // Кнопки в ряд
+    & > .btn {
+      display: inline-block;
+    }
+  }
+
+  // Кнопки управления
+  .controls {
+    padding: 15px 10px;
+  }
+
+  .btn {
+    font-size: 14px;
+    padding: 10px 16px;
+  }
+
+  // Админ секция
+  .admin-section {
+    padding: 15px;
+
+    h3 {
+      font-size: 1.2em;
+    }
+  }
+
+  .admin-actions {
+    flex-direction: column;
+    gap: 10px;
+
+    .btn {
+      width: 100%;
+    }
   }
 }
 
