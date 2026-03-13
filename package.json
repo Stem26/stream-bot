@@ -20,6 +20,8 @@
     "stream:notification:test": "npm --workspace services/twitch-service run stream:notification:test",
     "db:migrate:telegram": "npm --workspace services/telegram-service run db:migrate",
     "db:migrate:twitch": "npm --workspace services/twitch-service run db:migrate",
+    "db:migrate-data:twitch": "npm --workspace services/twitch-service run db:migrate-data",
+    "db:migrate-data:twitch:force": "npm --workspace services/twitch-service run db:migrate-data:force",
     "db:check": "node scripts/db-check.js",
     "db:backup": "node scripts/backup-db.js"
   },
