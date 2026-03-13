@@ -99,6 +99,7 @@ async function main() {
     streamMonitor.setOnStreamOnlineCallback(() => {
         nightBotMonitor.startViewersSync();
         nightBotMonitor.enableCountersOnStreamStart();
+        nightBotMonitor.enableDuelsFromWeb();
     });
 
     // Очищаем очередь на дуэли, активных пользователей и счётчики при окончании стрима
@@ -111,6 +112,7 @@ async function main() {
         nightBotMonitor.clearStopCounters();
         nightBotMonitor.clearDeathCounters();
         nightBotMonitor.clearDetectedModerators();
+        nightBotMonitor.disableDuelsFromWeb();
         nightBotMonitor.stopViewersSync();
     });
 
