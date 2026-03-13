@@ -380,10 +380,6 @@ async function bootstrap(): Promise<void> {
     }
   });
 
-  addCommandBtn.addEventListener('click', () => {
-    commandDialog.openForCreate();
-  });
-
   allLinksBtn.addEventListener('click', async () => {
     try {
       const config = await fetchLinksConfig();
@@ -484,9 +480,13 @@ async function bootstrap(): Promise<void> {
         return;
       }
       try {
-        await fetch(`/api/commands/${encodeURIComponent(id)}/send`, {
+        const res = await fetch(`/api/commands/${encodeURIComponent(id)}/send`, {
           method: 'POST',
         });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || `HTTP ${res.status}`);
+        }
         showAlert('Команда отправлена в чат');
       } catch (error) {
         if (error instanceof Error) {
@@ -578,7 +578,11 @@ async function bootstrap(): Promise<void> {
 
   enableDuelsBtn?.addEventListener('click', async () => {
     try {
-      await fetch('/api/admin/duels/enable', { method: 'POST' });
+      const res = await fetch('/api/admin/duels/enable', { method: 'POST' });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `HTTP ${res.status}`);
+      }
       showAlert('Дуэли включены');
       await loadDuelsStatus();
     } catch (error) {
@@ -590,7 +594,11 @@ async function bootstrap(): Promise<void> {
 
   disableDuelsBtn?.addEventListener('click', async () => {
     try {
-      await fetch('/api/admin/duels/disable', { method: 'POST' });
+      const res = await fetch('/api/admin/duels/disable', { method: 'POST' });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `HTTP ${res.status}`);
+      }
       showAlert('Дуэли выключены');
       await loadDuelsStatus();
     } catch (error) {
@@ -603,7 +611,11 @@ async function bootstrap(): Promise<void> {
   pardonAllBtn?.addEventListener('click', async () => {
     if (!confirm('Простить всех игроков (снять таймауты дуэлей)?')) return;
     try {
-      await fetch('/api/admin/pardon-all', { method: 'POST' });
+      const res = await fetch('/api/admin/pardon-all', { method: 'POST' });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `HTTP ${res.status}`);
+      }
       showAlert('Амнистия выполнена, все таймауты сняты');
     } catch (error) {
       if (error instanceof Error) {

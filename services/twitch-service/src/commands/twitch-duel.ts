@@ -767,6 +767,22 @@ export function enableDuels(twitchUsername: string): boolean {
 }
 
 /**
+ * Включить дуэли из веб-админки (без проверки прав — доступ уже защищён Nginx Basic Auth)
+ */
+export function enableDuelsFromWeb(): void {
+  duelsEnabled = true;
+  console.log('✅ Дуэли включены через веб-интерфейс');
+}
+
+/**
+ * Выключить дуэли из веб-админки
+ */
+export function disableDuelsFromWeb(): void {
+  duelsEnabled = false;
+  console.log('🛑 Дуэли выключены через веб-интерфейс');
+}
+
+/**
  * Получить статус дуэлей
  */
 export function areDuelsEnabled(): boolean {
@@ -802,7 +818,17 @@ export async function pardonAllDuelTimeouts(twitchUsername: string): Promise<{ s
     console.log(`⚠️ Пользователь ${twitchUsername} попытался использовать амнистию без прав`);
     return { success: false, count: 0, usernames: [] };
   }
+  return pardonAllDuelTimeoutsInternal();
+}
 
+/**
+ * Амнистия из веб-админки (без проверки прав)
+ */
+export async function pardonAllDuelTimeoutsFromWeb(): Promise<{ success: boolean; count: number; usernames: string[] }> {
+  return pardonAllDuelTimeoutsInternal();
+}
+
+async function pardonAllDuelTimeoutsInternal(): Promise<{ success: boolean; count: number; usernames: string[] }> {
   const players = await storage.loadTwitchPlayers();
   const now = Date.now();
   let pardoned = 0;
@@ -819,7 +845,7 @@ export async function pardonAllDuelTimeouts(twitchUsername: string): Promise<{ s
 
   if (pardoned > 0) {
     await storage.saveTwitchPlayers(players);
-    console.log(`🕊️ Амнистия: снято ${pardoned} таймаутов дуэлей пользователем ${twitchUsername}`);
+    console.log(`🕊️ Амнистия: снято ${pardoned} таймаутов дуэлей`);
     console.log(`📋 Игроки для разбана: ${usernamesWithTimeout.join(', ')}`);
   } else {
     console.log(`ℹ️ Амнистия: нет активных таймаутов для снятия`);

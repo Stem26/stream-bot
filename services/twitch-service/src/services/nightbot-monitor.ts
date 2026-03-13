@@ -3,7 +3,7 @@ import { StaticAuthProvider } from '@twurple/auth';
 import { processTwitchDickCommand } from '../commands/twitch-dick';
 import { processTwitchTopDickCommand } from '../commands/twitch-topDick';
 import { processTwitchBottomDickCommand } from '../commands/twitch-bottomDick';
-import { processTwitchDuelCommand, enableDuels, disableDuels, pardonAllDuelTimeouts, acceptDuelChallenge, declineDuelChallenge, clearDuelChallenges, setDuelAdminsFromModerators, areDuelsEnabled } from '../commands/twitch-duel';
+import { processTwitchDuelCommand, enableDuels, disableDuels, pardonAllDuelTimeouts, enableDuelsFromWeb as enableDuelsFromWebApi, disableDuelsFromWeb as disableDuelsFromWebApi, pardonAllDuelTimeoutsFromWeb, acceptDuelChallenge, declineDuelChallenge, clearDuelChallenges, setDuelAdminsFromModerators, areDuelsEnabled } from '../commands/twitch-duel';
 import { processTwitchRatCommand, processTwitchCutieCommand, addActiveUser, setChattersAPIFunction } from '../commands/twitch-rat';
 import { processTwitchPointsCommand, processTwitchTopPointsCommand } from '../commands/twitch-points';
 import { ENABLE_BOT_FEATURES, ALLOW_LOCAL_COMMANDS } from '../config/features';
@@ -408,27 +408,22 @@ export class NightBotMonitor {
 
     /**
      * Выполнить кастомную команду по ID (используется веб-интерфейсом)
+     * skipCooldown: при true (из UI) игнорируем кулдаун — админ явно хочет отправить
      */
     public async executeCustomCommandById(id: string): Promise<void> {
-        try {
-            const commands = await loadCustomCommandsFromDb();
-            const command = commands.find((c) => c.id === id);
+        const commands = await loadCustomCommandsFromDb();
+        const command = commands.find((c) => c.id === id);
 
-            if (!command) {
-                console.log(`⚠️ Кастомная команда с id="${id}" не найдена`);
-                return;
-            }
-
-            if (!this.channelName) {
-                console.log(`⚠️ Нельзя выполнить кастомную команду "${id}" — чат ещё не подключен`);
-                return;
-            }
-
-            console.log(`🧷 Ручной запуск кастомной команды из UI: ${command.trigger} (id: ${id})`);
-            await this.handleCustomCommand(`#${this.channelName}`, this.channelName, command, null);
-        } catch (error) {
-            console.error(`❌ Ошибка при ручном запуске кастомной команды ${id}:`, error);
+        if (!command) {
+            throw new Error(`Команда с id="${id}" не найдена`);
         }
+
+        if (!this.channelName) {
+            throw new Error('Чат ещё не подключен — дождитесь подключения к Twitch');
+        }
+
+        console.log(`🧷 Ручной запуск кастомной команды из UI: ${command.trigger} (id: ${id})`);
+        await this.handleCustomCommand(`#${this.channelName}`, this.channelName, command, null, { skipCooldown: true });
     }
 
     /**
@@ -1233,32 +1228,39 @@ export class NightBotMonitor {
      *   cooldown=0 → без ограничений, >0 → используем указанный кулдаун в секундах.
      * - Для объявлений (announcement):
      *   минимум 5 секунд даже если cooldown=0, при большем значении берём его.
+     * - options.skipCooldown: true — при вызове из веб-UI игнорируем кулдаун
      */
-    private async handleCustomCommand(channel: string, user: string, command: CustomCommand, msg: any) {
+    private async handleCustomCommand(channel: string, user: string, command: CustomCommand, msg: any, options?: { skipCooldown?: boolean }) {
         try {
             const cooldownKey = command.id;
             const rawCooldownSec = command.cooldown ?? 0;
+            const skipCooldown = options?.skipCooldown ?? false;
 
             if (command.messageType === 'announcement') {
-                // Минимум 5 секунд для объявлений
+                // Минимум 5 секунд для объявлений (если не skipCooldown)
                 const effectiveCooldownSec = Math.max(5, rawCooldownSec);
                 const cooldownMs = effectiveCooldownSec * 1000;
 
-                if (this.isAnnouncementOnCooldown(cooldownKey, cooldownMs)) {
+                if (!skipCooldown && this.isAnnouncementOnCooldown(cooldownKey, cooldownMs)) {
                     return;
                 }
 
                 const success = await this.sendAnnouncement(command.response, command.color);
 
-                if (success) {
-                    this.setAnnouncementCooldown(cooldownKey);
-                    console.log(
-                        `✅ Кастомное объявление "${command.trigger}" отправлено (cooldown=${effectiveCooldownSec} сек)`,
-                    );
+                if (!success) {
+                    throw new Error('Не удалось отправить объявление (проверьте broadcasterId/moderatorId или Helix API)');
                 }
+
+                if (!skipCooldown) {
+                    this.setAnnouncementCooldown(cooldownKey);
+                }
+                console.log(
+                    `✅ Кастомное объявление "${command.trigger}" отправлено` +
+                        (skipCooldown ? ' (из UI)' : ` (cooldown=${effectiveCooldownSec} сек)`),
+                );
             } else {
                 // Обычное сообщение
-                const shouldCheckCooldown = rawCooldownSec > 0;
+                const shouldCheckCooldown = rawCooldownSec > 0 && !skipCooldown;
                 const cooldownMs = rawCooldownSec * 1000;
 
                 if (shouldCheckCooldown && this.isAnnouncementOnCooldown(cooldownKey, cooldownMs)) {
@@ -1273,11 +1275,15 @@ export class NightBotMonitor {
 
                 console.log(
                     `✅ Кастомное сообщение "${command.trigger}" отправлено` +
-                        (shouldCheckCooldown ? ` (cooldown=${rawCooldownSec} сек)` : ' (без кулдауна)'),
+                        (skipCooldown ? ' (из UI)' : (shouldCheckCooldown ? ` (cooldown=${rawCooldownSec} сек)` : ' (без кулдауна)')),
                 );
             }
         } catch (error) {
             console.error(`❌ Ошибка при обработке кастомной команды ${command.trigger}:`, error);
+            // При вызове из UI (skipCooldown) пробрасываем ошибку, чтобы API вернул 500
+            if (options?.skipCooldown) {
+                throw error;
+            }
         }
     }
 
@@ -2622,30 +2628,21 @@ export class NightBotMonitor {
      * Включить дуэли (для веб-интерфейса)
      */
     enableDuelsFromWeb(): void {
-        const streamerName = this.channelName || 'kunilika666';
-        const result = enableDuels(streamerName);
-        if (result) {
-            console.log('✅ Дуэли включены через веб-интерфейс');
-        }
+        enableDuelsFromWebApi();
     }
 
     /**
      * Выключить дуэли (для веб-интерфейса)
      */
     disableDuelsFromWeb(): void {
-        const streamerName = this.channelName || 'kunilika666';
-        const result = disableDuels(streamerName);
-        if (result) {
-            console.log('🛑 Дуэли выключены через веб-интерфейс');
-        }
+        disableDuelsFromWebApi();
     }
 
     /**
      * Амнистия - простить всех (для веб-интерфейса)
      */
     async pardonAllFromWeb(): Promise<void> {
-        const streamerName = this.channelName || 'kunilika666';
-        const result = await pardonAllDuelTimeouts(streamerName);
+        const result = await pardonAllDuelTimeoutsFromWeb();
         if (result.success) {
             console.log(`✅ Амнистия: снято таймаутов в БД - ${result.count}`);
             
