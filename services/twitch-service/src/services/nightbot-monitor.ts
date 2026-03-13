@@ -2643,7 +2643,7 @@ export class NightBotMonitor {
         const result = await pardonAllDuelTimeouts(streamerName);
         if (result.success) {
             console.log(`✅ Амнистия: снято таймаутов - ${result.count}`);
-            if (this.chatSender && this.channelName) {
+            if (this.chatClient && this.channelName) {
                 const message = result.count > 0
                     ? `🕊️ Амнистия! Сняты таймауты с ${result.count} игроков`
                     : '🕊️ Амнистия объявлена, но таймаутов не было';
