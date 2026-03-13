@@ -149,6 +149,37 @@ export async function initDatabase(): Promise<void> {
 
       await client.query(`CREATE INDEX IF NOT EXISTS idx_custom_commands_enabled ON custom_commands(enabled)`);
 
+      // Таблица счетчиков (для команд типа !смерть, !стоп)
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS counters (
+          id TEXT PRIMARY KEY,
+          trigger TEXT NOT NULL UNIQUE,
+          aliases TEXT[] NOT NULL DEFAULT '{}',
+          response_template TEXT NOT NULL,
+          value INTEGER NOT NULL DEFAULT 0,
+          enabled BOOLEAN NOT NULL DEFAULT TRUE,
+          description TEXT NOT NULL DEFAULT ''
+        )
+      `);
+
+      await client.query(`CREATE INDEX IF NOT EXISTS idx_counters_enabled ON counters(enabled)`);
+
+      // Добавляем дефолтные счётчики если таблица пустая
+      const countersCount = await client.query('SELECT COUNT(*)::int AS cnt FROM counters');
+      if (countersCount.rows[0]?.cnt === 0) {
+        console.log('📝 Создаём дефолтные счётчики...');
+        
+        await client.query(`
+          INSERT INTO counters (id, trigger, aliases, response_template, value, enabled, description)
+          VALUES 
+            ('death', '!смерть', ARRAY['!death', '!дед'], 'Смертей: {value}', 0, true, 'Счётчик смертей в игре'),
+            ('stop', '!стоп', ARRAY['!stop', '!pause', '!пауза'], 'Количество стопов: {value}', 0, true, 'Счётчик остановок/пауз')
+          ON CONFLICT (id) DO NOTHING
+        `);
+        
+        console.log('✅ Дефолтные счётчики созданы');
+      }
+
       console.log('[DATABASE] Таблицы Twitch бота созданы/обновлены');
     } finally {
       client.release();

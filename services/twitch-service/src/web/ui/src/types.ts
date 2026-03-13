@@ -22,3 +22,17 @@ export interface LinksConfig {
   allLinksText: string;
 }
 
+export interface Counter {
+  id: string;
+  trigger: string;
+  aliases: string[];
+  responseTemplate: string;
+  value: number;
+  enabled: boolean;
+  description: string;
+}
+
+export interface CountersData {
+  counters: Counter[];
+}
+

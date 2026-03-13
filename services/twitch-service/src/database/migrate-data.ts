@@ -52,6 +52,7 @@ const MONOREPO_ROOT = path.resolve(SERVICE_ROOT, '..', '..');
 const TWITCH_PLAYERS_JSON = path.join(MONOREPO_ROOT, 'twitch-players.json');
 const STREAM_HISTORY_JSON = path.join(MONOREPO_ROOT, 'stream-history.json');
 const CUSTOM_COMMANDS_JSON = path.join(SERVICE_ROOT, 'src', 'data', 'custom-commands.json');
+const COUNTERS_STATE_JSON = path.join(MONOREPO_ROOT, 'counters-state.json');
 const FORCE_MODE = process.argv.includes('--force');
 
 async function migrateTwitchPlayers(): Promise<number> {
@@ -244,6 +245,56 @@ async function migrateCustomCommands(): Promise<number> {
   }
 }
 
+async function migrateCountersState(): Promise<number> {
+  if (!fs.existsSync(COUNTERS_STATE_JSON)) {
+    console.log('⚠️  counters-state.json не найден, пропускаем миграцию значений счётчиков');
+    return 0;
+  }
+
+  const jsonRaw = fs.readFileSync(COUNTERS_STATE_JSON, 'utf-8');
+  const state = JSON.parse(jsonRaw) as { stopCounters?: Record<string, number>, deathCounters?: Record<string, number> };
+  
+  console.log(`\n📊 Найдены счётчики в файле состояния`);
+
+  const pool = getPool();
+  const client = await pool.connect();
+  let updatedCount = 0;
+
+  try {
+    // Обновляем значение для !стоп
+    if (state.stopCounters) {
+      const stopValues = Object.values(state.stopCounters);
+      if (stopValues.length > 0) {
+        const totalStops = stopValues.reduce((sum, val) => sum + val, 0);
+        await client.query(
+          `UPDATE counters SET value = $1 WHERE id = 'stop'`,
+          [totalStops]
+        );
+        console.log(`✅ Счётчик !стоп обновлён: ${totalStops}`);
+        updatedCount++;
+      }
+    }
+
+    // Обновляем значение для !смерть
+    if (state.deathCounters) {
+      const deathValues = Object.values(state.deathCounters);
+      if (deathValues.length > 0) {
+        const totalDeaths = deathValues.reduce((sum, val) => sum + val, 0);
+        await client.query(
+          `UPDATE counters SET value = $1 WHERE id = 'death'`,
+          [totalDeaths]
+        );
+        console.log(`✅ Счётчик !смерть обновлён: ${totalDeaths}`);
+        updatedCount++;
+      }
+    }
+
+    return updatedCount;
+  } finally {
+    client.release();
+  }
+}
+
 async function migrateData() {
   console.log('🚀 Запуск миграции данных Twitch бота из JSON в PostgreSQL...');
   if (FORCE_MODE) {
@@ -256,12 +307,14 @@ async function migrateData() {
     const playersCount = await migrateTwitchPlayers();
     const historyCount = await migrateStreamHistory();
     const commandsCount = await migrateCustomCommands();
+    const countersCount = await migrateCountersState();
 
     console.log('\n📈 Результаты миграции:');
     console.log(`   ✅ Twitch игроков: ${playersCount}`);
     console.log(`   ✅ Записей истории: ${historyCount}`);
     console.log(`   ✅ Кастомных команд: ${commandsCount}`);
-    console.log(`   📊 Всего: ${playersCount + historyCount + commandsCount}`);
+    console.log(`   ✅ Счётчиков: ${countersCount}`);
+    console.log(`   📊 Всего: ${playersCount + historyCount + commandsCount + countersCount}`);
 
     console.log('\nℹ️  Старые JSON файлы можно удалить после проверки работы БД');
 

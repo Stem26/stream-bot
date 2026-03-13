@@ -321,6 +321,86 @@ body.modal-open {
   margin-bottom: 20px;
 }
 
+// Вкладки
+.tabs {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+  background: white;
+  padding: 20px 20px 0 20px;
+  border-radius: 15px 15px 0 0;
+  box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
+}
+
+.tab-btn {
+  padding: 12px 24px;
+  background: transparent;
+  border: none;
+  border-bottom: 3px solid transparent;
+  font-size: 16px;
+  font-weight: 600;
+  color: #6c757d;
+  cursor: pointer;
+  transition: all 0.3s;
+
+  &:hover {
+    color: #667eea;
+  }
+
+  &.active {
+    color: #667eea;
+    border-bottom-color: #667eea;
+  }
+}
+
+.tab-content {
+  display: none;
+
+  &.active {
+    display: block;
+  }
+}
+
+// Счётчики
+.counter-card {
+  .counter-value-display {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 15px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 12px;
+    margin-bottom: 15px;
+
+    .counter-label {
+      color: rgba(255, 255, 255, 0.9);
+      font-size: 0.9em;
+      font-weight: 600;
+    }
+
+    .counter-value {
+      color: white;
+      font-size: 2em;
+      font-weight: bold;
+      margin-left: auto;
+    }
+  }
+
+  .counter-template {
+    background: #f8f9fa;
+    padding: 12px;
+    border-radius: 8px;
+    font-size: 0.9em;
+    margin-bottom: 15px;
+    word-wrap: break-word;
+    border-left: 3px solid #667eea;
+
+    strong {
+      color: #667eea;
+    }
+  }
+}
+
 @media (max-width: 768px) {
   .commands-grid {
     grid-template-columns: 1fr;
@@ -328,6 +408,15 @@ body.modal-open {
 
   .header h1 {
     font-size: 1.8em;
+  }
+
+  .tabs {
+    padding: 15px 15px 0 15px;
+  }
+
+  .tab-btn {
+    padding: 10px 16px;
+    font-size: 14px;
   }
 }
 

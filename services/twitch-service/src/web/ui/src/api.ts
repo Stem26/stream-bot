@@ -1,4 +1,4 @@
-import type { CommandsData, CustomCommand, LinksConfig } from './types';
+import type { CommandsData, CustomCommand, LinksConfig, CountersData, Counter } from './types';
 
 async function handleJson<T>(response: Response, defaultError: string): Promise<T> {
   if (!response.ok) {
@@ -65,5 +65,51 @@ export async function updateLinksConfig(allLinksText: string): Promise<LinksConf
     body: JSON.stringify({ allLinksText }),
   });
   return handleJson<LinksConfig>(response, 'Ошибка сохранения ссылок');
+}
+
+// === API для счётчиков ===
+
+export async function fetchCounters(): Promise<CountersData> {
+  const response = await fetch('/api/counters');
+  return handleJson<CountersData>(response, 'Ошибка загрузки счётчиков');
+}
+
+export async function createCounter(counter: Counter): Promise<Counter> {
+  const response = await fetch('/api/counters', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(counter),
+  });
+  return handleJson<Counter>(response, 'Ошибка создания счётчика');
+}
+
+export async function updateCounter(id: string, counter: Counter): Promise<Counter> {
+  const response = await fetch(`/api/counters/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(counter),
+  });
+  return handleJson<Counter>(response, 'Ошибка обновления счётчика');
+}
+
+export async function deleteCounter(id: string): Promise<void> {
+  const response = await fetch(`/api/counters/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  });
+  await handleJson<unknown>(response, 'Ошибка удаления счётчика');
+}
+
+export async function toggleCounter(id: string): Promise<Counter> {
+  const response = await fetch(`/api/counters/${encodeURIComponent(id)}/toggle`, {
+    method: 'PATCH',
+  });
+  return handleJson<Counter>(response, 'Ошибка переключения счётчика');
+}
+
+export async function incrementCounter(id: string): Promise<Counter> {
+  const response = await fetch(`/api/counters/${encodeURIComponent(id)}/increment`, {
+    method: 'PATCH',
+  });
+  return handleJson<Counter>(response, 'Ошибка инкремента счётчика');
 }
 

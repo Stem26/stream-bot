@@ -626,7 +626,6 @@ export class TwitchEventSubNative {
                     console.error('❌ Ошибка при запуске синхронизации зрителей:', e);
                 }
 
-                await this.sendWelcomeMessage(false);
                 this.startWelcomeMessageInterval();
                 this.startLinkRotation();
 
@@ -1020,12 +1019,6 @@ export class TwitchEventSubNative {
     setChatSender(sender: (channel: string, message: string) => Promise<void>, channelName: string): void {
         this.chatSender = sender;
         this.channelName = channelName;
-
-        if (this.isStreamOnline) {
-            this.sendWelcomeMessage(false).catch(err => {
-                console.error('❌ Ошибка отправки отложенного welcome:', err);
-            });
-        }
     }
 
     setOnStreamOfflineCallback(cb: () => void): void {

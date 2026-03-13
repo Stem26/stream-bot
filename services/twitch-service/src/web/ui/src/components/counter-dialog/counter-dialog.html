@@ -1,0 +1,53 @@
+<div class="modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2 id="modal-title">Добавить счётчик</h2>
+      <button type="button" class="modal-close-btn" data-close>×</button>
+    </div>
+    <form id="counter-form">
+      <input type="hidden" id="edit-counter-id" />
+
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="counter-id">ID счётчика *</label>
+          <input type="text" id="counter-id" required placeholder="death, stop, jump" />
+          <small>Уникальный идентификатор (латинские буквы, без пробелов)</small>
+        </div>
+
+        <div class="form-group">
+          <label for="counter-trigger">Триггер *</label>
+          <input type="text" id="counter-trigger" required placeholder="!смерть" />
+          <small>Команда для вызова в чате (например: !смерть)</small>
+        </div>
+
+        <div class="form-group">
+          <label for="counter-aliases">Алиасы</label>
+          <input type="text" id="counter-aliases" placeholder="!death, !дед" />
+          <small>Дополнительные варианты команды через запятую</small>
+        </div>
+
+        <div class="form-group">
+          <label for="counter-template">Шаблон ответа *</label>
+          <textarea id="counter-template" required placeholder="Смертей: {value}"></textarea>
+          <small>Используйте {value} для подстановки значения счётчика</small>
+        </div>
+
+        <div class="form-group">
+          <label for="counter-value">Начальное значение</label>
+          <input type="number" id="counter-value" value="0" min="0" />
+          <small>С какого числа начинается счётчик</small>
+        </div>
+
+        <div class="form-group">
+          <label for="counter-description">Описание</label>
+          <input type="text" id="counter-description" placeholder="Краткое описание счётчика" />
+        </div>
+      </div>
+
+      <div class="form-actions">
+        <button type="button" class="btn btn-secondary" data-close>Отмена</button>
+        <button type="submit" class="btn btn-success">Сохранить</button>
+      </div>
+    </form>
+  </div>
+</div>

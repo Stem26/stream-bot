@@ -237,6 +237,8 @@ export class NightBotMonitor {
     private readonly commands = this.buildCommandsMap();
     // Кастомные команды из JSON (обновляются динамически)
     private customCommands: Map<string, CustomCommand> = new Map();
+    // Кастомные счётчики из БД (обновляются динамически)
+    private counters: Map<string, any> = new Map();
     
     private buildCommandsMap(): Map<string, CommandHandler> {
         const map = new Map<string, CommandHandler>();
@@ -326,6 +328,9 @@ export class NightBotMonitor {
 
         // Загружаем кастомные команды
         this.reloadCustomCommands();
+        
+        // Загружаем счётчики
+        this.reloadCounters();
     }
     
     /**
@@ -353,6 +358,43 @@ export class NightBotMonitor {
             })
             .catch((error) => {
                 console.error('❌ Ошибка перезагрузки кастомных команд:', error);
+            });
+    }
+
+    /**
+     * Перезагружает счётчики из БД
+     */
+    public reloadCounters(): void {
+        query('SELECT id, trigger, aliases, response_template, value, enabled, description FROM counters')
+            .then((rows: any[]) => {
+                this.counters.clear();
+
+                for (const row of rows) {
+                    if (!row.enabled) continue;
+
+                    const counter = {
+                        id: row.id,
+                        trigger: row.trigger,
+                        aliases: row.aliases || [],
+                        responseTemplate: row.response_template,
+                        value: row.value || 0,
+                        description: row.description || '',
+                    };
+
+                    const triggerLower = counter.trigger.toLowerCase();
+                    this.counters.set(triggerLower, counter);
+
+                    for (const alias of counter.aliases) {
+                        const aliasLower = alias.toLowerCase();
+                        this.counters.set(aliasLower, counter);
+                    }
+                }
+
+                const enabledRows = rows.filter((r: any) => r.enabled);
+                console.log(`✅ Перезагружено ${enabledRows.length}/${rows.length} счётчиков`);
+            })
+            .catch((error) => {
+                console.error('❌ Ошибка перезагрузки счётчиков:', error);
             });
     }
 
@@ -892,6 +934,14 @@ export class NightBotMonitor {
                     this.handleCustomCommand(channel, user, customCommand, msg);
                     return;
                 }
+
+                // Проверяем счётчики из БД
+                const counter = this.counters.get(trimmedMessage);
+                if (counter) {
+                    console.log(`🔢 Обработка счётчика: ${trimmedMessage} (id: ${counter.id})`);
+                    this.handleCounterCommand(channel, user, counter, msg);
+                    return;
+                }
             });
 
             // Отслеживаем ритуалы (первое сообщение нового зрителя)
@@ -1220,6 +1270,35 @@ export class NightBotMonitor {
             }
         } catch (error) {
             console.error(`❌ Ошибка при обработке кастомной команды ${command.trigger}:`, error);
+        }
+    }
+
+    /**
+     * Обработка счётчика (из БД)
+     * - Инкрементирует значение в БД
+     * - Отправляет ответ с подставленным значением
+     */
+    private async handleCounterCommand(channel: string, user: string, counter: any, msg: any) {
+        try {
+            // Инкрементируем счётчик в БД
+            await query('UPDATE counters SET value = value + 1 WHERE id = $1', [counter.id]);
+            
+            // Получаем новое значение
+            const result = await query('SELECT value FROM counters WHERE id = $1', [counter.id]);
+            const newValue = result[0]?.value || (counter.value + 1);
+
+            // Подставляем значение в шаблон
+            const response = counter.responseTemplate.replace(/{value}/g, newValue.toString());
+
+            // Отправляем в чат
+            await this.sendMessage(channel, response);
+
+            console.log(`✅ Счётчик "${counter.trigger}" = ${newValue}`);
+
+            // Перезагружаем счётчики чтобы обновить кеш
+            this.reloadCounters();
+        } catch (error) {
+            console.error(`❌ Ошибка при обработке счётчика ${counter.trigger}:`, error);
         }
     }
 
@@ -1641,28 +1720,22 @@ export class NightBotMonitor {
         console.log(`🛑 Команда !стоп от ${user} в ${channel}`);
 
         try {
-            // Всегда считаем остановки для стримерши
-            const streamerName = 'kunilika666';
-            const currentCount = this.stopCounters.get(streamerName) || 0;
-            const newCount = currentCount + 1;
+            // Инкрементируем счётчик в БД
+            await query('UPDATE counters SET value = value + 1 WHERE id = $1', ['stop']);
+            
+            // Получаем новое значение и шаблон
+            const result = await query('SELECT value, response_template FROM counters WHERE id = $1', ['stop']);
+            const newCount = result[0]?.value || 1;
+            const template = result[0]?.response_template || 'Количество стопов: {value}';
 
-            this.stopCounters.set(streamerName, newCount);
-            this.saveCounters();
-
-            // Формируем правильное окончание слова "раз"
-            let razWord = 'раз';
-            if (newCount % 10 === 1 && newCount % 100 !== 11) {
-                razWord = 'раз';
-            } else if ([2, 3, 4].includes(newCount % 10) && ![12, 13, 14].includes(newCount % 100)) {
-                razWord = 'раза';
-            } else {
-                razWord = 'раз';
-            }
-
-            const response = `kunilika666 остановила стрим ${newCount} ${razWord}`;
+            // Используем шаблон из БД
+            const response = template.replace(/{value}/g, newCount.toString());
 
             await this.sendMessage(channel, response);
             console.log(`✅ Отправлен ответ в чат: ${response}`);
+            
+            // Обновляем кеш
+            this.reloadCounters();
         } catch (error) {
             console.error('❌ Ошибка при обработке команды !стоп:', error);
         }
@@ -1675,8 +1748,6 @@ export class NightBotMonitor {
         console.log(`🎯 Команда !стоп${targetValue} от ${user} в ${channel}`);
 
         try {
-            const streamerName = 'kunilika666';
-
             if (targetValue < 0 || targetValue > 9999) {
                 const response = `Значение должно быть от 0 до 9999`;
                 await this.sendMessage(channel, response);
@@ -1684,22 +1755,21 @@ export class NightBotMonitor {
                 return;
             }
 
-            this.stopCounters.set(streamerName, targetValue);
-            this.saveCounters();
+            // Обновляем значение в БД
+            await query('UPDATE counters SET value = $1 WHERE id = $2', [targetValue, 'stop']);
+            
+            // Получаем шаблон
+            const result = await query('SELECT response_template FROM counters WHERE id = $1', ['stop']);
+            const template = result[0]?.response_template || 'Количество стопов: {value}';
 
-            let razWord = 'раз';
-            if (targetValue % 10 === 1 && targetValue % 100 !== 11) {
-                razWord = 'раз';
-            } else if ([2, 3, 4].includes(targetValue % 10) && ![12, 13, 14].includes(targetValue % 100)) {
-                razWord = 'раза';
-            } else {
-                razWord = 'раз';
-            }
-
-            const response = `Счётчик установлен: kunilika666 остановила стрим ${targetValue} ${razWord}`;
+            // Используем шаблон из БД
+            const response = `Счётчик установлен: ${template.replace(/{value}/g, targetValue.toString())}`;
 
             await this.sendMessage(channel, response);
             console.log(`✅ Отправлен ответ в чат: ${response}`);
+            
+            // Обновляем кеш
+            this.reloadCounters();
         } catch (error) {
             console.error('❌ Ошибка при обработке команды !стоп[число]:', error);
         }
@@ -1713,9 +1783,9 @@ export class NightBotMonitor {
         console.log(`↩️ Команда !стопоткат от ${user} в ${channel}`);
 
         try {
-            // Всегда считаем остановки для стримерши
-            const streamerName = 'kunilika666';
-            const currentCount = this.stopCounters.get(streamerName) || 0;
+            // Получаем текущее значение из БД
+            const result = await query('SELECT value FROM counters WHERE id = $1', ['stop']);
+            const currentCount = result[0]?.value || 0;
 
             if (currentCount === 0) {
                 const response = `Нет остановок для отката`;
@@ -1726,12 +1796,8 @@ export class NightBotMonitor {
 
             const newCount = currentCount - 1;
 
-            if (newCount === 0) {
-                this.stopCounters.delete(streamerName);
-            } else {
-                this.stopCounters.set(streamerName, newCount);
-            }
-            this.saveCounters();
+            // Обновляем в БД
+            await query('UPDATE counters SET value = $1 WHERE id = $2', [newCount, 'stop']);
 
             // Формируем правильное окончание слова "раз"
             let razWord = 'раз';
@@ -1749,6 +1815,9 @@ export class NightBotMonitor {
 
             await this.sendMessage(channel, response);
             console.log(`✅ Отправлен ответ в чат: ${response}`);
+            
+            // Обновляем кеш
+            this.reloadCounters();
         } catch (error) {
             console.error('❌ Ошибка при обработке команды !стопоткат:', error);
         }
@@ -1762,9 +1831,9 @@ export class NightBotMonitor {
         console.log(`🔄 Команда !стопсброс от ${user} в ${channel}`);
 
         try {
-            // Всегда считаем остановки для стримерши
-            const streamerName = 'kunilika666';
-            const currentCount = this.stopCounters.get(streamerName) || 0;
+            // Получаем текущее значение из БД
+            const result = await query('SELECT value FROM counters WHERE id = $1', ['stop']);
+            const currentCount = result[0]?.value || 0;
 
             if (currentCount === 0) {
                 const response = `Счётчик остановок уже на нуле`;
@@ -1773,13 +1842,16 @@ export class NightBotMonitor {
                 return;
             }
 
-            this.stopCounters.delete(streamerName);
-            this.saveCounters();
+            // Сбрасываем в БД
+            await query('UPDATE counters SET value = 0 WHERE id = $1', ['stop']);
 
             const response = `Счётчик остановок сброшен`;
 
             await this.sendMessage(channel, response);
             console.log(`✅ Отправлен ответ в чат: ${response}`);
+            
+            // Обновляем кеш
+            this.reloadCounters();
         } catch (error) {
             console.error('❌ Ошибка при обработке команды !стопсброс:', error);
         }
@@ -1793,28 +1865,20 @@ export class NightBotMonitor {
         console.log(`ℹ️ Команда !стопинфо от ${user} в ${channel}`);
 
         try {
-            // Всегда считаем остановки для стримерши
-            const streamerName = 'kunilika666';
-            const currentCount = this.stopCounters.get(streamerName) || 0;
+            // Получаем данные счётчика из БД
+            const result = await query('SELECT value, response_template FROM counters WHERE id = $1', ['stop']);
+            const currentCount = result[0]?.value || 0;
+            const template = result[0]?.response_template || 'Количество стопов: {value}';
 
             if (currentCount === 0) {
-                const response = `kunilika666 ещё не останавливала стрим`;
+                const response = `Счётчик стопов пока на нуле`;
                 await this.sendMessage(channel, response);
                 console.log(`✅ Отправлен ответ в чат: ${response}`);
                 return;
             }
 
-            // Формируем правильное окончание слова "раз"
-            let razWord = 'раз';
-            if (currentCount % 10 === 1 && currentCount % 100 !== 11) {
-                razWord = 'раз';
-            } else if ([2, 3, 4].includes(currentCount % 10) && ![12, 13, 14].includes(currentCount % 100)) {
-                razWord = 'раза';
-            } else {
-                razWord = 'раз';
-            }
-
-            const response = `kunilika666 остановила стрим ${currentCount} ${razWord}`;
+            // Используем шаблон из БД
+            const response = template.replace(/{value}/g, currentCount.toString());
 
             await this.sendMessage(channel, response);
             console.log(`✅ Отправлен ответ в чат: ${response}`);
@@ -1831,28 +1895,22 @@ export class NightBotMonitor {
         console.log(`💀 Команда !смерть от ${user} в ${channel}`);
 
         try {
-            // Всегда считаем смерти для стримерши
-            const streamerName = 'kunilika666';
-            const currentCount = this.deathCounters.get(streamerName) || 0;
-            const newCount = currentCount + 1;
+            // Инкрементируем счётчик в БД
+            await query('UPDATE counters SET value = value + 1 WHERE id = $1', ['death']);
+            
+            // Получаем новое значение и шаблон
+            const result = await query('SELECT value, response_template FROM counters WHERE id = $1', ['death']);
+            const newCount = result[0]?.value || 1;
+            const template = result[0]?.response_template || 'Смертей: {value}';
 
-            this.deathCounters.set(streamerName, newCount);
-            this.saveCounters();
-
-            // Формируем правильное окончание слова "раз"
-            let razWord = 'раз';
-            if (newCount % 10 === 1 && newCount % 100 !== 11) {
-                razWord = 'раз';
-            } else if ([2, 3, 4].includes(newCount % 10) && ![12, 13, 14].includes(newCount % 100)) {
-                razWord = 'раза';
-            } else {
-                razWord = 'раз';
-            }
-
-            const response = `kunilika666 умерла ${newCount} ${razWord}`;
+            // Используем шаблон из БД
+            const response = template.replace(/{value}/g, newCount.toString());
 
             await this.sendMessage(channel, response);
             console.log(`✅ Отправлен ответ в чат: ${response}`);
+            
+            // Обновляем кеш
+            this.reloadCounters();
         } catch (error) {
             console.error('❌ Ошибка при обработке команды !смерть:', error);
         }
@@ -1865,8 +1923,6 @@ export class NightBotMonitor {
         console.log(`🎯 Команда !смерть${targetValue} от ${user} в ${channel}`);
 
         try {
-            const streamerName = 'kunilika666';
-
             if (targetValue < 0 || targetValue > 9999) {
                 const response = `Значение должно быть от 0 до 9999`;
                 await this.sendMessage(channel, response);
@@ -1874,22 +1930,21 @@ export class NightBotMonitor {
                 return;
             }
 
-            this.deathCounters.set(streamerName, targetValue);
-            this.saveCounters();
+            // Обновляем значение в БД
+            await query('UPDATE counters SET value = $1 WHERE id = $2', [targetValue, 'death']);
+            
+            // Получаем шаблон
+            const result = await query('SELECT response_template FROM counters WHERE id = $1', ['death']);
+            const template = result[0]?.response_template || 'Смертей: {value}';
 
-            let razWord = 'раз';
-            if (targetValue % 10 === 1 && targetValue % 100 !== 11) {
-                razWord = 'раз';
-            } else if ([2, 3, 4].includes(targetValue % 10) && ![12, 13, 14].includes(targetValue % 100)) {
-                razWord = 'раза';
-            } else {
-                razWord = 'раз';
-            }
-
-            const response = `Счётчик установлен: kunilika666 умерла ${targetValue} ${razWord}`;
+            // Используем шаблон из БД
+            const response = `Счётчик установлен: ${template.replace(/{value}/g, targetValue.toString())}`;
 
             await this.sendMessage(channel, response);
             console.log(`✅ Отправлен ответ в чат: ${response}`);
+            
+            // Обновляем кеш
+            this.reloadCounters();
         } catch (error) {
             console.error('❌ Ошибка при обработке команды !смерть[число]:', error);
         }
@@ -1903,9 +1958,9 @@ export class NightBotMonitor {
         console.log(`↩️ Команда !смертьоткат от ${user} в ${channel}`);
 
         try {
-            // Всегда считаем смерти для стримерши
-            const streamerName = 'kunilika666';
-            const currentCount = this.deathCounters.get(streamerName) || 0;
+            // Получаем текущее значение из БД
+            const result = await query('SELECT value FROM counters WHERE id = $1', ['death']);
+            const currentCount = result[0]?.value || 0;
 
             if (currentCount === 0) {
                 const response = `Нет смертей для отката`;
@@ -1916,12 +1971,8 @@ export class NightBotMonitor {
 
             const newCount = currentCount - 1;
 
-            if (newCount === 0) {
-                this.deathCounters.delete(streamerName);
-            } else {
-                this.deathCounters.set(streamerName, newCount);
-            }
-            this.saveCounters();
+            // Обновляем в БД
+            await query('UPDATE counters SET value = $1 WHERE id = $2', [newCount, 'death']);
 
             // Формируем правильное окончание слова "раз"
             let razWord = 'раз';
@@ -1939,6 +1990,9 @@ export class NightBotMonitor {
 
             await this.sendMessage(channel, response);
             console.log(`✅ Отправлен ответ в чат: ${response}`);
+            
+            // Обновляем кеш
+            this.reloadCounters();
         } catch (error) {
             console.error('❌ Ошибка при обработке команды !смертьоткат:', error);
         }
@@ -1952,9 +2006,9 @@ export class NightBotMonitor {
         console.log(`🔄 Команда !смертьсброс от ${user} в ${channel}`);
 
         try {
-            // Всегда считаем смерти для стримерши
-            const streamerName = 'kunilika666';
-            const currentCount = this.deathCounters.get(streamerName) || 0;
+            // Получаем текущее значение из БД
+            const result = await query('SELECT value FROM counters WHERE id = $1', ['death']);
+            const currentCount = result[0]?.value || 0;
 
             if (currentCount === 0) {
                 const response = `Счётчик смертей уже на нуле`;
@@ -1963,13 +2017,16 @@ export class NightBotMonitor {
                 return;
             }
 
-            this.deathCounters.delete(streamerName);
-            this.saveCounters();
+            // Сбрасываем в БД
+            await query('UPDATE counters SET value = 0 WHERE id = $1', ['death']);
 
             const response = `Счётчик смертей сброшен`;
 
             await this.sendMessage(channel, response);
             console.log(`✅ Отправлен ответ в чат: ${response}`);
+            
+            // Обновляем кеш
+            this.reloadCounters();
         } catch (error) {
             console.error('❌ Ошибка при обработке команды !смертьсброс:', error);
         }
@@ -1983,28 +2040,20 @@ export class NightBotMonitor {
         console.log(`ℹ️ Команда !смертьинфо от ${user} в ${channel}`);
 
         try {
-            // Всегда считаем смерти для стримерши
-            const streamerName = 'kunilika666';
-            const currentCount = this.deathCounters.get(streamerName) || 0;
+            // Получаем данные счётчика из БД
+            const result = await query('SELECT value, response_template FROM counters WHERE id = $1', ['death']);
+            const currentCount = result[0]?.value || 0;
+            const template = result[0]?.response_template || 'Смертей: {value}';
 
             if (currentCount === 0) {
-                const response = `kunilika666 ещё не умирала`;
+                const response = `Счётчик смертей пока на нуле`;
                 await this.sendMessage(channel, response);
                 console.log(`✅ Отправлен ответ в чат: ${response}`);
                 return;
             }
 
-            // Формируем правильное окончание слова "раз"
-            let razWord = 'раз';
-            if (currentCount % 10 === 1 && currentCount % 100 !== 11) {
-                razWord = 'раз';
-            } else if ([2, 3, 4].includes(currentCount % 10) && ![12, 13, 14].includes(currentCount % 100)) {
-                razWord = 'раза';
-            } else {
-                razWord = 'раз';
-            }
-
-            const response = `kunilika666 умерла ${currentCount} ${razWord}`;
+            // Используем шаблон из БД
+            const response = template.replace(/{value}/g, currentCount.toString());
 
             await this.sendMessage(channel, response);
             console.log(`✅ Отправлен ответ в чат: ${response}`);
@@ -2455,18 +2504,36 @@ export class NightBotMonitor {
      * Очистить счётчики команды !стоп (вызывается при окончании стрима)
      */
     clearStopCounters(): void {
+        query('UPDATE counters SET value = 0 WHERE id = $1', ['stop'])
+            .then(() => {
+                console.log('🧹 Счётчик !стоп сброшен в БД');
+                this.reloadCounters();
+            })
+            .catch((err) => {
+                console.error('❌ Ошибка сброса счётчика !стоп:', err);
+            });
+        
+        // Очищаем старую систему в памяти (на всякий случай)
         this.stopCounters.clear();
         this.saveCounters();
-        console.log('🧹 Счётчики !стоп очищены и сохранены');
     }
 
     /**
      * Очистить счётчики команды !смерть (вызывается при окончании стрима)
      */
     clearDeathCounters(): void {
+        query('UPDATE counters SET value = 0 WHERE id = $1', ['death'])
+            .then(() => {
+                console.log('🧹 Счётчик !смерть сброшен в БД');
+                this.reloadCounters();
+            })
+            .catch((err) => {
+                console.error('❌ Ошибка сброса счётчика !смерть:', err);
+            });
+        
+        // Очищаем старую систему в памяти (на всякий случай)
         this.deathCounters.clear();
         this.saveCounters();
-        console.log('🧹 Счётчики !смерть очищены и сохранены');
     }
 
     /**

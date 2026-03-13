@@ -11,32 +11,59 @@
     <h1>🎮 Управление командами</h1>
     <p>Twitch бот - кастомные команды чата</p>
   </div>
-  <div class="controls"
-       style="margin-top: 20px; display: flex; align-items: center; justify-content: space-between; gap: 16px;">
-    <div>
-      <h2 style="margin-bottom: 6px; font-size: 1.1em;">Все ссылки</h2>
-      <p style="font-size: 0.9em; color: #555;">
-        Редактировать общий текст, который отправляется при команде (!ссылки)
-      </p>
-    </div>
-    <button class="btn btn-small" id="all-links-btn">Все ссылки</button>
-  </div>
+
   <div id="alert-container"></div>
-  <div class="controls">
-    <button class="btn" id="add-command-btn">+ Добавить команду</button>
-  </div>
-  <div id="commands-container" class="commands-grid">
-    <div class="loading">Загрузка команд...</div>
+
+  <!-- Вкладки -->
+  <div class="tabs">
+    <button class="tab-btn active" data-tab="commands">📝 Команды</button>
+    <button class="tab-btn" data-tab="counters">🔢 Счётчики</button>
   </div>
 
-  <div class="empty-state" id="empty-state" style="display: none;">
-    <h3>Команды не найдены</h3>
-    <p>Создайте свою первую команду, нажав на кнопку выше</p>
+  <!-- Вкладка: Команды -->
+  <div class="tab-content active" id="tab-commands">
+    <div class="controls"
+         style="margin-top: 20px; display: flex; align-items: center; justify-content: space-between; gap: 16px;">
+      <div>
+        <h2 style="margin-bottom: 6px; font-size: 1.1em;">Все ссылки</h2>
+        <p style="font-size: 0.9em; color: #555;">
+          Редактировать общий текст, который отправляется при команде (!ссылки)
+        </p>
+      </div>
+      <button class="btn btn-small" id="all-links-btn">Все ссылки</button>
+    </div>
+    <div class="controls">
+      <button class="btn" id="add-command-btn">+ Добавить команду</button>
+    </div>
+    <div id="commands-container" class="commands-grid">
+      <div class="loading">Загрузка команд...</div>
+    </div>
+
+    <div class="empty-state" id="empty-state" style="display: none;">
+      <h3>Команды не найдены</h3>
+      <p>Создайте свою первую команду, нажав на кнопку выше</p>
+    </div>
+  </div>
+
+  <!-- Вкладка: Счётчики -->
+  <div class="tab-content" id="tab-counters">
+    <div class="controls">
+      <button class="btn" id="add-counter-btn">+ Добавить счётчик</button>
+    </div>
+    <div id="counters-container" class="commands-grid">
+      <div class="loading">Загрузка счётчиков...</div>
+    </div>
+
+    <div class="empty-state" id="empty-counters-state" style="display: none;">
+      <h3>Счётчики не найдены</h3>
+      <p>Создайте свой первый счётчик, нажав на кнопку выше</p>
+    </div>
   </div>
 </div>
 
 <command-dialog></command-dialog>
 <link-dialog></link-dialog>
+<counter-dialog></counter-dialog>
 
 <script type="module" src="/src/main.ts"></script>
 </body>

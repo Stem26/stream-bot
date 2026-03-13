@@ -37,6 +37,20 @@ interface LinksConfig {
     allLinksText: string;
 }
 
+interface Counter {
+    id: string;
+    trigger: string;
+    aliases: string[];
+    responseTemplate: string;
+    value: number;
+    enabled: boolean;
+    description: string;
+}
+
+interface CountersData {
+    counters: Counter[];
+}
+
 // === Работа с командами через БД ===
 
 type DbCommandRow = {
@@ -151,6 +165,120 @@ async function toggleCommandInDb(id: string): Promise<CustomCommand | null> {
     const newEnabled = !existing.enabled;
     await query('UPDATE custom_commands SET enabled = $2 WHERE id = $1', [id, newEnabled]);
     return { ...existing, enabled: newEnabled };
+}
+
+// === Работа со счётчиками через БД ===
+
+type DbCounterRow = {
+    id: string;
+    trigger: string;
+    aliases: string[] | null;
+    response_template: string;
+    value: number;
+    enabled: boolean;
+    description: string;
+};
+
+function mapDbRowToCounter(row: DbCounterRow): Counter {
+    return {
+        id: row.id,
+        trigger: row.trigger,
+        aliases: row.aliases ?? [],
+        responseTemplate: row.response_template,
+        value: row.value,
+        enabled: row.enabled,
+        description: row.description ?? '',
+    };
+}
+
+async function getAllCountersFromDb(): Promise<CountersData> {
+    const rows = await query<DbCounterRow>(
+        'SELECT id, trigger, aliases, response_template, value, enabled, description FROM counters ORDER BY id',
+    );
+    return { counters: rows.map(mapDbRowToCounter) };
+}
+
+async function getCounterByIdFromDb(id: string): Promise<Counter | null> {
+    const row = await queryOne<DbCounterRow>(
+        'SELECT id, trigger, aliases, response_template, value, enabled, description FROM counters WHERE id = $1',
+        [id],
+    );
+    return row ? mapDbRowToCounter(row) : null;
+}
+
+async function createCounterInDb(counter: Counter): Promise<void> {
+    await query(
+        `INSERT INTO counters
+          (id, trigger, aliases, response_template, value, enabled, description)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [
+            counter.id,
+            counter.trigger,
+            counter.aliases ?? [],
+            counter.responseTemplate,
+            counter.value ?? 0,
+            counter.enabled ?? true,
+            counter.description ?? '',
+        ],
+    );
+}
+
+async function updateCounterInDb(id: string, partial: Partial<Counter>): Promise<Counter | null> {
+    const existing = await getCounterByIdFromDb(id);
+    if (!existing) {
+        return null;
+    }
+    const merged: Counter = {
+        ...existing,
+        ...partial,
+        id: existing.id,
+        aliases: partial.aliases ?? existing.aliases,
+    };
+
+    await query(
+        `UPDATE counters
+         SET trigger = $2,
+             aliases = $3,
+             response_template = $4,
+             value = $5,
+             enabled = $6,
+             description = $7
+         WHERE id = $1`,
+        [
+            merged.id,
+            merged.trigger,
+            merged.aliases ?? [],
+            merged.responseTemplate,
+            merged.value,
+            merged.enabled,
+            merged.description ?? '',
+        ],
+    );
+
+    return merged;
+}
+
+async function deleteCounterInDb(id: string): Promise<boolean> {
+    await query('DELETE FROM counters WHERE id = $1', [id]);
+    return true;
+}
+
+async function toggleCounterInDb(id: string): Promise<Counter | null> {
+    const existing = await getCounterByIdFromDb(id);
+    if (!existing) return null;
+
+    const newEnabled = !existing.enabled;
+    await query('UPDATE counters SET enabled = $2 WHERE id = $1', [id, newEnabled]);
+    return { ...existing, enabled: newEnabled };
+}
+
+async function incrementCounterInDb(id: string): Promise<Counter | null> {
+    const existing = await getCounterByIdFromDb(id);
+    if (!existing) return null;
+
+    const newValue = existing.value + 1;
+    await query('UPDATE counters SET value = $2 WHERE id = $1', [id, newValue]);
+    return { ...existing, value: newValue };
 }
 
 function loadLinks(): LinksConfig {
@@ -409,6 +537,158 @@ app.post('/api/links/send', async (req: Request, res: Response) => {
     } catch (error) {
         console.error('❌ Ошибка ручной отправки ссылок:', error);
         res.status(500).json({ error: 'Ошибка отправки ссылок' });
+    }
+});
+
+// === API для счётчиков ===
+
+// Получить все счётчики
+app.get('/api/counters', async (req: Request, res: Response) => {
+    try {
+        const data = await getAllCountersFromDb();
+        res.json(data);
+    } catch (error) {
+        console.error('❌ Ошибка загрузки счётчиков:', error);
+        res.status(500).json({ error: 'Ошибка загрузки счётчиков' });
+    }
+});
+
+// Получить один счётчик по ID
+app.get('/api/counters/:id', async (req: Request, res: Response) => {
+    try {
+        const counter = await getCounterByIdFromDb(req.params.id);
+
+        if (!counter) {
+            return res.status(404).json({ error: 'Счётчик не найден' });
+        }
+
+        res.json(counter);
+    } catch (error) {
+        console.error('❌ Ошибка загрузки счётчика:', error);
+        res.status(500).json({ error: 'Ошибка загрузки счётчика' });
+    }
+});
+
+// Создать новый счётчик
+app.post('/api/counters', async (req: Request, res: Response) => {
+    try {
+        const newCounter: Counter = req.body;
+
+        if (!newCounter.id || !newCounter.trigger || !newCounter.responseTemplate) {
+            return res.status(400).json({ error: 'Обязательные поля: id, trigger, responseTemplate' });
+        }
+
+        const existingById = await getCounterByIdFromDb(newCounter.id);
+        if (existingById) {
+            return res.status(400).json({ error: 'Счётчик с таким ID уже существует' });
+        }
+
+        const triggerCheck = await queryOne<{ id: string }>(
+            `SELECT id FROM counters
+             WHERE LOWER(trigger) = LOWER($1)
+                OR EXISTS (
+                  SELECT 1 FROM unnest(aliases) a WHERE LOWER(a) = LOWER($1)
+             )`,
+            [newCounter.trigger],
+        );
+
+        if (triggerCheck) {
+            return res.status(400).json({
+                error: `Триггер "${newCounter.trigger}" уже используется счётчиком "${triggerCheck.id}"`,
+            });
+        }
+
+        const toSave: Counter = {
+            ...newCounter,
+            aliases: newCounter.aliases || [],
+            enabled: newCounter.enabled !== false,
+            value: newCounter.value || 0,
+        };
+
+        await createCounterInDb(toSave);
+        console.log(`✅ Счётчик "${toSave.id}" создан`);
+        res.status(201).json(toSave);
+    } catch (error) {
+        console.error('❌ Ошибка создания счётчика:', error);
+        res.status(500).json({ error: 'Ошибка создания счётчика' });
+    }
+});
+
+// Обновить счётчик
+app.put('/api/counters/:id', async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const updatedCounter: Partial<Counter> = req.body;
+
+        const existing = await getCounterByIdFromDb(id);
+        if (!existing) {
+            return res.status(404).json({ error: 'Счётчик не найден' });
+        }
+
+        const merged = await updateCounterInDb(id, updatedCounter);
+        if (!merged) {
+            return res.status(404).json({ error: 'Счётчик не найден' });
+        }
+
+        console.log(`✅ Счётчик "${id}" обновлён`);
+        res.json(merged);
+    } catch (error) {
+        console.error('❌ Ошибка обновления счётчика:', error);
+        res.status(500).json({ error: 'Ошибка обновления счётчика' });
+    }
+});
+
+// Удалить счётчик
+app.delete('/api/counters/:id', async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const existing = await getCounterByIdFromDb(id);
+        if (!existing) {
+            return res.status(404).json({ error: 'Счётчик не найден' });
+        }
+
+        await deleteCounterInDb(id);
+        console.log(`✅ Счётчик "${id}" удалён`);
+        res.json({ success: true, message: 'Счётчик удалён' });
+    } catch (error) {
+        console.error('❌ Ошибка удаления счётчика:', error);
+        res.status(500).json({ error: 'Ошибка удаления счётчика' });
+    }
+});
+
+// Переключить статус счётчика
+app.patch('/api/counters/:id/toggle', async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const updated = await toggleCounterInDb(id);
+
+        if (!updated) {
+            return res.status(404).json({ error: 'Счётчик не найден' });
+        }
+
+        console.log(`✅ Счётчик "${id}" ${updated.enabled ? 'включён' : 'отключён'}`);
+        res.json(updated);
+    } catch (error) {
+        console.error('❌ Ошибка переключения счётчика:', error);
+        res.status(500).json({ error: 'Ошибка переключения счётчика' });
+    }
+});
+
+// Инкрементировать счётчик
+app.patch('/api/counters/:id/increment', async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const updated = await incrementCounterInDb(id);
+
+        if (!updated) {
+            return res.status(404).json({ error: 'Счётчик не найден' });
+        }
+
+        console.log(`✅ Счётчик "${id}" увеличен до ${updated.value}`);
+        res.json(updated);
+    } catch (error) {
+        console.error('❌ Ошибка инкремента счётчика:', error);
+        res.status(500).json({ error: 'Ошибка инкремента счётчика' });
     }
 });
 

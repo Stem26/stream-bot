@@ -8,12 +8,42 @@ import {
   updateLinksConfig,
   toggleCommand,
   updateCommand,
+  fetchCounters,
+  createCounter,
+  updateCounter,
+  deleteCounter,
+  toggleCounter,
 } from './api';
-import type { CommandsData, CustomCommand } from './types';
+import type { CommandsData, CustomCommand, CountersData, Counter } from './types';
 import './components/command-dialog/command-dialog';
 import type { CommandDialogElement, CommandDialogSaveDetail } from './components/command-dialog/command-dialog';
 import './components/link-dialog/link-dialog';
 import type { LinkDialogElement, LinkDialogSaveDetail } from './components/link-dialog/link-dialog';
+import './components/counter-dialog/counter-dialog';
+import type { CounterDialogElement, CounterDialogSaveDetail } from './components/counter-dialog/counter-dialog';
+
+function setupTabs(): void {
+  const tabButtons = document.querySelectorAll<HTMLButtonElement>('.tab-btn');
+  const tabContents = document.querySelectorAll<HTMLElement>('.tab-content');
+
+  tabButtons.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const targetTab = btn.dataset.tab;
+      if (!targetTab) return;
+
+      // Убираем active у всех кнопок и контента
+      tabButtons.forEach((b) => b.classList.remove('active'));
+      tabContents.forEach((c) => c.classList.remove('active'));
+
+      // Добавляем active к выбранным
+      btn.classList.add('active');
+      const targetContent = document.getElementById(`tab-${targetTab}`);
+      if (targetContent) {
+        targetContent.classList.add('active');
+      }
+    });
+  });
+}
 
 function renderCommands(data: CommandsData): void {
   const container = document.getElementById('commands-container');
@@ -92,6 +122,84 @@ async function loadCommands(): Promise<void> {
   }
 }
 
+function renderCounters(data: CountersData): void {
+  const container = document.getElementById('counters-container');
+  const emptyState = document.getElementById('empty-counters-state');
+  if (!container || !emptyState) return;
+
+  if (data.counters.length === 0) {
+    container.style.display = 'none';
+    emptyState.style.display = 'block';
+    return;
+  }
+
+  container.style.display = 'grid';
+  emptyState.style.display = 'none';
+
+  container.innerHTML = data.counters
+    .map(
+      (counter) => {
+        const encodedId = encodeURIComponent(counter.id);
+        return `
+      <div
+        class="command-card counter-card ${counter.enabled ? '' : 'disabled'}"
+        data-id="${encodedId}"
+      >
+        <div class="command-header">
+          <div class="command-trigger">${counter.trigger}</div>
+          <div class="command-status">
+            <div class="status-toggle ${counter.enabled ? 'on' : 'off'}" data-action="toggle">
+              <div class="status-toggle-circle"></div>
+              <span class="status-toggle-text">${counter.enabled ? 'ВКЛ' : 'ВЫКЛ'}</span>
+            </div>
+          </div>
+        </div>
+
+        ${counter.description ? `<div class="command-description">${counter.description}</div>` : ''}
+
+        <div class="counter-value-display">
+          <div class="counter-label">Текущее значение:</div>
+          <div class="counter-value">${counter.value}</div>
+        </div>
+
+        <div class="counter-template">
+          <strong>Шаблон ответа:</strong> ${counter.responseTemplate}
+        </div>
+
+        ${
+          counter.aliases && counter.aliases.length > 0
+            ? `
+          <div class="command-aliases">
+            ${counter.aliases.map((alias) => `<span class="alias-tag">${alias}</span>`).join('')}
+          </div>
+        `
+            : ''
+        }
+
+        <div class="command-actions">
+          <button class="btn btn-small" data-action="edit-value">✏️ Изменить значение</button>
+          <button class="btn btn-small" data-action="edit">⚙️ Настройки</button>
+          <button class="btn btn-small btn-danger" data-action="delete">🗑️ Удалить</button>
+        </div>
+      </div>
+    `;
+      },
+    )
+    .join('');
+}
+
+async function loadCounters(): Promise<void> {
+  try {
+    const data = await fetchCounters();
+    renderCounters(data);
+  } catch (error) {
+    if (error instanceof Error) {
+      showAlert(`Ошибка загрузки счётчиков: ${error.message}`, 'error');
+    }
+  }
+}
+
+
 async function initLinks(linkDialog: LinkDialogElement): Promise<void> {
   try {
     const config = await fetchLinksConfig();
@@ -111,13 +219,132 @@ async function bootstrap(): Promise<void> {
 
   const commandDialog = document.querySelector<CommandDialogElement>('command-dialog');
   const linkDialog = document.querySelector<LinkDialogElement>('link-dialog');
+  const counterDialog = document.querySelector<CounterDialogElement>('counter-dialog');
 
-  if (!addCommandBtn || !allLinksBtn || !commandsContainer || !commandDialog || !linkDialog) {
+  if (!addCommandBtn || !allLinksBtn || !commandsContainer || !commandDialog || !linkDialog || !counterDialog) {
     return;
   }
 
+  // Переключение вкладок
+  setupTabs();
+
   await initLinks(linkDialog);
   await loadCommands();
+  await loadCounters();
+
+  // Кнопка добавления счётчика
+  const addCounterBtn = document.getElementById('add-counter-btn');
+  addCounterBtn?.addEventListener('click', () => {
+    counterDialog.openForCreate();
+  });
+
+  // Обработчик событий для счётчиков
+  const countersContainer = document.getElementById('counters-container');
+  countersContainer?.addEventListener('click', async (event) => {
+    const target = event.target as HTMLElement | null;
+    if (!target) return;
+
+    const card = target.closest<HTMLElement>('.counter-card');
+    if (!card) return;
+
+    const encodedId = card.dataset.id;
+    if (!encodedId) return;
+    const id = decodeURIComponent(encodedId);
+
+    const actionEl = target.closest<HTMLElement>('[data-action]');
+    const action = actionEl?.dataset.action;
+
+    if (!action) return;
+
+    if (action === 'toggle') {
+      try {
+        await toggleCounter(id);
+        await loadCounters();
+        showAlert('Статус счётчика изменён');
+      } catch (error) {
+        if (error instanceof Error) {
+          showAlert(`Ошибка: ${error.message}`, 'error');
+        }
+      }
+    }
+
+    if (action === 'edit-value') {
+      const newValue = prompt('Введите новое значение счётчика:');
+      if (newValue !== null) {
+        const parsedValue = parseInt(newValue, 10);
+        if (!isNaN(parsedValue)) {
+          try {
+            const data = await fetchCounters();
+            const counter = data.counters.find((c) => c.id === id);
+            if (!counter) {
+              showAlert('Счётчик не найден', 'error');
+              return;
+            }
+            await updateCounter(id, { ...counter, value: parsedValue });
+            await loadCounters();
+            showAlert('Значение счётчика обновлено');
+          } catch (error) {
+            if (error instanceof Error) {
+              showAlert(`Ошибка: ${error.message}`, 'error');
+            }
+          }
+        } else {
+          showAlert('Некорректное значение', 'error');
+        }
+      }
+    }
+
+    if (action === 'delete') {
+      if (!confirm('Удалить счётчик?')) return;
+      try {
+        await deleteCounter(id);
+        await loadCounters();
+        showAlert('Счётчик удалён');
+      } catch (error) {
+        if (error instanceof Error) {
+          showAlert(`Ошибка: ${error.message}`, 'error');
+        }
+      }
+    }
+
+    if (action === 'edit') {
+      try {
+        const data = await fetchCounters();
+        const counter = data.counters.find((c) => c.id === id);
+        if (!counter) {
+          showAlert('Счётчик не найден', 'error');
+          return;
+        }
+        counterDialog.openForEdit(counter);
+      } catch (error) {
+        if (error instanceof Error) {
+          showAlert(`Ошибка загрузки счётчика: ${error.message}`, 'error');
+        }
+      }
+    }
+  });
+
+  // Обработчик сохранения счётчика
+  counterDialog.addEventListener('save', async (event: Event) => {
+    const customEvent = event as CustomEvent<CounterDialogSaveDetail>;
+    const { counter, editId } = customEvent.detail;
+
+    try {
+      if (editId) {
+        await updateCounter(editId, counter);
+        showAlert('Счётчик обновлён');
+      } else {
+        await createCounter(counter);
+        showAlert('Счётчик создан');
+      }
+      counterDialog.close();
+      await loadCounters();
+    } catch (error) {
+      if (error instanceof Error) {
+        showAlert(`Ошибка: ${error.message}`, 'error');
+      }
+    }
+  });
 
   addCommandBtn.addEventListener('click', () => {
     commandDialog.openForCreate();

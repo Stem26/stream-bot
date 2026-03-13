@@ -1,0 +1,118 @@
+counter-dialog .modal {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 1000;
+  align-items: center;
+  justify-content: center;
+
+  &.active {
+    display: flex;
+  }
+}
+
+counter-dialog .modal-content {
+  background: white;
+  border-radius: 0;
+  padding: 30px;
+  max-width: 600px;
+  width: 510px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+counter-dialog #counter-form {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+counter-dialog .modal-body {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+counter-dialog .modal-header {
+  margin-bottom: 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+counter-dialog .modal-header h2 {
+  color: #333;
+}
+
+counter-dialog .modal-close-btn {
+  background: transparent;
+  border: none;
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+  color: #888;
+  padding: 0 0 4px 12px;
+  transition: color 0.2s;
+
+  &:hover {
+    color: #333;
+  }
+}
+
+counter-dialog .form-group {
+  margin-bottom: 20px;
+}
+
+counter-dialog .form-group label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 600;
+  color: #333;
+}
+
+counter-dialog .form-group input,
+counter-dialog .form-group textarea {
+  width: 100%;
+  padding: 10px;
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
+  font-size: 14px;
+  transition: border-color 0.3s;
+
+  &:focus {
+    outline: none;
+    border-color: #667eea;
+  }
+}
+
+counter-dialog .form-group textarea {
+  resize: vertical;
+  white-space: pre-wrap;
+  word-break: break-all;
+  overflow-wrap: anywhere;
+  min-height: 100px;
+  font-family: Menlo, Consolas, monospace;
+  max-height: 200px;
+}
+
+counter-dialog .form-group small {
+  display: block;
+  margin-top: 5px;
+  color: #6c757d;
+  font-size: 0.85em;
+}
+
+counter-dialog .form-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 25px;
+  flex-shrink: 0;
+}
