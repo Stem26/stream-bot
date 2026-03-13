@@ -328,7 +328,7 @@ body.modal-open {
   margin-bottom: 20px;
   background: white;
   padding: 20px 20px 0 20px;
-  border-radius: 15px 15px 0 0;
+  border-radius: 15px;
   box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
 }
 
@@ -583,7 +583,6 @@ body.modal-open {
   }
 
   .container {
-    padding: 15px;
     max-width: 100%;
   }
 
@@ -683,11 +682,96 @@ body.modal-open {
   // Кнопки управления
   .controls {
     padding: 15px 10px;
+    
+    h2 {
+      font-size: 1.1em;
+      margin-bottom: 4px;
+    }
+    
+    p {
+      font-size: 0.8em;
+    }
   }
 
   .btn {
     font-size: 14px;
     padding: 10px 16px;
+  }
+
+  // Компактные карточки команд на мобилке
+  .command-card {
+    padding: 12px;
+    margin-bottom: 12px;
+
+    .command-header {
+      margin-bottom: 8px;
+    }
+
+    .command-trigger {
+      font-size: 1em;
+    }
+
+    .command-description {
+      font-size: 0.85em;
+      margin-bottom: 8px;
+    }
+
+    .command-response {
+      padding: 10px;
+      font-size: 0.9em;
+      margin-bottom: 10px;
+    }
+
+    .command-aliases {
+      margin-bottom: 10px;
+      gap: 6px;
+    }
+
+    .alias-tag {
+      padding: 4px 8px;
+      font-size: 0.8em;
+    }
+
+    .command-actions {
+      gap: 8px;
+    }
+
+    .btn-small {
+      padding: 8px 12px;
+      font-size: 12px;
+    }
+
+    .color-badge {
+      padding: 4px 10px;
+      font-size: 11px;
+    }
+
+    .status-toggle-text {
+      font-size: 10px;
+      padding: 2px 5px;
+    }
+  }
+
+  // Компактные карточки счётчиков
+  .counter-card {
+    .counter-value-display {
+      padding: 10px;
+      margin-bottom: 10px;
+
+      .counter-label {
+        font-size: 0.85em;
+      }
+
+      .counter-value {
+        font-size: 1.5em;
+      }
+    }
+
+    .counter-template {
+      padding: 10px;
+      font-size: 0.85em;
+      margin-bottom: 10px;
+    }
   }
 
   // Админ секция
