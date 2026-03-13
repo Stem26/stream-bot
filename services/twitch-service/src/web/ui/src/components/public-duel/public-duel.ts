@@ -3,7 +3,7 @@ import './public-duel.scss';
 
 interface LeaderboardPlayer {
   twitch_username: string;
-  total_size: number;
+  points: number;
   duel_wins: number;
   duel_losses: number;
   duel_draws: number;
@@ -65,7 +65,7 @@ export class PublicDuelElement extends HTMLElement {
               <tr>
                 <td class="rank">${(this.currentPage - 1) * this.pageSize + idx + 1}</td>
                 <td class="name">${this.escapeHtml(p.twitch_username)}</td>
-                <td class="size">${p.total_size} см</td>
+                <td class="size">${p.points || 0} см</td>
                 <td class="stats">Побед: ${p.duel_wins || 0} | Проигрышей: ${p.duel_losses || 0} | Ничьих: ${p.duel_draws || 0}</td>
               </tr>
             `,
