@@ -124,11 +124,7 @@ public-duel .leaderboard-table {
     .rank {
       font-weight: 700;
       color: #667eea;
-      font-size: 18px;
-      
-      &:has-text('🥇'), &:has-text('🥈'), &:has-text('🥉') {
-        font-size: 24px;
-      }
+      font-size: 20px;
     }
 
     .name {
