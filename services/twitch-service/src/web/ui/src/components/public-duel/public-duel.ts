@@ -62,22 +62,26 @@ export class PublicDuelElement extends HTMLElement {
             <tr>
               <th class="rank-col">#</th>
               <th class="name-col">Участник</th>
-              <th class="size-col">Размер</th>
+              <th class="size-col">Очки</th>
               <th class="stats-col">Статистика дуэлей</th>
             </tr>
           </thead>
           <tbody>
             ${data.players
               .map(
-                (p, idx) => `
+                (p, idx) => {
+                  const rank = (this.currentPage - 1) * this.pageSize + idx + 1;
+                  const medals = ['🥇', '🥈', '🥉'];
+                  const rankDisplay = rank <= 3 ? medals[rank - 1] : rank;
+                  return `
               <tr>
-                <td class="rank">${(this.currentPage - 1) * this.pageSize + idx + 1}</td>
+                <td class="rank">${rankDisplay}</td>
                 <td class="name">${this.escapeHtml(p.twitch_username)}</td>
-                <td class="size">${p.points || 0} см</td>
+                <td class="size">${p.points || 0}</td>
                 <td class="stats">Побед: ${p.duel_wins || 0} | Проигрышей: ${p.duel_losses || 0} | Ничьих: ${p.duel_draws || 0}</td>
               </tr>
-            `,
-              )
+            `;
+                })
               .join('')}
           </tbody>
         </table>
