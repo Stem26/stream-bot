@@ -230,11 +230,10 @@ export class NightBotMonitor {
         '!fp', '!фп',
         '!ссылки', '!links',
         '!партия', '!party',
+        '!персонажи', '!персонаж',
         '!игры', '!help',
-        // Счётчики (управляются через enabled флаг в БД)
         '!смерть', '!смертьинфо', '!смертьоткат', '!смертьсброс',
         '!стоп', '!стопинфо', '!стопоткат', '!стопсброс',
-        // Дуэли (управляются через внутренний флаг duelsEnabled)
         '!дуэль', '!duel', '!fight',
         '!старт_дуэль', '!start_duel',
         '!стоп_дуэль', '!stop_duel',
@@ -893,16 +892,6 @@ export class NightBotMonitor {
 
                 // Команда выбора персонажа: !персонаж <имя>
                 if (trimmedMessage.startsWith('!персонаж ')) {
-                    // Проверка что стрим онлайн
-                    if (!this.isStreamOnlineCheck() && !IS_LOCAL) {
-                        console.log(`⚠️ Команда !персонаж проигнорирована: стрим оффлайн`);
-                        return;
-                    }
-
-                    if (IS_LOCAL && !this.isStreamOnlineCheck()) {
-                        console.log(`🧪 ТЕСТ в оффлайне: выполняем команду !персонаж`);
-                    }
-
                     this.handleSetCharacterCommand(channel, user, message, msg);
                     return;
                 }
