@@ -1,151 +1,144 @@
+// @ts-ignore
 import template from './public-duel.html?raw';
 import './public-duel.scss';
-import chevronIcon from '../../icons/24px_chevron_left.svg?raw';
+import type {LeaderboardResponse} from '../../interfaces/leaderboard';
 
-interface LeaderboardPlayer {
-  twitch_username: string;
-  points: number;
-  duel_wins: number;
-  duel_losses: number;
-  duel_draws: number;
-}
-
-interface LeaderboardResponse {
-  players: LeaderboardPlayer[];
-  streamerPlayer: LeaderboardPlayer | null;
-  pagination: {
-    total: number;
-    totalPages: number;
-    page: number;
-    limit: number;
-  };
-}
+const MEDALS = ['🥇', '🥈', '🥉'];
 
 export class PublicDuelElement extends HTMLElement {
-  private initialized = false;
-  private currentPage = 1;
-  private pageSize = 50;
+    private initialized = false;
+    private currentPage = 1;
+    private pageSize = 50;
 
-  connectedCallback(): void {
-    if (this.initialized) return;
-    this.initialized = true;
-    this.innerHTML = template;
-    
-    // Вставляем SVG иконку
-    const backBtn = this.querySelector('.back-btn');
-    if (backBtn) {
-      backBtn.innerHTML = chevronIcon;
+    connectedCallback(): void {
+        if (this.initialized) return;
+        this.initialized = true;
+        this.innerHTML = template;
+        this.loadLeaderboard().catch((err) => console.error(err));
     }
-    
-    this.loadLeaderboard();
-  }
 
-  private async loadLeaderboard(): Promise<void> {
-    const container = this.querySelector<HTMLDivElement>('#leaderboard-table');
-    if (!container) return;
+    private getTemplate(id: string): HTMLTemplateElement {
+        return this.querySelector<HTMLTemplateElement>(`#${id}`);
+    }
 
-    try {
-      const response = await fetch(
-        `/api/leaderboard?page=${this.currentPage}&limit=${this.pageSize}`,
-      );
-      const data: LeaderboardResponse = await response.json();
+    private async loadLeaderboard(): Promise<void> {
+        const container = this.querySelector<HTMLDivElement>('#leaderboard-table');
+        if (!container) {
+            return;
+        }
 
-      if (!data.players || data.players.length === 0) {
+        try {
+            const response = await fetch(
+                `/api/leaderboard?page=${this.currentPage}&limit=${this.pageSize}`,
+                );
+            const data: LeaderboardResponse = await response.json();
+
+            if (!data.players || data.players.length === 0) {
+                this.renderEmpty(container);
+
+                return;
+            }
+
+            container.className = 'leaderboard-table';
+            container.innerHTML = '';
+            this.renderLeaderboard(container, data);
+            this.setupPaginationHandlers();
+        } catch (error) {
+            console.error('Failed to load leaderboard:', error);
+            this.renderError(container);
+        }
+    }
+
+    private renderEmpty(container: HTMLDivElement): void {
+        const tpl = this.getTemplate('template-empty');
+        if (!tpl) {
+            return;
+        }
+
         container.className = 'empty-message';
-        container.innerHTML = 'Пока нет участников дуэлей';
-        return;
-      }
-
-      const streamer = data.streamerPlayer ?? null;
-
-      container.className = 'leaderboard-table';
-      container.innerHTML = `
-        ${streamer ? `
-        <div class="streamer-row">
-          <div class="streamer-badge">🎮 Стример</div>
-          <div class="streamer-name">${this.escapeHtml(streamer.twitch_username)}</div>
-          <div class="streamer-stats">${streamer.points || 0} очков · Побед: ${streamer.duel_wins || 0} | Проигрышей: ${streamer.duel_losses || 0} | Ничьих: ${streamer.duel_draws || 0}</div>
-        </div>
-        ` : ''}
-        <table>
-          <thead>
-            <tr>
-              <th class="rank-col">#</th>
-              <th class="name-col">Участник</th>
-              <th class="size-col">Очки</th>
-              <th class="stats-col">Статистика дуэлей</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${data.players
-              .map(
-                (p, idx) => {
-                  const rank = (this.currentPage - 1) * this.pageSize + idx + 1;
-                  const medals = ['🥇', '🥈', '🥉'];
-                  const rankDisplay = rank <= 3 ? medals[rank - 1] : rank;
-                  return `
-              <tr>
-                <td class="rank">${rankDisplay}</td>
-                <td class="name">${this.escapeHtml(p.twitch_username)}</td>
-                <td class="size">${p.points || 0}</td>
-                <td class="stats">Побед: ${p.duel_wins || 0} | Проигрышей: ${p.duel_losses || 0} | Ничьих: ${p.duel_draws || 0}</td>
-              </tr>
-            `;
-                })
-              .join('')}
-          </tbody>
-        </table>
-        ${this.renderPagination(data.pagination)}
-      `;
-
-      this.setupPaginationHandlers();
-    } catch (error) {
-      console.error('Failed to load leaderboard:', error);
-      container.className = 'empty-message';
-      container.innerHTML = 'Ошибка загрузки данных';
+        container.innerHTML = '';
+        container.appendChild(tpl.content.cloneNode(true));
     }
-  }
 
-  private renderPagination(pagination: LeaderboardResponse['pagination']): string {
-    const { page, totalPages } = pagination;
-    if (totalPages <= 1) return '';
+    private renderError(container: HTMLDivElement): void {
+        const tpl = this.getTemplate('template-error');
+        if (!tpl) {
+            return;
+        }
 
-    return `
-      <div class="pagination">
-        <button class="pagination-btn" data-page="${page - 1}" ${page === 1 ? 'disabled' : ''}>
-          ← Назад
-        </button>
-        <span class="pagination-info">
-          Страница ${page} из ${totalPages}
-        </span>
-        <button class="pagination-btn" data-page="${page + 1}" ${page === totalPages ? 'disabled' : ''}>
-          Вперёд →
-        </button>
-      </div>
-    `;
-  }
+        container.className = 'empty-message';
+        container.innerHTML = '';
+        container.appendChild(tpl.content.cloneNode(true));
+    }
 
-  private setupPaginationHandlers(): void {
-    this.querySelectorAll<HTMLButtonElement>('.pagination-btn').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const page = parseInt(btn.dataset.page || '1', 10);
-        this.currentPage = page;
-        this.loadLeaderboard();
-      });
-    });
-  }
+    private renderLeaderboard(container: HTMLDivElement, data: LeaderboardResponse): void {
+        const tpl = this.getTemplate('template-leaderboard');
+        if (!tpl) {
+            return;
+        }
 
-  private escapeHtml(text: string): string {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-  }
-}
+        const frag = tpl.content.cloneNode(true) as DocumentFragment;
+        const streamerSlot = frag.querySelector<HTMLDivElement>('.streamer-slot');
+        const tbody = frag.querySelector('tbody');
+        const paginationSlot = frag.querySelector<HTMLDivElement>('.pagination-slot');
 
-declare global {
-  interface HTMLElementTagNameMap {
-    'public-duel': PublicDuelElement;
-  }
+        if (data.streamerPlayer && streamerSlot) {
+            const rowTpl = this.getTemplate('template-streamer-row');
+            if (rowTpl) {
+                const row = rowTpl.content.cloneNode(true) as DocumentFragment;
+                const p = data.streamerPlayer!;
+                const name = row.querySelector('.streamer-name');
+                const stats = row.querySelector('.streamer-stats');
+                if (name) name.textContent = p.twitch_username;
+                if (stats) stats.textContent = `${p.points || 0} очков · Побед: ${p.duel_wins || 0} | Проигрышей: ${p.duel_losses || 0} | Ничьих: ${p.duel_draws || 0}`;
+                streamerSlot.appendChild(row);
+            }
+        }
+
+        if (tbody) {
+            const rowTpl = this.getTemplate('template-player-row');
+            if (rowTpl) {
+                data.players.forEach((p, idx) => {
+                    const rank = (this.currentPage - 1) * this.pageSize + idx + 1;
+                    const rankDisplay = rank <= 3 ? MEDALS[rank - 1] : String(rank);
+                    const row = rowTpl.content.cloneNode(true) as DocumentFragment;
+                    const cells = row.querySelectorAll('td');
+                    cells[0].textContent = rankDisplay;
+                    cells[1].textContent = p.twitch_username;
+                    cells[2].textContent = String(p.points || 0);
+                    cells[3].textContent = `Побед: ${p.duel_wins || 0} | Проигрышей: ${p.duel_losses || 0} | Ничьих: ${p.duel_draws || 0}`;
+                    tbody.appendChild(row);
+                });
+            }
+        }
+
+        const {page, totalPages} = data.pagination;
+        if (totalPages > 1 && paginationSlot) {
+            const pagTpl = this.getTemplate('template-pagination');
+            if (pagTpl) {
+                const pag = pagTpl.content.cloneNode(true) as DocumentFragment;
+                pag.querySelector('.pagination-info')!.textContent = `Страница ${page} из ${totalPages}`;
+                const prev = pag.querySelector<HTMLButtonElement>('.pagination-prev');
+                const next = pag.querySelector<HTMLButtonElement>('.pagination-next');
+                if (prev) prev.dataset.page = String(page - 1);
+                if (next) next.dataset.page = String(page + 1);
+                if (prev) prev.disabled = page === 1;
+                if (next) next.disabled = page === totalPages;
+                paginationSlot.appendChild(pag);
+            }
+        }
+
+        container.appendChild(frag);
+    }
+
+    private setupPaginationHandlers(): void {
+        this.querySelectorAll<HTMLButtonElement>('.pagination-btn[data-page]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                this.currentPage = parseInt(btn.dataset.page || '1', 10);
+                this.loadLeaderboard().catch((err) => console.error(err));
+            });
+        });
+    }
 }
 
 customElements.define('public-duel', PublicDuelElement);

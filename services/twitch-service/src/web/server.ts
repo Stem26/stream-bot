@@ -942,24 +942,9 @@ app.get('/', (req: Request, res: Response) => {
     res.redirect('/public');
 });
 
-// Публичная главная
-app.get('/public', (req: Request, res: Response) => {
-    res.sendFile(path.join(__dirname, 'public', 'public-home.html'));
-});
-
-// Таблица лидеров
-app.get('/public/duel', (req: Request, res: Response) => {
-    res.sendFile(path.join(__dirname, 'public', 'public-duel.html'));
-});
-
-// Страница со ссылками
-app.get('/public/links', (req: Request, res: Response) => {
-    res.sendFile(path.join(__dirname, 'public', 'public-links.html'));
-});
-
-// === Админ-панель (защищена Nginx Basic Auth) ===
-app.get('/admin', (req: Request, res: Response) => {
-    res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+// SPA — все маршруты отдают index.html (роутинг на клиенте)
+app.get(['/public', '/public/duel', '/public/links', '/admin'], (req: Request, res: Response) => {
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 // OAuth — страница для получения Twitch токена с полными scope

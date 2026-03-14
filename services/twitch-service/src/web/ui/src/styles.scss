@@ -68,20 +68,23 @@ body.modal-open {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
   border: none;
-  padding: 12px 30px;
+  padding: 10px 15px;
   border-radius: 8px;
   font-size: 16px;
   cursor: pointer;
   transition: all 0.3s;
 }
 
-.btn:hover {
+.btn:hover:not(:disabled) {
   transform: translateY(-2px);
   box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
 }
 
-.btn:active {
+.btn:active:not(:disabled) {
   transform: translateY(0);
+}
+
+.btn:disabled {
 }
 
 .btn-secondary {
@@ -89,11 +92,28 @@ body.modal-open {
 }
 
 .btn-danger {
-  background: #dc3545;
+  background: #c53934;
+  box-shadow: 0 2px 8px rgba(197, 57, 52, 0.35);
+
+  &:hover:not(:disabled) {
+    box-shadow: 0 4px 12px rgba(197, 57, 52, 0.45);
+  }
 }
 
 .btn-success {
-  background: #28a745;
+  background: #28619a;
+  box-shadow: 0 2px 8px rgba(40, 97, 154, 0.35);
+
+  &:disabled {
+    background: #ced4da;
+    color: #6c757d;
+    box-shadow: none;
+    transform: none;
+  }
+
+  &:hover:not(:disabled) {
+    box-shadow: 0 4px 12px rgba(40, 97, 154, 0.45);
+  }
 }
 
 .btn-small {
@@ -167,7 +187,6 @@ body.modal-open {
 
 .command-card.disabled .command-actions [data-action='send'] {
   opacity: 0.5;
-  cursor: not-allowed;
 }
 
 .command-header {
@@ -419,12 +438,25 @@ body.modal-open {
   padding: 12px 24px;
   background: transparent;
   border: none;
-  border-bottom: 3px solid transparent;
   font-size: 16px;
   font-weight: 600;
   color: #6c757d;
   cursor: pointer;
   transition: all 0.3s;
+  position: relative;
+
+  &::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 0;
+    height: 3px;
+    background: #667eea;
+    border-radius: 2px;
+    transition: width 0.2s ease;
+  }
 
   &:hover {
     color: #667eea;
@@ -432,7 +464,10 @@ body.modal-open {
 
   &.active {
     color: #667eea;
-    border-bottom-color: #667eea;
+
+    &::after {
+      width: 90%;
+    }
   }
 }
 
@@ -662,18 +697,6 @@ body.modal-open {
       &:hover {
         background: #f8f9fa;
       }
-
-      &:nth-child(1) td:first-child::before {
-        content: '🥇 ';
-      }
-
-      &:nth-child(2) td:first-child::before {
-        content: '🥈 ';
-      }
-
-      &:nth-child(3) td:first-child::before {
-        content: '🥉 ';
-      }
     }
 
     td {
@@ -773,8 +796,13 @@ body.modal-open {
 }
 
 @media (max-width: 768px) {
+  body {
+    padding: 12px;
+  }
+
   .commands-grid {
     grid-template-columns: 1fr;
+    gap: 12px;
   }
 
   .container {
@@ -801,14 +829,22 @@ body.modal-open {
   }
 
   .tabs {
-    padding: 10px 0 0 0;
+    padding: 10px 12px;
     gap: 6px;
     overflow-x: auto;
+    overflow-y: hidden;
     -webkit-overflow-scrolling: touch;
-    position: relative;
+    scroll-snap-type: x proximity;
+    scroll-behavior: smooth;
+    justify-content: flex-start;
 
     &::-webkit-scrollbar {
-      height: 3px;
+      height: 4px;
+    }
+
+    &::-webkit-scrollbar-thumb {
+      background: rgba(102, 126, 234, 0.4);
+      border-radius: 2px;
     }
   }
 
@@ -817,6 +853,8 @@ body.modal-open {
     font-size: 13px;
     white-space: nowrap;
     flex-shrink: 0;
+    scroll-snap-align: start;
+    scroll-snap-stop: normal;
   }
 
   // Адаптация таблицы лидеров под мобилку
@@ -903,25 +941,38 @@ body.modal-open {
   // Компактные карточки команд на мобилке
   .command-card {
     padding: 12px;
-    margin-bottom: 12px;
+    margin-bottom: 0;
+    min-width: 0;
 
     .command-header {
       margin-bottom: 8px;
+      flex-wrap: wrap;
+      gap: 8px;
     }
 
     .command-trigger {
       font-size: 1em;
+      white-space: normal;
+      word-break: break-word;
     }
 
     .command-description {
       font-size: 0.85em;
       margin-bottom: 8px;
+      white-space: normal;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
+      text-overflow: unset;
     }
 
     .command-response {
       padding: 10px;
       font-size: 0.9em;
       margin-bottom: 10px;
+      white-space: normal;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
+      text-overflow: unset;
     }
 
     .command-aliases {
@@ -936,6 +987,8 @@ body.modal-open {
 
     .command-actions {
       gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-start;
     }
 
     .btn-small {
@@ -956,9 +1009,17 @@ body.modal-open {
 
   // Компактные карточки счётчиков
   .counter-card {
+    .command-trigger .counter-variants {
+      white-space: normal;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
+      text-overflow: unset;
+    }
+
     .counter-value-display {
       padding: 10px;
       margin-bottom: 10px;
+      flex-wrap: wrap;
 
       .counter-label {
         font-size: 0.85em;
@@ -973,6 +1034,10 @@ body.modal-open {
       padding: 10px;
       font-size: 0.85em;
       margin-bottom: 10px;
+      white-space: normal;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
+      text-overflow: unset;
     }
   }
 
@@ -983,6 +1048,16 @@ body.modal-open {
     h3 {
       font-size: 1.2em;
     }
+  }
+
+  .party-config-section .party-config-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .party-config-section .party-config-header .party-config-toggle {
+    margin-left: 0;
   }
 
   .admin-actions {
@@ -1013,7 +1088,6 @@ body.modal-open {
 
     &:disabled {
       opacity: 0.5;
-      cursor: not-allowed;
     }
   }
 }

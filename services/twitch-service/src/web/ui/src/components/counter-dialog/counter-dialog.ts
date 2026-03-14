@@ -1,5 +1,6 @@
 import template from './counter-dialog.html?raw';
 import './counter-dialog.scss';
+import { createModal } from '../../utils/modal';
 import { substituteTimePlaceholders } from '../../utils/time-placeholders';
 import type { Counter } from '../../types';
 
@@ -10,12 +11,13 @@ export interface CounterDialogSaveDetail {
 
 export class CounterDialogElement extends HTMLElement {
   private initialized = false;
-  private escHandler?: (event: KeyboardEvent) => void;
+  private modal!: ReturnType<typeof createModal>;
 
   connectedCallback(): void {
     if (this.initialized) return;
     this.initialized = true;
     this.innerHTML = template;
+    this.modal = createModal(() => this.querySelector('.modal'));
 
     this.querySelectorAll<HTMLElement>('[data-close]').forEach((btn) => {
       btn.addEventListener('click', () => this.close());
@@ -107,24 +109,11 @@ export class CounterDialogElement extends HTMLElement {
   }
 
   close(): void {
-    const modal = this.querySelector<HTMLElement>('.modal');
-    modal?.classList.remove('active');
-    document.body.classList.remove('modal-open');
+    this.modal.hide();
   }
 
   private open(): void {
-    const modal = this.querySelector<HTMLElement>('.modal');
-    modal?.classList.add('active');
-    document.body.classList.add('modal-open');
-
-    if (!this.escHandler) {
-      this.escHandler = (event: KeyboardEvent) => {
-        if (event.key === 'Escape') {
-          this.close();
-        }
-      };
-      document.addEventListener('keydown', this.escHandler);
-    }
+    this.modal.show();
   }
 
   private collectFormData(): CounterDialogSaveDetail | null {
@@ -180,9 +169,7 @@ export class CounterDialogElement extends HTMLElement {
   }
 
   disconnectedCallback(): void {
-    if (this.escHandler) {
-      document.removeEventListener('keydown', this.escHandler);
-    }
+    this.modal?.cleanup();
   }
 }
 

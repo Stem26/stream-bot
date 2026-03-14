@@ -9,15 +9,14 @@ export default defineConfig({
     emptyOutDir: true,
     rollupOptions: {
       input: {
-        'admin': resolve(__dirname, 'src/web/ui/admin.html'),
-        'public-home': resolve(__dirname, 'src/web/ui/public-home.html'),
-        'public-duel': resolve(__dirname, 'src/web/ui/public-duel.html'),
-        'public-links': resolve(__dirname, 'src/web/ui/public-links.html'),
+        index: resolve(__dirname, 'src/web/ui/index.html'),
+        'twitch-oauth': resolve(__dirname, 'src/web/ui/twitch-oauth.html'),
       },
     },
   },
   server: {
     port: 5173,
+    open: '/public',
     proxy: {
       '/api': {
         target: 'http://localhost:3000',
@@ -34,16 +33,14 @@ export default defineConfig({
             res.writeHead(302, { Location: '/public' });
             res.end();
             return;
-          } else if (req.url === '/public') {
-            req.url = '/public-home.html';
-          } else if (req.url === '/public/duel') {
-            req.url = '/public-duel.html';
-          } else if (req.url === '/public/links') {
-            req.url = '/public-links.html';
-          } else if (req.url === '/admin') {
-            req.url = '/admin.html';
-          } else if (req.url?.startsWith('/oauth')) {
+          }
+          if (req.url?.startsWith('/oauth')) {
             req.url = '/twitch-oauth.html';
+            return next();
+          }
+          if (req.url === '/public' || req.url === '/public/' || req.url === '/public/duel' || req.url === '/public/links' || req.url === '/admin') {
+            req.url = '/index.html';
+            return next();
           }
           next();
         });
@@ -51,4 +48,3 @@ export default defineConfig({
     },
   ],
 });
-

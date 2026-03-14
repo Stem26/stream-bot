@@ -150,7 +150,8 @@ command-dialog .form-group small.hint-time {
   }
 }
 
-command-dialog .form-group input.is-invalid {
+command-dialog .form-group input.is-invalid,
+command-dialog .form-group textarea.is-invalid {
   border-color: #dc3545;
 }
 

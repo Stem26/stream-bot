@@ -1,5 +1,7 @@
+// @ts-ignore
 import template from './link-dialog.html?raw';
 import './link-dialog.scss';
+import { createModal } from '../../utils/modal';
 import { substituteTimePlaceholders } from '../../utils/time-placeholders';
 
 export interface LinkDialogSaveDetail {
@@ -8,20 +10,24 @@ export interface LinkDialogSaveDetail {
 
 export class LinkDialogElement extends HTMLElement {
   private initialized = false;
-  private escHandler?: (event: KeyboardEvent) => void;
+  private modal!: ReturnType<typeof createModal>;
 
   connectedCallback(): void {
-    if (this.initialized) return;
+    if (this.initialized) {
+      return;
+    }
+
     this.initialized = true;
     this.innerHTML = template;
+    this.modal = createModal(() => this.querySelector('.modal'));
 
     this.querySelectorAll<HTMLElement>('[data-close]').forEach((btn) => {
       btn.addEventListener('click', () => this.close());
     });
 
     const form = this.querySelector<HTMLFormElement>('#links-form');
-    form?.addEventListener('submit', (e) => {
-      e.preventDefault();
+    form?.addEventListener('submit', (event) => {
+      event.preventDefault();
       const textarea = this.querySelector<HTMLTextAreaElement>('#all-links-text');
       const value = textarea?.value ?? '';
       this.dispatchEvent(
@@ -33,8 +39,8 @@ export class LinkDialogElement extends HTMLElement {
     });
 
     const sendBtn = this.querySelector<HTMLButtonElement>('[data-send]');
-    sendBtn?.addEventListener('click', (e) => {
-      e.preventDefault();
+    sendBtn?.addEventListener('click', (event) => {
+      event.preventDefault();
       this.dispatchEvent(
         new CustomEvent<null>('send', {
           detail: null,
@@ -57,28 +63,13 @@ export class LinkDialogElement extends HTMLElement {
   open(initialText: string): void {
     this.ensureInit();
     const textarea = this.querySelector<HTMLTextAreaElement>('#all-links-text');
-    if (textarea) {
-      textarea.value = initialText ?? '';
-    }
+    if (textarea) textarea.value = initialText ?? '';
     this.updateLinksCounter();
-    const modal = this.querySelector<HTMLElement>('.modal');
-    modal?.classList.add('active');
-    document.body.classList.add('modal-open');
-
-    if (!this.escHandler) {
-      this.escHandler = (event: KeyboardEvent) => {
-        if (event.key === 'Escape') {
-          this.close();
-        }
-      };
-      document.addEventListener('keydown', this.escHandler);
-    }
+    this.modal.show();
   }
 
   close(): void {
-    const modal = this.querySelector<HTMLElement>('.modal');
-    modal?.classList.remove('active');
-    document.body.classList.remove('modal-open');
+    this.modal.hide();
   }
 
   private updateLinksCounter(): void {
@@ -96,9 +87,7 @@ export class LinkDialogElement extends HTMLElement {
   }
 
   disconnectedCallback(): void {
-    if (this.escHandler) {
-      document.removeEventListener('keydown', this.escHandler);
-    }
+    this.modal?.cleanup();
   }
 }
 

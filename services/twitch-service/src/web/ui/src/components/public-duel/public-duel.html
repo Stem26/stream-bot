@@ -1,10 +1,60 @@
-<a href="/" class="back-btn"></a>
-
+<a href="/public"
+   class="back-btn">
+  <img src="/icons/24px_chevron_left.svg">
+</a>
 <div class="public-duel-container">
   <div class="header">
     <h1>🏆 Таблица лидеров дуэлей</h1>
     <p>Статистика побед и поражений</p>
   </div>
-
-  <div id="leaderboard-table" class="loading">Загрузка...</div>
+  <div id="leaderboard-table"
+       class="loading">
+    Загрузка...
+  </div>
 </div>
+<template id="template-empty">
+  <div class="empty-message">Пока нет участников дуэлей</div>
+</template>
+<template id="template-error">
+  <div class="empty-message">Ошибка загрузки данных</div>
+</template>
+<template id="template-streamer-row">
+  <div class="streamer-row">
+    <div class="streamer-badge">🎮 Стример</div>
+    <div class="streamer-name"></div>
+    <div class="streamer-stats"></div>
+  </div>
+</template>
+
+<template id="template-leaderboard">
+  <div class="streamer-slot"></div>
+  <table>
+    <thead>
+      <tr>
+        <th class="rank-col">#</th>
+        <th class="name-col">Участник</th>
+        <th class="size-col">Очки</th>
+        <th class="stats-col">Статистика дуэлей</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+  <div class="pagination-slot"></div>
+</template>
+
+<template id="template-player-row">
+  <tr>
+    <td class="rank"></td>
+    <td class="name"></td>
+    <td class="size"></td>
+    <td class="stats"></td>
+  </tr>
+</template>
+
+<template id="template-pagination">
+  <div class="pagination">
+    <button type="button" class="pagination-btn pagination-prev" data-action="page">← Назад</button>
+    <span class="pagination-info"></span>
+    <button type="button" class="pagination-btn pagination-next" data-action="page">Вперёд →</button>
+  </div>
+</template>

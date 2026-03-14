@@ -1,0 +1,197 @@
+<div class="container">
+  <div class="header">
+    <h1>🎮 Админ-панель</h1>
+    <p>Управление ботом и командами</p>
+  </div>
+  <div id="alert-container"></div>
+  <div class="tabs">
+    <button class="tab-btn active" data-tab="commands">📝 Команды</button>
+    <button class="tab-btn" data-tab="counters">🔢 Счётчики</button>
+    <button class="tab-btn" data-tab="duels">⚔️ Дуэли</button>
+    <button class="tab-btn" data-tab="party">🎉 Партия</button>
+  </div>
+  <div class="tab-content active"
+       id="tab-commands">
+    <div class="controls">
+      <div>
+        <h2>Все ссылки</h2>
+        <p>Редактировать общий текст, который отправляется при команде (!ссылки)</p>
+      </div>
+      <button class="btn btn-small"
+              id="all-links-btn">
+        Все ссылки
+      </button>
+    </div>
+    <div id="commands-container"
+         class="commands-grid">
+      <div class="loading">
+        Загрузка команд...
+      </div>
+    </div>
+    <div class="empty-state"
+         id="empty-state">
+      <h3>Команды не найдены</h3>
+      <p>Создайте свою первую команду, нажав на кнопку выше</p>
+    </div>
+  </div>
+  <div class="tab-content"
+       id="tab-counters">
+    <div id="counters-container"
+         class="commands-grid">
+      <div class="loading">Загрузка счётчиков...</div>
+    </div>
+  </div>
+  <div class="tab-content"
+       id="tab-duels">
+    <div class="admin-section">
+      <h3>Управление дуэлями</h3>
+      <div class="admin-duels-toggle-row">
+        <span class="admin-duels-label">Дуэли</span>
+        <div class="status-toggle off"
+             id="duels-toggle"
+             data-enabled="false"
+             title="Включить/выключить дуэли">
+          <div class="status-toggle-circle"></div>
+          <span class="status-toggle-text">Загрузка...</span>
+        </div>
+      </div>
+    </div>
+    <div class="admin-section">
+      <h3>Амнистия</h3>
+      <div class="admin-actions">
+        <button class="btn"
+                id="pardon-all-btn">
+          🕊️ Простить всех (снять тайм-ауты)
+        </button>
+      </div>
+      <p class="admin-description">Снимает тайм-ауты дуэлей со всех игроков</p>
+    </div>
+  </div>
+  <div class="tab-content"
+       id="tab-party">
+    <div class="admin-section party-config-section">
+      <div class="party-config-header">
+        <h3>Настройки команды</h3>
+        <div class="party-config-toggle">
+          <div class="status-toggle off"
+               id="party-skip-cooldown-toggle"
+               data-enabled="false"
+               title="Тестовый режим — без ограничения раз в сутки">
+            <div class="status-toggle-circle"></div>
+            <span class="status-toggle-text">Ограничение ВКЛ</span>
+          </div>
+        </div>
+      </div>
+      <div class="party-config-row">
+        <div class="party-config-field">
+          <label for="party-elements-count">Количество элементов</label>
+          <input type="number"
+                 id="party-elements-count"
+                 class="party-input"
+                 min="1"
+                 max="10">
+        </div>
+        <div class="party-config-field">
+          <label for="party-quantity-max">Макс. штук на элемент</label>
+          <input type="number"
+                 id="party-quantity-max"
+                 class="party-input"
+                 min="1"
+                 max="99">
+        </div>
+        <button class="btn btn-small"
+                id="party-config-save-btn">
+          Сохранить
+        </button>
+      </div>
+      <p class="admin-description">Пример: 2 элемента, макс 5 → «Партия выдала 3 дракоша‑сосед и 2 хомяко‑адвоката для @user». Раз в сутки на пользователя.</p>
+    </div>
+    <div id="party-items-container"
+         class="commands-grid">
+      <div class="loading">Загрузка...</div>
+    </div>
+  </div>
+</div>
+<template id="template-add-command-card">
+  <div class="command-card add-command-card" id="add-command-card-trigger">
+    <div class="add-command-content">
+      <div class="add-command-icon">+</div>
+      <div class="add-command-text">Добавить команду</div>
+    </div>
+  </div>
+</template>
+<template id="template-command-card">
+  <div class="command-card" data-id="" data-message-type="" data-color="">
+    <div class="command-header">
+      <div class="command-trigger"></div>
+      <div class="command-status">
+        <span class="color-badge"></span>
+        <div class="status-toggle" data-action="toggle">
+          <div class="status-toggle-circle"></div>
+          <span class="status-toggle-text"></span>
+        </div>
+      </div>
+    </div>
+    <div class="command-description-slot"><div class="command-description"></div></div>
+    <div class="command-response"></div>
+    <div class="command-aliases"></div>
+    <div class="command-actions">
+      <button type="button" class="btn btn-small" data-action="send">🚀 В чат</button>
+      <button type="button" class="btn btn-small" data-action="edit">✏️ Изменить</button>
+      <button type="button" class="btn btn-small btn-danger" data-action="delete">🗑️ Удалить</button>
+    </div>
+  </div>
+</template>
+<template id="template-add-counter-card">
+  <div class="command-card add-command-card" id="add-counter-card-trigger">
+    <div class="add-command-content">
+      <div class="add-command-icon">+</div>
+      <div class="add-command-text">Добавить счётчик</div>
+    </div>
+  </div>
+</template>
+<template id="template-counter-card">
+  <div class="command-card counter-card" data-id="">
+    <div class="command-header">
+      <div class="command-trigger">
+        <span class="trigger-main"></span>
+        <span class="counter-variants"></span>
+      </div>
+      <div class="command-status">
+        <div class="status-toggle" data-action="toggle">
+          <div class="status-toggle-circle"></div>
+          <span class="status-toggle-text"></span>
+        </div>
+      </div>
+    </div>
+    <div class="counter-description-slot"><div class="command-description"></div></div>
+    <div class="counter-value-display">
+      <div class="counter-label">Текущее значение:</div>
+      <div class="counter-value"></div>
+    </div>
+    <div class="counter-template"></div>
+    <div class="command-aliases"></div>
+    <div class="command-actions">
+      <button type="button" class="btn btn-small" data-action="edit-value">✏️ Изменить значение</button>
+      <button type="button" class="btn btn-small" data-action="edit">⚙️ Настройки</button>
+      <button type="button" class="btn btn-small btn-danger" data-action="delete">🗑️ Удалить</button>
+    </div>
+  </div>
+</template>
+<template id="template-add-party-card">
+  <div class="command-card add-command-card" id="add-party-item-card-trigger">
+    <div class="add-command-content">
+      <div class="add-command-icon">+</div>
+      <div class="add-command-text">Добавить элемент</div>
+    </div>
+  </div>
+</template>
+<template id="template-party-item">
+  <div class="command-card party-item-card" data-id="">
+    <div class="command-response"></div>
+    <div class="command-actions">
+      <button type="button" class="btn btn-small" data-action="edit">✏️ Изменить</button>
+      <button type="button" class="btn btn-small btn-danger" data-action="delete">🗑️ Удалить</button>
+    </div>
+  </div>
+</template>

@@ -1,0 +1,23 @@
+// Дополнительные стили админ-панели (основа — styles.scss)
+
+admin-panel .controls {
+  margin-top: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+
+  h2 {
+    margin-bottom: 6px;
+    font-size: 1.1em;
+  }
+
+  p {
+    font-size: 0.9em;
+    color: #555;
+  }
+}
+
+admin-panel .empty-state {
+  display: none;
+}

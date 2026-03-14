@@ -1,5 +1,7 @@
+// @ts-ignore
 import template from './command-dialog.html?raw';
 import './command-dialog.scss';
+import { createModal } from '../../utils/modal';
 import { substituteTimePlaceholders } from '../../utils/time-placeholders';
 import type { CustomCommand, MessageType, CommandColor } from '../../types';
 
@@ -19,12 +21,13 @@ export interface CommandDialogSaveDetail {
 export class CommandDialogElement extends HTMLElement {
   private initialized = false;
   private saveButton: HTMLButtonElement | null = null;
-  private escHandler?: (event: KeyboardEvent) => void;
+  private modal!: ReturnType<typeof createModal>;
 
   connectedCallback(): void {
     if (this.initialized) return;
     this.initialized = true;
     this.innerHTML = template;
+    this.modal = createModal(() => this.querySelector('.modal'));
 
     const colorSelect = this.querySelector<HTMLInputElement>('#command-color')
     if (colorSelect) {
@@ -55,22 +58,43 @@ export class CommandDialogElement extends HTMLElement {
 
     messageTypeSelect?.addEventListener('change', () => {
       this.toggleColorField();
-      this.validateCooldown();
+      this.validateForm();
     });
 
-    cooldownInput?.addEventListener('input', () => this.validateCooldown());
+    cooldownInput?.addEventListener('input', () => this.validateForm());
+
+    const requiredFields = [
+      this.querySelector<HTMLInputElement>('#command-id'),
+      this.querySelector<HTMLInputElement>('#command-trigger'),
+      this.querySelector<HTMLTextAreaElement>('#command-response'),
+    ].filter(Boolean) as (HTMLInputElement | HTMLTextAreaElement)[];
+
+    requiredFields.forEach((el) => {
+      el.addEventListener('blur', () => {
+        const empty = !el.value.trim();
+        el.classList.toggle('is-invalid', empty);
+        this.validateForm();
+      });
+      el.addEventListener('input', () => {
+        if (el.value.trim()) el.classList.remove('is-invalid');
+        this.validateForm();
+      });
+    });
 
     const responseTextarea = this.querySelector<HTMLTextAreaElement>('#command-response');
     const counterEl = this.querySelector<HTMLElement>('#command-response-counter');
     const updateCounter = () => {
       const raw = responseTextarea?.value ?? '';
       const effective = substituteTimePlaceholders(raw);
-      if (counterEl) counterEl.textContent = `${effective.length} / 500`;
+      if (counterEl) {
+        counterEl.textContent = `${effective.length} / 500`;
+      }
     };
+
     responseTextarea?.addEventListener('input', updateCounter);
     responseTextarea?.addEventListener('change', updateCounter);
 
-    this.validateCooldown();
+    this.validateForm();
   }
 
   openForCreate(): void {
@@ -84,17 +108,32 @@ export class CommandDialogElement extends HTMLElement {
 
     modalTitle && (modalTitle.textContent = 'Добавить команду');
     form?.reset();
-    if (editIdInput) editIdInput.value = '';
-    if (idInput) idInput.disabled = false;
+    ['#command-id', '#command-trigger', '#command-response'].forEach((sel) => {
+      this.querySelector<HTMLInputElement | HTMLTextAreaElement>(sel)?.classList.remove('is-invalid');
+    });
+    if (editIdInput) {
+      editIdInput.value = '';
+    }
 
-    if (messageTypeSelect) messageTypeSelect.value = 'message';
-    if (colorSelect) colorSelect.value = 'primary';
+    if (idInput) {
+      idInput.disabled = false;
+    }
+
+    if (messageTypeSelect) {
+      messageTypeSelect.value = 'message';
+    }
+
+    if (colorSelect) {
+      colorSelect.value = 'primary';
+    }
 
     const cooldown = this.querySelector<HTMLInputElement>('#command-cooldown');
-    if (cooldown) cooldown.value = '0';
+    if (cooldown) {
+      cooldown.value = '0';
+    }
 
     this.toggleColorField();
-    this.validateCooldown();
+    this.validateForm();
     this.updateResponseCounter();
     this.open();
   }
@@ -125,9 +164,12 @@ export class CommandDialogElement extends HTMLElement {
     if (messageTypeSelect) messageTypeSelect.value = command.messageType ?? 'announcement';
     if (colorSelect) colorSelect.value = command.color ?? 'primary';
     if (cooldownInput) cooldownInput.value = String(command.cooldown ?? 10);
+    ['#command-id', '#command-trigger', '#command-response'].forEach((sel) => {
+      this.querySelector<HTMLInputElement | HTMLTextAreaElement>(sel)?.classList.remove('is-invalid');
+    });
 
     this.toggleColorField();
-    this.validateCooldown();
+    this.validateForm();
     this.updateResponseCounter();
     this.open();
   }
@@ -141,24 +183,11 @@ export class CommandDialogElement extends HTMLElement {
   }
 
   close(): void {
-    const modal = this.querySelector<HTMLElement>('.modal');
-    modal?.classList.remove('active');
-    document.body.classList.remove('modal-open');
+    this.modal.hide();
   }
 
   private open(): void {
-    const modal = this.querySelector<HTMLElement>('.modal');
-    modal?.classList.add('active');
-    document.body.classList.add('modal-open');
-
-    if (!this.escHandler) {
-      this.escHandler = (event: KeyboardEvent) => {
-        if (event.key === 'Escape') {
-          this.close();
-        }
-      };
-      document.addEventListener('keydown', this.escHandler);
-    }
+    this.modal.show();
   }
 
   private toggleColorField(): void {
@@ -169,34 +198,32 @@ export class CommandDialogElement extends HTMLElement {
     colorField.style.display = messageTypeSelect.value === 'announcement' ? 'block' : 'none';
   }
 
+  private isRequiredFilled(): boolean {
+    const id = this.querySelector<HTMLInputElement>('#command-id')?.value.trim();
+    const trigger = this.querySelector<HTMLInputElement>('#command-trigger')?.value.trim();
+    const response = this.querySelector<HTMLTextAreaElement>('#command-response')?.value.trim();
+    return Boolean(id && trigger && response);
+  }
+
+  private validateForm(): void {
+    const requiredOk = this.isRequiredFilled();
+    const cooldownOk = this.validateCooldown();
+    if (this.saveButton) this.saveButton.disabled = !requiredOk || !cooldownOk;
+  }
+
   private validateCooldown(): boolean {
     const messageTypeSelect = this.querySelector<HTMLSelectElement>('#command-message-type');
     const cooldownInput = this.querySelector<HTMLInputElement>('#command-cooldown');
     const errorEl = this.querySelector<HTMLElement>('#command-cooldown-error');
 
-    if (!messageTypeSelect || !cooldownInput) {
-      return true;
-    }
+    if (!messageTypeSelect || !cooldownInput) return true;
 
     const value = parseInt(cooldownInput.value, 10);
     const isAnnouncement = messageTypeSelect.value === 'announcement';
+    const isValid = !isAnnouncement || (!isNaN(value) && value >= 5);
 
-    let isValid = true;
-
-    if (isAnnouncement && (isNaN(value) || value < 5)) {
-      isValid = false;
-    }
-
-    if (!isValid) {
-      cooldownInput.classList.add('is-invalid');
-      if (errorEl) errorEl.style.display = 'block';
-      if (this.saveButton) this.saveButton.disabled = true;
-    } else {
-      cooldownInput.classList.remove('is-invalid');
-      if (errorEl) errorEl.style.display = 'none';
-      if (this.saveButton) this.saveButton.disabled = false;
-    }
-
+    cooldownInput.classList.toggle('is-invalid', !isValid);
+    if (errorEl) errorEl.style.display = isValid ? 'none' : 'block';
     return isValid;
   }
 
@@ -263,9 +290,7 @@ export class CommandDialogElement extends HTMLElement {
   }
 
   disconnectedCallback(): void {
-    if (this.escHandler) {
-      document.removeEventListener('keydown', this.escHandler);
-    }
+    this.modal?.cleanup();
   }
 }
 
