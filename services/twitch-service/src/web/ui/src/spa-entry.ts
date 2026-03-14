@@ -62,7 +62,7 @@ document.addEventListener('click', (event) => {
   const link = (event.target as HTMLElement).closest<HTMLAnchorElement>('a[href^="/"]');
   if (!link || link.target === '_blank') return;
   const href = link.getAttribute('href');
-  if (!href || href.startsWith('//') || href.startsWith('/oauth')) return;
+  if (!href || href.startsWith('//')) return;
   event.preventDefault();
   history.pushState(null, '', href);
   render();
