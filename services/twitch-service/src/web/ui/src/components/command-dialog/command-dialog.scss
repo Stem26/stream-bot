@@ -78,6 +78,23 @@ command-dialog .form-group label {
   color: #333;
 }
 
+command-dialog .form-group-textarea .label-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+command-dialog .form-group-textarea .label-row label {
+  margin-bottom: 0;
+}
+
+command-dialog .char-counter {
+  font-size: 0.85em;
+  color: #6c757d;
+  font-weight: 400;
+}
+
 command-dialog .form-group input,
 command-dialog .form-group select {
   width: 100%;
@@ -118,6 +135,19 @@ command-dialog .form-group small {
 
 command-dialog .form-group small.error-message {
   color: #dc3545;
+}
+
+command-dialog .form-group small.hint-time {
+  margin-top: 6px;
+  color: #6c757d;
+
+  code {
+    background: #f1f3f4;
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-family: Menlo, Consolas, monospace;
+    font-size: 0.9em;
+  }
 }
 
 command-dialog .form-group input.is-invalid {

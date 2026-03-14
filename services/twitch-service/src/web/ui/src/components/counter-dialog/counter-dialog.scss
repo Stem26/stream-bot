@@ -77,6 +77,23 @@ counter-dialog .form-group label {
   color: #333;
 }
 
+counter-dialog .form-group-textarea .label-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+counter-dialog .form-group-textarea .label-row label {
+  margin-bottom: 0;
+}
+
+counter-dialog .char-counter {
+  font-size: 0.85em;
+  color: #6c757d;
+  font-weight: 400;
+}
+
 counter-dialog .form-group input,
 counter-dialog .form-group textarea {
   width: 100%;
@@ -107,6 +124,14 @@ counter-dialog .form-group small {
   margin-top: 5px;
   color: #6c757d;
   font-size: 0.85em;
+
+  code {
+    background: #f1f3f4;
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-family: Menlo, Consolas, monospace;
+    font-size: 0.9em;
+  }
 }
 
 counter-dialog .form-actions {

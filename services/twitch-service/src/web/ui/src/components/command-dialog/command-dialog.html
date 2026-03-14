@@ -2,40 +2,56 @@
   <div class="modal-content">
     <div class="modal-header">
       <h2 id="modal-title">фываыфва команду</h2>
-      <button type="button" class="modal-close-btn" data-close>×</button>
+      <button type="button"
+              class="modal-close-btn"
+              data-close>×
+      </button>
     </div>
     <form id="command-form">
-      <input type="hidden" id="edit-command-id" />
-
+      <input type="hidden"
+             id="edit-command-id"/>
       <div class="modal-body">
         <div class="form-group">
           <label for="command-id">ID команды *</label>
-          <input type="text" id="command-id" required placeholder="discord, boosty, vk" />
+          <input type="text" id="command-id"
+                 required
+                 placeholder="discord, boosty, vk"/>
         </div>
-
         <div class="form-group">
           <label for="command-trigger">Триггер *</label>
-          <input type="text" id="command-trigger" required placeholder="!discord" />
+          <input type="text"
+                 id="command-trigger"
+                 required
+                 placeholder="!discord"/>
           <small>Команда для вызова в чате (например: !discord)</small>
         </div>
-
         <div class="form-group">
           <label for="command-aliases">Алиасы</label>
-          <input type="text" id="command-aliases" placeholder="!ds, !дс, !дискорд" />
+          <input type="text"
+                 id="command-aliases"
+                 placeholder="!ds, !дс, !дискорд" />
           <small>Дополнительные варианты команды через запятую</small>
         </div>
-
-        <div class="form-group">
-          <label for="command-response">Ответ *</label>
-          <textarea id="command-response" required placeholder="Текст ответа или ссылка"></textarea>
-          <small>Текст, который бот отправит в чат</small>
+        <div class="form-group form-group-textarea">
+          <div class="label-row">
+            <label for="command-response">Ответ *</label>
+            <span class="char-counter"
+                  id="command-response-counter">
+              0 / 500
+            </span>
+          </div>
+          <textarea id="command-response"
+                    required
+                    placeholder="Текст ответа или ссылка"></textarea>
+          <small>Текст, который бот отправит в чат. Макс. 500 символов в одном сообщении.</small>
+          <small class="hint-time">Время: <code>{time:Europe/Moscow}</code>, <code>{time:Asia/Tokyo}</code> — любой IANA часовой пояс.</small>
         </div>
-
         <div class="form-group">
           <label for="command-description">Описание</label>
-          <input type="text" id="command-description" placeholder="Краткое описание команды" />
+          <input type="text"
+                 id="command-description"
+                 placeholder="Краткое описание команды">
         </div>
-
         <div class="form-group">
           <label for="command-message-type">Тип сообщения</label>
           <select id="command-message-type">
@@ -44,35 +60,37 @@
           </select>
           <small>Объявления - яркие цветные, но с лимитами. Сообщения - обычные, можно чаще</small>
         </div>
-
-        <div class="form-group" id="color-field">
+        <div class="form-group"
+             id="color-field">
           <label for="command-color">Цвет объявления</label>
           <select id="command-color">
-            <option value="primary">Обычный (Primary)</option>
-            <option value="blue">Синий (Blue)</option>
-            <option value="green">Зелёный (Green)</option>
-            <option value="orange">Оранжевый (Orange)</option>
-            <option value="purple">Фиолетовый (Purple)</option>
           </select>
         </div>
-
         <div class="form-group">
           <label for="command-cooldown">Кулдаун (секунды)</label>
-          <input type="number" id="command-cooldown" value="10" min="0" max="3600" />
+          <input type="number"
+                 id="command-cooldown"
+                 value="10" min="0" max="3600">
           <small id="command-cooldown-help">
             Для сообщений: 0 — без кулдауна. Для объявлений: минимум 5 секунд.
           </small>
-          <small id="command-cooldown-error" class="error-message" style="display: none;">
+          <small id="command-cooldown-error"
+                 class="error-message"
+                 style="display: none;">
             Для объявлений кулдаун должен быть не меньше 5 секунд.
           </small>
         </div>
       </div>
-
       <div class="form-actions">
-        <button type="button" class="btn btn-secondary" data-close>Отмена</button>
-        <button type="submit" class="btn btn-success">Сохранить</button>
+        <button type="button"
+                class="btn btn-secondary"
+                data-close>Отмена
+        </button>
+        <button type="submit"
+                class="btn btn-success">
+          Сохранить
+        </button>
       </div>
     </form>
   </div>
   </div>
-

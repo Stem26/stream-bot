@@ -158,7 +158,10 @@ function renderCounters(data: CountersData): void {
         data-id="${encodedId}"
       >
         <div class="command-header">
-          <div class="command-trigger">${counter.trigger}</div>
+          <div class="command-trigger">
+            ${counter.trigger}
+            <span class="counter-variants">${counter.trigger}инфо · ${counter.trigger}откат · ${counter.trigger}[число]</span>
+          </div>
           <div class="command-status">
             <div class="status-toggle ${counter.enabled ? 'on' : 'off'}" data-action="toggle">
               <div class="status-toggle-circle"></div>
@@ -211,17 +214,23 @@ async function loadCounters(): Promise<void> {
   }
 }
 
-async function loadDuelsStatus(): Promise<void> {
+async function loadDuelsStatus(): Promise<boolean> {
   try {
     const response = await fetch('/api/admin/duels/status');
     const data = await response.json();
-    const statusEl = document.getElementById('duels-status');
-    if (statusEl) {
-      statusEl.textContent = data.enabled ? '✅ Включены' : '❌ Выключены';
-      statusEl.style.color = data.enabled ? '#28a745' : '#dc3545';
+    const toggle = document.getElementById('duels-toggle');
+    if (toggle) {
+      const enabled = Boolean(data.enabled);
+      toggle.classList.toggle('on', enabled);
+      toggle.classList.toggle('off', !enabled);
+      toggle.dataset.enabled = String(enabled);
+      const textEl = toggle.querySelector('.status-toggle-text');
+      if (textEl) textEl.textContent = enabled ? 'ВКЛ' : 'ВЫКЛ';
     }
+    return Boolean(data.enabled);
   } catch (error) {
     console.error('Ошибка загрузки статуса дуэлей:', error);
+    return false;
   }
 }
 
@@ -571,35 +580,20 @@ async function bootstrap(): Promise<void> {
     }
   });
 
-  // Админ панель - кнопки управления дуэлями
-  const enableDuelsBtn = document.getElementById('enable-duels-btn');
-  const disableDuelsBtn = document.getElementById('disable-duels-btn');
+  // Админ панель - тоггл управления дуэлями
+  const duelsToggle = document.getElementById('duels-toggle');
   const pardonAllBtn = document.getElementById('pardon-all-btn');
 
-  enableDuelsBtn?.addEventListener('click', async () => {
+  duelsToggle?.addEventListener('click', async () => {
+    const enabled = duelsToggle.dataset.enabled === 'true';
+    const endpoint = enabled ? '/api/admin/duels/disable' : '/api/admin/duels/enable';
     try {
-      const res = await fetch('/api/admin/duels/enable', { method: 'POST' });
+      const res = await fetch(endpoint, { method: 'POST' });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.error || `HTTP ${res.status}`);
       }
-      showAlert('Дуэли включены');
-      await loadDuelsStatus();
-    } catch (error) {
-      if (error instanceof Error) {
-        showAlert(`Ошибка: ${error.message}`, 'error');
-      }
-    }
-  });
-
-  disableDuelsBtn?.addEventListener('click', async () => {
-    try {
-      const res = await fetch('/api/admin/duels/disable', { method: 'POST' });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || `HTTP ${res.status}`);
-      }
-      showAlert('Дуэли выключены');
+      showAlert(enabled ? 'Дуэли выключены' : 'Дуэли включены');
       await loadDuelsStatus();
     } catch (error) {
       if (error instanceof Error) {

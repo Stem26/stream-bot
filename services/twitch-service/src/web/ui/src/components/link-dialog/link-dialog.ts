@@ -1,5 +1,6 @@
 import template from './link-dialog.html?raw';
 import './link-dialog.scss';
+import { substituteTimePlaceholders } from '../../utils/time-placeholders';
 
 export interface LinkDialogSaveDetail {
   allLinksText: string;
@@ -41,6 +42,16 @@ export class LinkDialogElement extends HTMLElement {
         }),
       );
     });
+
+    const textarea = this.querySelector<HTMLTextAreaElement>('#all-links-text');
+    const counterEl = this.querySelector<HTMLElement>('#all-links-counter');
+    const updateCounter = () => {
+      const raw = textarea?.value ?? '';
+      const effective = substituteTimePlaceholders(raw);
+      if (counterEl) counterEl.textContent = `${effective.length} / 500`;
+    };
+    textarea?.addEventListener('input', updateCounter);
+    textarea?.addEventListener('change', updateCounter);
   }
 
   open(initialText: string): void {
@@ -49,6 +60,7 @@ export class LinkDialogElement extends HTMLElement {
     if (textarea) {
       textarea.value = initialText ?? '';
     }
+    this.updateLinksCounter();
     const modal = this.querySelector<HTMLElement>('.modal');
     modal?.classList.add('active');
     document.body.classList.add('modal-open');
@@ -67,6 +79,14 @@ export class LinkDialogElement extends HTMLElement {
     const modal = this.querySelector<HTMLElement>('.modal');
     modal?.classList.remove('active');
     document.body.classList.remove('modal-open');
+  }
+
+  private updateLinksCounter(): void {
+    const ta = this.querySelector<HTMLTextAreaElement>('#all-links-text');
+    const counter = this.querySelector<HTMLElement>('#all-links-counter');
+    const raw = ta?.value ?? '';
+    const effective = substituteTimePlaceholders(raw);
+    if (counter) counter.textContent = `${effective.length} / 500`;
   }
 
   private ensureInit(): void {

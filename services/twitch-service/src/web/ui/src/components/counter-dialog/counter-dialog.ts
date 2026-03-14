@@ -1,5 +1,6 @@
 import template from './counter-dialog.html?raw';
 import './counter-dialog.scss';
+import { substituteTimePlaceholders } from '../../utils/time-placeholders';
 import type { Counter } from '../../types';
 
 export interface CounterDialogSaveDetail {
@@ -32,6 +33,20 @@ export class CounterDialogElement extends HTMLElement {
         }),
       );
     });
+
+    const templateTextarea = this.querySelector<HTMLTextAreaElement>('#counter-template');
+    const valueInput = this.querySelector<HTMLInputElement>('#counter-value');
+    const counterEl = this.querySelector<HTMLElement>('#counter-template-counter');
+    const updateCounter = () => {
+      const raw = templateTextarea?.value ?? '';
+      const valueStr = valueInput?.value ?? '0';
+      const withValue = raw.replace(/\{value\}/g, valueStr);
+      const effective = substituteTimePlaceholders(withValue);
+      if (counterEl) counterEl.textContent = `${effective.length} / 500`;
+    };
+    templateTextarea?.addEventListener('input', updateCounter);
+    templateTextarea?.addEventListener('change', updateCounter);
+    valueInput?.addEventListener('input', updateCounter);
   }
 
   openForCreate(): void {
@@ -49,6 +64,7 @@ export class CounterDialogElement extends HTMLElement {
     const valueInput = this.querySelector<HTMLInputElement>('#counter-value');
     if (valueInput) valueInput.value = '0';
 
+    this.updateCounterTemplateCounter();
     this.open();
   }
 
@@ -75,7 +91,19 @@ export class CounterDialogElement extends HTMLElement {
     if (valueInput) valueInput.value = String(counter.value ?? 0);
     if (descriptionInput) descriptionInput.value = counter.description ?? '';
 
+    this.updateCounterTemplateCounter();
     this.open();
+  }
+
+  private updateCounterTemplateCounter(): void {
+    const ta = this.querySelector<HTMLTextAreaElement>('#counter-template');
+    const valueInput = this.querySelector<HTMLInputElement>('#counter-value');
+    const counter = this.querySelector<HTMLElement>('#counter-template-counter');
+    const raw = ta?.value ?? '';
+    const valueStr = valueInput?.value ?? '0';
+    const withValue = raw.replace(/\{value\}/g, valueStr);
+    const effective = substituteTimePlaceholders(withValue);
+    if (counter) counter.textContent = `${effective.length} / 500`;
   }
 
   close(): void {

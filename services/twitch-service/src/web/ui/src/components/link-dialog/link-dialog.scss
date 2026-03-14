@@ -85,11 +85,40 @@ link-dialog .form-group {
   margin-bottom: 20px;
 }
 
+link-dialog .form-group-textarea .label-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+link-dialog .form-group-textarea .label-row label {
+  margin-bottom: 0;
+}
+
+link-dialog .char-counter {
+  font-size: 0.85em;
+  color: #6c757d;
+  font-weight: 400;
+}
+
 link-dialog .form-group label {
   display: block;
   margin-bottom: 8px;
   font-weight: 600;
   color: #333;
+}
+
+link-dialog .form-group small.hint-time {
+  margin-top: 6px;
+
+  code {
+    background: #f1f3f4;
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-family: Menlo, Consolas, monospace;
+    font-size: 0.9em;
+  }
 }
 
 link-dialog .form-group small {

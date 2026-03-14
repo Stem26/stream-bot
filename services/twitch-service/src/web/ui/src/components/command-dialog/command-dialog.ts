@@ -1,6 +1,15 @@
 import template from './command-dialog.html?raw';
 import './command-dialog.scss';
+import { substituteTimePlaceholders } from '../../utils/time-placeholders';
 import type { CustomCommand, MessageType, CommandColor } from '../../types';
+
+const ANNOUNCEMENT_COLORS: {value: CommandColor; label: string }[] =[
+  {value: "primary", label: 'Обычный (Primary)'},
+  {value: "blue", label: 'Синий (Blue)'},
+  {value: "green", label: 'Зелёный (Green)'},
+  {value: "orange", label: 'Оранжевый (Orange)'},
+  {value: "purple", label: 'Фиолетовый (Purple)'},
+]
 
 export interface CommandDialogSaveDetail {
   command: CustomCommand;
@@ -16,6 +25,12 @@ export class CommandDialogElement extends HTMLElement {
     if (this.initialized) return;
     this.initialized = true;
     this.innerHTML = template;
+
+    const colorSelect = this.querySelector<HTMLInputElement>('#command-color')
+    if (colorSelect) {
+      colorSelect.innerHTML = ANNOUNCEMENT_COLORS.map((color) =>
+          `<option value="${color.value}">${color.label}</option>`).join('')
+    }
 
     this.querySelectorAll<HTMLElement>('[data-close]').forEach((btn) => {
       btn.addEventListener('click', () => this.close());
@@ -45,7 +60,16 @@ export class CommandDialogElement extends HTMLElement {
 
     cooldownInput?.addEventListener('input', () => this.validateCooldown());
 
-    // начальная валидация
+    const responseTextarea = this.querySelector<HTMLTextAreaElement>('#command-response');
+    const counterEl = this.querySelector<HTMLElement>('#command-response-counter');
+    const updateCounter = () => {
+      const raw = responseTextarea?.value ?? '';
+      const effective = substituteTimePlaceholders(raw);
+      if (counterEl) counterEl.textContent = `${effective.length} / 500`;
+    };
+    responseTextarea?.addEventListener('input', updateCounter);
+    responseTextarea?.addEventListener('change', updateCounter);
+
     this.validateCooldown();
   }
 
@@ -63,7 +87,6 @@ export class CommandDialogElement extends HTMLElement {
     if (editIdInput) editIdInput.value = '';
     if (idInput) idInput.disabled = false;
 
-    // значения по умолчанию
     if (messageTypeSelect) messageTypeSelect.value = 'message';
     if (colorSelect) colorSelect.value = 'primary';
 
@@ -72,6 +95,7 @@ export class CommandDialogElement extends HTMLElement {
 
     this.toggleColorField();
     this.validateCooldown();
+    this.updateResponseCounter();
     this.open();
   }
 
@@ -104,7 +128,16 @@ export class CommandDialogElement extends HTMLElement {
 
     this.toggleColorField();
     this.validateCooldown();
+    this.updateResponseCounter();
     this.open();
+  }
+
+  private updateResponseCounter(): void {
+    const ta = this.querySelector<HTMLTextAreaElement>('#command-response');
+    const counter = this.querySelector<HTMLElement>('#command-response-counter');
+    const raw = ta?.value ?? '';
+    const effective = substituteTimePlaceholders(raw);
+    if (counter) counter.textContent = `${effective.length} / 500`;
   }
 
   close(): void {
@@ -186,9 +219,8 @@ export class CommandDialogElement extends HTMLElement {
     const parsedCooldown = parseInt(cooldownInput.value, 10);
     const cooldown = Number.isNaN(parsedCooldown) ? 0 : parsedCooldown;
 
-    // Жёсткая валидация кулдауна перед сохранением
     if (messageType === 'announcement' && cooldown < 5) {
-      this.validateCooldown(); // обновим UI-ошибку
+      this.validateCooldown();
       return null;
     }
 

@@ -6,15 +6,15 @@
     </div>
     <form id="links-form">
       <div class="modal-body">
-        <div class="form-group">
-          <label for="all-links-text">Текст, который бот отправит по команде !ссылки</label>
-          <textarea
-            id="all-links-text"
-            placeholder="Например: 📸Boosty ... 😻Discord ... 💖Donation ...">
-          </textarea>
-          <small>Текст отправляется одним сообщением, как на Twitch. Используй пробелы и разделители (───),
-            чтобы контролировать визуальные переносы.
-          </small>
+        <div class="form-group form-group-textarea">
+          <div class="label-row">
+            <label for="all-links-text">Текст, который бот отправит по команде !ссылки</label>
+            <span class="char-counter" id="all-links-counter">0 / 500</span>
+          </div>
+          <textarea id="all-links-text"
+            placeholder="Например: 📸Boosty ... 😻Discord ... 💖Donation ..."></textarea>
+          <small>Текст отправляется одним сообщением, как на Twitch. Макс. 500 символов. Используй пробелы и разделители (───), чтобы контролировать визуальные переносы.</small>
+          <small class="hint-time">Время: <code>{time:Europe/Moscow}</code> — любой IANA часовой пояс.</small>
         </div>
       </div>
       <div class="form-actions">

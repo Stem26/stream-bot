@@ -230,7 +230,6 @@ export class NightBotMonitor {
         '!fp', '!фп',
         '!ссылки', '!links',
         '!игры', '!help',
-        '!время',
         // Счётчики (управляются через enabled флаг в БД)
         '!смерть', '!смертьинфо', '!смертьоткат', '!смертьсброс',
         '!стоп', '!стопинфо', '!стопоткат', '!стопсброс',
@@ -288,7 +287,6 @@ export class NightBotMonitor {
         register(['!персонажи'], (ch, u, m, msg) => void this.handleCharactersListCommand(ch, u, msg));
         register(['!игры', '!help'], (ch, u, m, msg) => void this.handleGamesCommand(ch, u, msg));
         register(['!ссылки', '!links'], (ch, u, m, msg) => void this.handleLinksCommand(ch, u, msg));
-        register(['!время'], (ch, u, m, msg) => void this.handleTimeCommand(ch, u, msg));
 
         return map;
     }
@@ -938,12 +936,35 @@ export class NightBotMonitor {
                     return;
                 }
 
-                // Проверяем счётчики из БД
+                // Проверяем счётчики из БД (точное совпадение — инкремент)
                 const counter = this.counters.get(trimmedMessage);
                 if (counter) {
                     console.log(`🔢 Обработка счётчика: ${trimmedMessage} (id: ${counter.id})`);
                     this.handleCounterCommand(channel, user, counter, msg);
                     return;
+                }
+
+                // Кастомные счётчики: !{trigger}инфо, !{trigger}сброс, !{trigger}откат, !{trigger}[число]
+                const variantMatch = trimmedMessage.match(/^(![a-zа-яё0-9_]+)(инфо|сброс|откат|\d+)$/);
+                if (variantMatch) {
+                    const base = variantMatch[1];
+                    const suffix = variantMatch[2];
+                    const baseCounter = this.counters.get(base);
+                    if (baseCounter && baseCounter.id !== 'stop' && baseCounter.id !== 'death') {
+                        if (suffix === 'инфо') {
+                            this.handleCounterInfoCommand(channel, user, baseCounter, msg);
+                        } else if (suffix === 'сброс') {
+                            this.handleCounterResetCommand(channel, user, baseCounter, msg);
+                        } else if (suffix === 'откат') {
+                            this.handleCounterRollbackCommand(channel, user, baseCounter, msg);
+                        } else {
+                            const targetValue = parseInt(suffix, 10);
+                            if (targetValue >= 0 && targetValue <= 9999) {
+                                this.handleCounterSetCommand(channel, user, baseCounter, targetValue, msg);
+                            }
+                        }
+                        return;
+                    }
                 }
             });
 
@@ -1230,11 +1251,33 @@ export class NightBotMonitor {
      *   минимум 5 секунд даже если cooldown=0, при большем значении берём его.
      * - options.skipCooldown: true — при вызове из веб-UI игнорируем кулдаун
      */
+    /**
+     * Подставляет плейсхолдеры времени в текст.
+     * Формат: {time:IANA_TIMEZONE} — например {time:Europe/Moscow}, {time:America/New_York}.
+     */
+    private substituteTimePlaceholders(text: string): string {
+        const now = new Date();
+        const fmt = (tz: string) => {
+            try {
+                return new Intl.DateTimeFormat('ru-RU', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    hour12: false,
+                    timeZone: tz,
+                }).format(now);
+            } catch {
+                return `?(${tz})`;
+            }
+        };
+        return text.replace(/\{time:([^}]+)\}/g, (_, tz) => fmt(tz.trim()));
+    }
+
     private async handleCustomCommand(channel: string, user: string, command: CustomCommand, msg: any, options?: { skipCooldown?: boolean }) {
         try {
             const cooldownKey = command.id;
             const rawCooldownSec = command.cooldown ?? 0;
             const skipCooldown = options?.skipCooldown ?? false;
+            const response = this.substituteTimePlaceholders(command.response);
 
             if (command.messageType === 'announcement') {
                 // Минимум 5 секунд для объявлений (если не skipCooldown)
@@ -1245,7 +1288,7 @@ export class NightBotMonitor {
                     return;
                 }
 
-                const success = await this.sendAnnouncement(command.response, command.color);
+                const success = await this.sendAnnouncement(response, command.color);
 
                 if (!success) {
                     throw new Error('Не удалось отправить объявление (проверьте broadcasterId/moderatorId или Helix API)');
@@ -1267,7 +1310,7 @@ export class NightBotMonitor {
                     return;
                 }
 
-                await this.sendMessage(channel, command.response);
+                await this.sendMessage(channel, response);
 
                 if (shouldCheckCooldown) {
                     this.setAnnouncementCooldown(cooldownKey);
@@ -1313,6 +1356,68 @@ export class NightBotMonitor {
             this.reloadCounters();
         } catch (error) {
             console.error(`❌ Ошибка при обработке счётчика ${counter.trigger}:`, error);
+        }
+    }
+
+    /** !{trigger}инфо — показать текущее значение кастомного счётчика */
+    private async handleCounterInfoCommand(channel: string, user: string, counter: any, msg: any) {
+        try {
+            const result = await query('SELECT value, response_template FROM counters WHERE id = $1', [counter.id]);
+            const currentValue = result[0]?.value ?? 0;
+            const template = result[0]?.response_template ?? '{value}';
+            const response = currentValue === 0
+                ? `Счётчик ${counter.trigger} пока на нуле`
+                : template.replace(/{value}/g, currentValue.toString());
+            await this.sendMessage(channel, response);
+        } catch (error) {
+            console.error(`❌ handleCounterInfo ${counter.trigger}:`, error);
+        }
+    }
+
+    /** !{trigger}сброс — сбросить кастомный счётчик в 0 */
+    private async handleCounterResetCommand(channel: string, user: string, counter: any, msg: any) {
+        try {
+            await query('UPDATE counters SET value = 0 WHERE id = $1', [counter.id]);
+            await this.sendMessage(channel, `Счётчик ${counter.trigger} сброшен`);
+            this.reloadCounters();
+        } catch (error) {
+            console.error(`❌ handleCounterReset ${counter.trigger}:`, error);
+        }
+    }
+
+    /** !{trigger}откат — откатить на 1 (уменьшить значение) */
+    private async handleCounterRollbackCommand(channel: string, user: string, counter: any, msg: any) {
+        try {
+            const result = await query('SELECT value FROM counters WHERE id = $1', [counter.id]);
+            const currentValue = result[0]?.value ?? 0;
+            if (currentValue <= 0) {
+                await this.sendMessage(channel, `Нет значений для отката`);
+                return;
+            }
+            const newValue = currentValue - 1;
+            await query('UPDATE counters SET value = $1 WHERE id = $2', [newValue, counter.id]);
+            const template = (await query('SELECT response_template FROM counters WHERE id = $1', [counter.id]))[0]?.response_template ?? '{value}';
+            const response = newValue === 0
+                ? `Откат выполнен, счётчик сброшен`
+                : template.replace(/{value}/g, newValue.toString());
+            await this.sendMessage(channel, response);
+            this.reloadCounters();
+        } catch (error) {
+            console.error(`❌ handleCounterRollback ${counter.trigger}:`, error);
+        }
+    }
+
+    /** !{trigger}[число] — установить значение кастомного счётчика */
+    private async handleCounterSetCommand(channel: string, user: string, counter: any, targetValue: number, msg: any) {
+        try {
+            await query('UPDATE counters SET value = $1 WHERE id = $2', [targetValue, counter.id]);
+            const result = await query('SELECT response_template FROM counters WHERE id = $1', [counter.id]);
+            const template = result[0]?.response_template ?? '{value}';
+            const response = `Счётчик установлен: ${template.replace(/{value}/g, targetValue.toString())}`;
+            await this.sendMessage(channel, response);
+            this.reloadCounters();
+        } catch (error) {
+            console.error(`❌ handleCounterSet ${counter.trigger}:`, error);
         }
     }
 
@@ -2311,45 +2416,6 @@ export class NightBotMonitor {
             console.log(`✅ Список ссылок отправлен в чат`);
         } catch (error) {
             console.error('❌ Ошибка при отправке списка ссылок:', error);
-        }
-    }
-
-    private async handleTimeCommand(channel: string, user: string, msg: any) {
-        try {
-            // Проверка announcement cooldown
-            if (this.isAnnouncementOnCooldown('!время')) {
-                return;
-            }
-            
-            const now = new Date();
-
-            const moscowFormatter = new Intl.DateTimeFormat('ru-RU', {
-                hour: '2-digit',
-                minute: '2-digit',
-                hour12: false,
-                timeZone: 'Europe/Moscow'
-            });
-
-            const samaraFormatter = new Intl.DateTimeFormat('ru-RU', {
-                hour: '2-digit',
-                minute: '2-digit',
-                hour12: false,
-                timeZone: 'Europe/Samara'
-            });
-
-            const moscowTime = moscowFormatter.format(now);
-            const samaraTime = samaraFormatter.format(now);
-
-            const response = `${moscowTime} - Московское время | Самара - ${samaraTime}`;
-
-            // Отправляем как Twitch announcement с случайным цветом
-            const success = await this.sendAnnouncement(response, this.getRandomAnnouncementColor());
-            
-            if (success) {
-                this.setAnnouncementCooldown('!время');
-            }
-        } catch (error) {
-            console.error('❌ Ошибка при обработке команды !время:', error);
         }
     }
 

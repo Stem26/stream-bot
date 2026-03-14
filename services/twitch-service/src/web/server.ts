@@ -828,6 +828,11 @@ app.get('/admin', (req: Request, res: Response) => {
     res.sendFile(path.join(__dirname, 'public', 'admin.html'));
 });
 
+// OAuth — страница для получения Twitch токена с полными scope
+app.get('/oauth', (req: Request, res: Response) => {
+    res.sendFile(path.join(__dirname, 'public', 'twitch-oauth.html'));
+});
+
 // Колбэки для связи с Twitch-сервисом
 let onCommandsChangedCallback: (() => void) | null = null;
 let onCommandExecuteCallback: ((id: string) => void | Promise<void>) | null = null;
