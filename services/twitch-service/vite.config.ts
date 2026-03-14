@@ -13,7 +13,6 @@ export default defineConfig({
         'public-home': resolve(__dirname, 'src/web/ui/public-home.html'),
         'public-duel': resolve(__dirname, 'src/web/ui/public-duel.html'),
         'public-links': resolve(__dirname, 'src/web/ui/public-links.html'),
-        'twitch-oauth': resolve(__dirname, 'src/web/ui/twitch-oauth.html'),
       },
     },
   },
