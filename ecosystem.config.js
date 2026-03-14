@@ -14,7 +14,7 @@ module.exports = {
       max_memory_restart: '500M',
       error_file: '~/.pm2/logs/telegram-bot-error.log',
       out_file: '~/.pm2/logs/telegram-bot-out.log',
-      log_date_format: 'YYYY-MM-DD HH:mm:ss [МСК]'
+      log_date_format: ''
     },
     {
       name: 'twitch-bot',
@@ -31,7 +31,7 @@ module.exports = {
       max_memory_restart: '500M',
       error_file: '~/.pm2/logs/twitch-bot-error.log',
       out_file: '~/.pm2/logs/twitch-bot-out.log',
-      log_date_format: 'YYYY-MM-DD HH:mm:ss [МСК]'
+      log_date_format: ''
     }
   ]
 };

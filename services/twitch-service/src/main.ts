@@ -1,3 +1,4 @@
+import './utils/console-msk';
 import { NightBotMonitor } from './services/nightbot-monitor';
 import { TwitchEventSubNative } from './services/twitch-eventsub-native';
 import { Telegraf } from 'telegraf';
