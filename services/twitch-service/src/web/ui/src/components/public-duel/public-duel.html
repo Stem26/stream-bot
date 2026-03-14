@@ -33,8 +33,10 @@
       <tr>
         <th class="rank-col">#</th>
         <th class="name-col">Участник</th>
-        <th class="size-col">Очки</th>
-        <th class="stats-col">Статистика дуэлей</th>
+        <th class="sort-col" data-sort="points" data-label="Очки">Очки <span class="sort-icon"></span></th>
+        <th class="sort-col" data-sort="wins" data-label="Побед">Побед <span class="sort-icon"></span></th>
+        <th class="sort-col sort-col-mobile-hide" data-sort="losses" data-label="Пор.">Пор. <span class="sort-icon"></span></th>
+        <th class="sort-col sort-col-mobile-hide" data-sort="draws" data-label="Ничьи">Ничьи <span class="sort-icon"></span></th>
       </tr>
     </thead>
     <tbody></tbody>
@@ -46,8 +48,10 @@
   <tr>
     <td class="rank"></td>
     <td class="name"></td>
-    <td class="size"></td>
-    <td class="stats"></td>
+    <td class="points"></td>
+    <td class="wins"></td>
+    <td class="losses"></td>
+    <td class="draws"></td>
   </tr>
 </template>
 

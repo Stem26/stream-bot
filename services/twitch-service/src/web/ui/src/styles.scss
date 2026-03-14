@@ -865,9 +865,11 @@ body.modal-open {
       padding: 10px 6px;
     }
 
-    // Скрываем колонку со статистикой на мобилке
-    th:nth-child(4),
-    td:nth-child(4) {
+    // Скрываем колонки «Пор.» и «Ничьи» на мобилке
+    th:nth-child(5),
+    td:nth-child(5),
+    th:nth-child(6),
+    td:nth-child(6) {
       display: none;
     }
 

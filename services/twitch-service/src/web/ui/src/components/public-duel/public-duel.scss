@@ -130,6 +130,26 @@ public-duel .leaderboard-table {
       font-size: 14px;
       text-align: left;
     }
+
+    .sort-col {
+      cursor: pointer;
+      user-select: none;
+      white-space: nowrap;
+
+      &:hover {
+        opacity: 0.9;
+      }
+
+      .sort-icon {
+        margin-left: 4px;
+        opacity: 0.7;
+        font-size: 12px;
+      }
+
+      .sort-icon-active {
+        opacity: 1;
+      }
+    }
   }
 
   tbody {
@@ -163,15 +183,15 @@ public-duel .leaderboard-table {
       font-size: 16px;
     }
 
-    .size {
+    .points {
       font-weight: 700;
       color: #764ba2;
       font-size: 16px;
     }
 
-    .stats {
-      color: #6c757d;
-      font-size: 14px;
+    .wins, .losses, .draws {
+      color: #2d3748;
+      font-size: 15px;
     }
   }
 }
@@ -260,15 +280,13 @@ public-duel .pagination-info {
       font-size: 14px;
     }
 
-    .size {
+    .points, .wins {
       font-size: 14px;
     }
 
-    .stats-col {
-      display: none;
-    }
-
-    .stats {
+    th.sort-col-mobile-hide,
+    td:nth-child(5),
+    td:nth-child(6) {
       display: none;
     }
   }

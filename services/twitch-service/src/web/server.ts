@@ -817,7 +817,13 @@ app.get('/api/leaderboard', async (req: Request, res: Response) => {
     try {
         const page = parseInt(req.query.page as string) || 1;
         const limit = parseInt(req.query.limit as string) || 100;
+        const sort = (req.query.sort as string) || 'points';
+        const order = (req.query.order as string) === 'asc' ? 'ASC' : 'DESC';
         const offset = (page - 1) * limit;
+
+        const sortColumn = ['points', 'wins', 'losses', 'draws'].includes(sort)
+            ? { points: 'points', wins: 'duel_wins', losses: 'duel_losses', draws: 'duel_draws' }[sort]
+            : 'points';
 
         const streamerUsername = (process.env.TWITCH_CHANNEL || 'kunilika666').toLowerCase();
 
@@ -850,7 +856,7 @@ app.get('/api/leaderboard', async (req: Request, res: Response) => {
                     COALESCE(duel_draws, 0) as duel_draws
              FROM twitch_player_stats
              WHERE (points > 0 OR duel_wins > 0) AND LOWER(twitch_username) != $1
-             ORDER BY points DESC, duel_wins DESC
+             ORDER BY ${sortColumn} ${order}, points DESC, duel_wins DESC
              LIMIT $2 OFFSET $3`,
             [streamerUsername, limit, offset]
         );

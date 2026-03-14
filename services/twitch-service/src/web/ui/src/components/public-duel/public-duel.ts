@@ -5,10 +5,15 @@ import type {LeaderboardResponse} from '../../interfaces/leaderboard';
 
 const MEDALS = ['🥇', '🥈', '🥉'];
 
+type SortField = 'points' | 'wins' | 'losses' | 'draws';
+type SortOrder = 'asc' | 'desc';
+
 export class PublicDuelElement extends HTMLElement {
     private initialized = false;
     private currentPage = 1;
     private pageSize = 50;
+    private sortBy: SortField = 'points';
+    private sortOrder: SortOrder = 'desc';
 
     connectedCallback(): void {
         if (this.initialized) return;
@@ -29,8 +34,8 @@ export class PublicDuelElement extends HTMLElement {
 
         try {
             const response = await fetch(
-                `/api/leaderboard?page=${this.currentPage}&limit=${this.pageSize}`,
-                );
+                `/api/leaderboard?page=${this.currentPage}&limit=${this.pageSize}&sort=${this.sortBy}&order=${this.sortOrder}`,
+            );
             const data: LeaderboardResponse = await response.json();
 
             if (!data.players || data.players.length === 0) {
@@ -42,6 +47,7 @@ export class PublicDuelElement extends HTMLElement {
             container.className = 'leaderboard-table';
             container.innerHTML = '';
             this.renderLeaderboard(container, data);
+            this.setupSortHandlers();
             this.setupPaginationHandlers();
         } catch (error) {
             console.error('Failed to load leaderboard:', error);
@@ -79,8 +85,11 @@ export class PublicDuelElement extends HTMLElement {
 
         const frag = tpl.content.cloneNode(true) as DocumentFragment;
         const streamerSlot = frag.querySelector<HTMLDivElement>('.streamer-slot');
+        const thead = frag.querySelector('thead');
         const tbody = frag.querySelector('tbody');
         const paginationSlot = frag.querySelector<HTMLDivElement>('.pagination-slot');
+
+        this.updateSortIcons(thead);
 
         if (data.streamerPlayer && streamerSlot) {
             const rowTpl = this.getTemplate('template-streamer-row');
@@ -106,7 +115,9 @@ export class PublicDuelElement extends HTMLElement {
                     cells[0].textContent = rankDisplay;
                     cells[1].textContent = p.twitch_username;
                     cells[2].textContent = String(p.points || 0);
-                    cells[3].textContent = `Побед: ${p.duel_wins || 0} | Проигрышей: ${p.duel_losses || 0} | Ничьих: ${p.duel_draws || 0}`;
+                    cells[3].textContent = String(p.duel_wins || 0);
+                    cells[4].textContent = String(p.duel_losses || 0);
+                    cells[5].textContent = String(p.duel_draws || 0);
                     tbody.appendChild(row);
                 });
             }
@@ -129,6 +140,39 @@ export class PublicDuelElement extends HTMLElement {
         }
 
         container.appendChild(frag);
+    }
+
+    private updateSortIcons(thead: Element | null): void {
+        if (!thead) return;
+        thead.querySelectorAll<HTMLElement>('.sort-col').forEach((th) => {
+            const sort = th.dataset.sort as SortField;
+            const icon = th.querySelector('.sort-icon');
+            if (!icon) return;
+            if (sort === this.sortBy) {
+                icon.textContent = this.sortOrder === 'asc' ? '▲' : '▼';
+                icon.className = 'sort-icon sort-icon-active';
+            } else {
+                icon.textContent = '⇅';
+                icon.className = 'sort-icon';
+            }
+        });
+    }
+
+    private setupSortHandlers(): void {
+        this.querySelectorAll<HTMLElement>('.sort-col[data-sort]').forEach((th) => {
+            th.style.cursor = 'pointer';
+            th.addEventListener('click', () => {
+                const sort = th.dataset.sort as SortField;
+                if (sort === this.sortBy) {
+                    this.sortOrder = this.sortOrder === 'asc' ? 'desc' : 'asc';
+                } else {
+                    this.sortBy = sort;
+                    this.sortOrder = 'desc';
+                }
+                this.currentPage = 1;
+                this.loadLeaderboard().catch((err) => console.error(err));
+            });
+        });
     }
 
     private setupPaginationHandlers(): void {
