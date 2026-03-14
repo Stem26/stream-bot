@@ -64,7 +64,7 @@ export class PublicDuelElement extends HTMLElement {
         <div class="streamer-row">
           <div class="streamer-badge">🎮 Стример</div>
           <div class="streamer-name">${this.escapeHtml(streamer.twitch_username)}</div>
-          <div class="streamer-stats">${streamer.points || 0} очк. · Побед: ${streamer.duel_wins || 0} | Проигр.: ${streamer.duel_losses || 0} | Ничьих: ${streamer.duel_draws || 0}</div>
+          <div class="streamer-stats">${streamer.points || 0} очк. · Побед: ${streamer.duel_wins || 0} | Проигрышей: ${streamer.duel_losses || 0} | Ничьих: ${streamer.duel_draws || 0}</div>
         </div>
         ` : ''}
         <table>
