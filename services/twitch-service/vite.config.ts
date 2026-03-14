@@ -10,7 +10,6 @@ export default defineConfig({
     rollupOptions: {
       input: {
         index: resolve(__dirname, 'src/web/ui/index.html'),
-        'twitch-oauth': resolve(__dirname, 'src/web/ui/twitch-oauth.html'),
       },
     },
   },
@@ -33,10 +32,6 @@ export default defineConfig({
             res.writeHead(302, { Location: '/public' });
             res.end();
             return;
-          }
-          if (req.url?.startsWith('/oauth')) {
-            req.url = '/twitch-oauth.html';
-            return next();
           }
           if (req.url === '/public' || req.url === '/public/' || req.url === '/public/duel' || req.url === '/public/links' || req.url === '/admin') {
             req.url = '/index.html';
