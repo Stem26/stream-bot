@@ -182,6 +182,10 @@ body.modal-open {
   font-weight: bold;
   color: #667eea;
   cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 
 .command-status {
@@ -279,10 +283,30 @@ body.modal-open {
   background: #6f42c1;
 }
 
+.text-truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.command-description-slot {
+  min-height: 1.5em;
+  margin-bottom: 10px;
+}
+
+.command-description-slot .command-description.empty {
+  color: transparent;
+  user-select: none;
+}
+
 .command-description {
   font-size: 0.9em;
   color: #6c757d;
-  margin-bottom: 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 
 .command-response {
@@ -291,9 +315,12 @@ body.modal-open {
   border-radius: 8px;
   font-size: 0.95em;
   margin-bottom: 15px;
-  word-wrap: break-word;
   border-left: 3px solid #667eea;
   cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 
 .command-aliases {
@@ -481,6 +508,23 @@ body.modal-open {
 .party-config-section {
   margin-bottom: 24px;
 
+  .party-config-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    margin-bottom: 16px;
+
+    h3 {
+      margin: 0;
+    }
+
+    .party-config-toggle {
+      margin-left: auto;
+      flex-shrink: 0;
+    }
+  }
+
   .party-config-row {
     display: flex;
     align-items: flex-end;
@@ -520,7 +564,6 @@ body.modal-open {
     display: flex;
     align-items: center;
     gap: 10px;
-    margin-left: auto;
   }
 
   .party-config-toggle-label {
@@ -662,6 +705,16 @@ body.modal-open {
 
 // Счётчики
 .counter-card {
+  .counter-description-slot {
+    min-height: 1.5em;
+    margin-bottom: 10px;
+  }
+
+  .counter-description-slot .command-description.empty {
+    color: transparent;
+    user-select: none;
+  }
+
   .command-trigger {
     display: flex;
     flex-direction: column;
@@ -671,6 +724,10 @@ body.modal-open {
       font-size: 0.75em;
       font-weight: normal;
       color: #6c757d;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      min-width: 0;
     }
   }
 
@@ -703,8 +760,11 @@ body.modal-open {
     border-radius: 8px;
     font-size: 0.9em;
     margin-bottom: 15px;
-    word-wrap: break-word;
     border-left: 3px solid #667eea;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
 
     strong {
       color: #667eea;

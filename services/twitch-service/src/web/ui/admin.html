@@ -88,7 +88,15 @@
   <!-- Вкладка: Партия -->
   <div class="tab-content" id="tab-party" style="display: none;">
     <div class="admin-section party-config-section">
-      <h3>Настройки команды</h3>
+      <div class="party-config-header">
+        <h3>Настройки команды</h3>
+        <div class="party-config-toggle">
+          <div class="status-toggle off" id="party-skip-cooldown-toggle" data-enabled="false" title="Тестовый режим — без ограничения раз в сутки">
+            <div class="status-toggle-circle"></div>
+            <span class="status-toggle-text">Ограничение ВКЛ</span>
+          </div>
+        </div>
+      </div>
       <div class="party-config-row">
         <div class="party-config-field">
           <label for="party-elements-count">Количество элементов</label>
@@ -99,13 +107,6 @@
           <input type="number" id="party-quantity-max" class="party-input" min="1" max="99" />
         </div>
         <button class="btn btn-small" id="party-config-save-btn">Сохранить</button>
-        <div class="party-config-toggle">
-          <div class="status-toggle off" id="party-skip-cooldown-toggle" data-enabled="false" title="Тестовый режим — без ограничения раз в сутки">
-            <div class="status-toggle-circle"></div>
-            <span class="status-toggle-text">Ограничение ВКЛ</span>
-          </div>
-          <span class="party-config-toggle-label">Тест без кулдауна</span>
-        </div>
       </div>
       <p class="admin-description">
         Пример: 2 элемента, макс 5 → «Партия выдала 3 дракоша‑сосед и 2 хомяко‑адвоката для @user». Раз в сутки на пользователя.

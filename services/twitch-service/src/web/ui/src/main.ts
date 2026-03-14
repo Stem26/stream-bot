@@ -75,6 +75,7 @@ function renderCommands(data: CommandsData): void {
     </div>
   `;
 
+  const attr = (s: string) => String(s).replace(/"/g, '&quot;').replace(/&/g, '&amp;');
   const commandCards = data.commands
     .map(
       (cmd) => {
@@ -101,9 +102,9 @@ function renderCommands(data: CommandsData): void {
           </div>
         </div>
 
-        ${cmd.description ? `<div class="command-description">${cmd.description}</div>` : ''}
+        <div class="command-description-slot"><div class="command-description ${cmd.description ? '' : 'empty'}"${cmd.description ? ` title="${attr(cmd.description)}"` : ''}>${cmd.description || '\u00A0'}</div></div>
 
-        <div class="command-response">${cmd.response}</div>
+        <div class="command-response" title="${attr(cmd.response)}">${cmd.response}</div>
 
         ${
           cmd.aliases && cmd.aliases.length > 0
@@ -156,10 +157,14 @@ function renderCounters(data: CountersData): void {
     </div>
   `;
 
+  const variantsText = (t: string) => `${t}инфо · ${t}откат · ${t}[число]`;
+  const attr = (s: string) => String(s).replace(/"/g, '&quot;').replace(/&/g, '&amp;');
   const counterCards = data.counters
     .map(
       (counter) => {
         const encodedId = encodeURIComponent(counter.id);
+        const variants = variantsText(counter.trigger);
+        const templateFull = `Шаблон ответа: ${counter.responseTemplate}`;
         return `
       <div
         class="command-card counter-card ${counter.enabled ? '' : 'disabled'}"
@@ -168,7 +173,7 @@ function renderCounters(data: CountersData): void {
         <div class="command-header">
           <div class="command-trigger">
             ${counter.trigger}
-            <span class="counter-variants">${counter.trigger}инфо · ${counter.trigger}откат · ${counter.trigger}[число]</span>
+            <span class="counter-variants" title="${attr(variants)}">${variants}</span>
           </div>
           <div class="command-status">
             <div class="status-toggle ${counter.enabled ? 'on' : 'off'}" data-action="toggle">
@@ -178,14 +183,14 @@ function renderCounters(data: CountersData): void {
           </div>
         </div>
 
-        ${counter.description ? `<div class="command-description">${counter.description}</div>` : ''}
+        <div class="counter-description-slot"><div class="command-description ${counter.description ? '' : 'empty'}"${counter.description ? ` title="${attr(counter.description)}"` : ''}>${counter.description || '\u00A0'}</div></div>
 
         <div class="counter-value-display">
           <div class="counter-label">Текущее значение:</div>
           <div class="counter-value">${counter.value}</div>
         </div>
 
-        <div class="counter-template">
+        <div class="counter-template" title="${attr(templateFull)}">
           <strong>Шаблон ответа:</strong> ${counter.responseTemplate}
         </div>
 
@@ -240,11 +245,12 @@ function renderPartyItems(data: PartyItemsData): void {
   `;
 
   const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const attr = (s: string) => String(s).replace(/"/g, '&quot;').replace(/&/g, '&amp;');
   const itemCards = data.items
     .map(
       (item) => `
     <div class="command-card party-item-card" data-id="${item.id}">
-      <div class="command-response">${esc(item.text)}</div>
+      <div class="command-response" title="${attr(item.text)}">${esc(item.text)}</div>
       <div class="command-actions">
         <button class="btn btn-small" data-action="edit">✏️ Изменить</button>
         <button class="btn btn-small btn-danger" data-action="delete">🗑️ Удалить</button>
