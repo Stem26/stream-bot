@@ -164,6 +164,59 @@ export async function initDatabase(): Promise<void> {
 
       await client.query(`CREATE INDEX IF NOT EXISTS idx_counters_enabled ON counters(enabled)`);
 
+      // Таблица элементов партии (список на выдачу)
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS party_items (
+          id SERIAL PRIMARY KEY,
+          text TEXT NOT NULL,
+          sort_order INTEGER NOT NULL DEFAULT 0
+        )
+      `);
+
+      // Настройки партии: сколько названий выдавать, макс количество на каждое
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS party_config (
+          id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+          elements_count INTEGER NOT NULL DEFAULT 2,
+          quantity_max INTEGER NOT NULL DEFAULT 4,
+          skip_cooldown BOOLEAN NOT NULL DEFAULT FALSE
+        )
+      `);
+      await client.query(
+        `ALTER TABLE party_config ADD COLUMN IF NOT EXISTS skip_cooldown BOOLEAN NOT NULL DEFAULT FALSE`,
+      );
+      await client.query(`
+        INSERT INTO party_config (id, elements_count, quantity_max, skip_cooldown) VALUES (1, 2, 4, FALSE)
+        ON CONFLICT (id) DO NOTHING
+      `);
+
+      // Кулдаун партии: пользователь — раз в сутки
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS party_cooldown (
+          twitch_username TEXT PRIMARY KEY,
+          last_used_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+
+      // Добавляем дефолтные элементы партии если таблица пустая (только названия, количество 1–4 генерируется при выдаче)
+      const partyCount = await client.query('SELECT COUNT(*)::int AS cnt FROM party_items');
+      if (partyCount.rows[0]?.cnt === 0) {
+        const defaultItems = [
+          'дракоша‑сосед', 'хомяко‑адвоката', 'кактусо‑бабушка', 'рыбо‑начальника', 'пауко‑стилист',
+          'сороконожко‑танцора', 'медузо‑бухгалтер', 'жуко‑почтальона', 'слоно‑бариста', 'крокодило‑стилиста',
+          'пингвино‑диджея', 'ёжико‑библиотекаря', 'осьминожко‑массажиста', 'лягушко‑поэта', 'динозавро‑курьера',
+          'Лида‑тимлид', 'таракан‑финансовый аналитик', 'червяко‑менеджера по продажам', 'плесень‑HR‑специалист',
+          'слизняко‑директор', 'личинка‑стажёр', 'клопо‑рекрутера', 'пыль‑аналитика', 'блохо‑маркетолога',
+          'HRюшу', 'кот‑аудитор', 'хомяка‑криптоинвестора', 'попугай‑юрист', 'бабочки‑дизайнера',
+          'лягушки‑коуча', 'краб‑ревизор', 'бобр‑строитель', 'осьминог‑многостаночник', 'нэко‑тян бухгалтер',
+          'моти‑котика', 'кицунэ', 'юки‑нэко', 'пика‑ня', 'бублик‑куна', 'почита‑няшки', 'данго‑няшки',
+        ];
+        for (let i = 0; i < defaultItems.length; i++) {
+          await client.query('INSERT INTO party_items (text, sort_order) VALUES ($1, $2)', [defaultItems[i], i]);
+        }
+        console.log(`📝 Создано ${defaultItems.length} элементов партии по умолчанию`);
+      }
+
       // Добавляем дефолтные счётчики если таблица пустая
       const countersCount = await client.query('SELECT COUNT(*)::int AS cnt FROM counters');
       if (countersCount.rows[0]?.cnt === 0) {

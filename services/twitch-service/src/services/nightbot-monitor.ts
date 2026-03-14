@@ -10,7 +10,7 @@ import { ENABLE_BOT_FEATURES, ALLOW_LOCAL_COMMANDS } from '../config/features';
 import { IS_LOCAL } from '../config/env';
 import * as fs from 'fs';
 import * as path from 'path';
-import { query } from '../database/database';
+import { query, queryOne } from '../database/database';
 import { log } from '../utils/event-logger';
 import {
     fetchOverlayCharacters,
@@ -229,6 +229,7 @@ export class NightBotMonitor {
         '!fetta', '!фетта',
         '!fp', '!фп',
         '!ссылки', '!links',
+        '!партия', '!party',
         '!игры', '!help',
         // Счётчики (управляются через enabled флаг в БД)
         '!смерть', '!смертьинфо', '!смертьоткат', '!смертьсброс',
@@ -287,6 +288,7 @@ export class NightBotMonitor {
         register(['!персонажи'], (ch, u, m, msg) => void this.handleCharactersListCommand(ch, u, msg));
         register(['!игры', '!help'], (ch, u, m, msg) => void this.handleGamesCommand(ch, u, msg));
         register(['!ссылки', '!links'], (ch, u, m, msg) => void this.handleLinksCommand(ch, u, msg));
+        register(['!партия', '!party'], (ch, u, m, msg) => void this.handlePartyCommand(ch, u, msg));
 
         return map;
     }
@@ -2372,6 +2374,88 @@ export class NightBotMonitor {
             console.log(`✅ Список команд отправлен в чат`);
         } catch (error) {
             console.error('❌ Ошибка при отправке списка команд:', error);
+        }
+    }
+
+    /**
+     * Обработка команды !партия / !party
+     * Случайный элемент из списка, раз в сутки на пользователя
+     */
+    private async handlePartyCommand(channel: string, user: string, msg: any) {
+        console.log(`🎉 Команда !партия от ${user} в ${channel}`);
+
+        const COOLDOWN_HOURS = 24;
+
+        try {
+            const items = await query<{ id: number; text: string }>(
+                'SELECT id, text FROM party_items ORDER BY sort_order, id',
+            );
+
+            if (items.length === 0) {
+                await this.sendMessage(channel, 'Список партии пуст, добавьте элементы в админке.');
+                return;
+            }
+
+            const skipCooldownRow = await queryOne<{ skip_cooldown: boolean }>(
+                'SELECT skip_cooldown FROM party_config WHERE id = 1',
+            );
+            const skipCooldown = skipCooldownRow?.skip_cooldown ?? false;
+
+            const userNorm = user.trim().toLowerCase();
+            const cooldownRow = !skipCooldown
+                ? await queryOne<{ last_used_at: Date }>(
+                      'SELECT last_used_at FROM party_cooldown WHERE twitch_username = $1',
+                      [userNorm],
+                  )
+                : null;
+
+            if (!skipCooldown && cooldownRow) {
+                const lastUsed = new Date(cooldownRow.last_used_at).getTime();
+                const hoursSince = (Date.now() - lastUsed) / (1000 * 60 * 60);
+                if (hoursSince < COOLDOWN_HOURS) {
+                    await this.sendMessage(
+                        channel,
+                        `@${user}, можно использовать партию раз в сутки.`,
+                    );
+                    return;
+                }
+            }
+
+            const config = await queryOne<{ elements_count: number; quantity_max: number }>(
+                'SELECT elements_count, quantity_max FROM party_config WHERE id = 1',
+            );
+            const elementsCount = Math.min(items.length, config?.elements_count ?? 2);
+            const quantityMax = Math.max(1, config?.quantity_max ?? 4);
+
+            // Выбираем N разных названий без повторений
+            const shuffled = [...items].sort(() => Math.random() - 0.5);
+            const picks = shuffled.slice(0, elementsCount).map((item) => {
+                const qty = Math.floor(Math.random() * quantityMax) + 1;
+                return { qty, text: item.text };
+            });
+
+            const parts = picks.map((p) => `${p.qty} ${p.text}`).join(' и ');
+            const response = `Партия выдала ${parts} для @${user}`;
+
+            await this.sendMessage(channel, response);
+
+            if (!skipCooldown) {
+            await query(
+                `INSERT INTO party_cooldown (twitch_username, last_used_at)
+                 VALUES ($1, CURRENT_TIMESTAMP)
+                 ON CONFLICT (twitch_username) DO UPDATE SET last_used_at = CURRENT_TIMESTAMP`,
+                [userNorm],
+            );
+            }
+
+            console.log(`✅ Партия: ${parts} для ${user}`);
+        } catch (error) {
+            console.error('❌ Ошибка при обработке !партия:', error);
+            try {
+                await this.sendMessage(channel, 'Ошибка партии, попробуй позже.');
+            } catch {
+                // ignore
+            }
         }
     }
 

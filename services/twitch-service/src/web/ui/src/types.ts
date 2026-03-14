@@ -36,3 +36,19 @@ export interface CountersData {
   counters: Counter[];
 }
 
+export interface PartyItem {
+  id: number;
+  text: string;
+  sort_order: number;
+}
+
+export interface PartyItemsData {
+  items: PartyItem[];
+}
+
+export interface PartyConfig {
+  elementsCount: number;
+  quantityMax: number;
+  skipCooldown: boolean;
+}
+

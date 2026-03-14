@@ -119,7 +119,7 @@ body.modal-open {
 
   &.add-command-card {
     cursor: pointer;
-    min-height: 200px;
+    min-height: 100%;
     justify-content: center;
     align-items: center;
 
@@ -475,6 +475,58 @@ body.modal-open {
   color: #6c757d;
   font-size: 0.9em;
   margin-top: 10px;
+}
+
+// Настройки партии
+.party-config-section {
+  margin-bottom: 24px;
+
+  .party-config-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 24px;
+    flex-wrap: wrap;
+  }
+
+  .party-config-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+
+    label {
+      font-weight: 500;
+      color: #333;
+      font-size: 0.95em;
+    }
+  }
+
+  .party-input {
+    width: 72px;
+    padding: 10px 12px;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: 500;
+    background: #fff;
+    transition: border-color 0.2s;
+
+    &:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+  }
+
+  .party-config-toggle {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-left: auto;
+  }
+
+  .party-config-toggle-label {
+    font-size: 0.9em;
+    color: #6c757d;
+  }
 }
 
 // Модальное окно авторизации

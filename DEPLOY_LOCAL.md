@@ -168,6 +168,9 @@ cd D:\Projects\stream-bot\services\twitch-service
 npm run build:web
 npm run build
 npm start
+
+добавить пользователя htpasswd /etc/nginx/.htpasswd user2
+проверить пользователей cat /etc/nginx/.htpasswd
 ```
 ---
 

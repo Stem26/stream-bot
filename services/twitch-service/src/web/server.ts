@@ -692,6 +692,125 @@ app.patch('/api/counters/:id/increment', async (req: Request, res: Response) => 
     }
 });
 
+// === API для партии (список на выдачу, раз в сутки на пользователя) ===
+
+type PartyItemRow = { id: number; text: string; sort_order: number };
+type PartyConfigRow = { elements_count: number; quantity_max: number; skip_cooldown: boolean };
+
+app.get('/api/party/config', async (req: Request, res: Response) => {
+    try {
+        const row = await queryOne<PartyConfigRow>(
+            'SELECT elements_count, quantity_max, skip_cooldown FROM party_config WHERE id = 1',
+        );
+        res.json({
+            elementsCount: row?.elements_count ?? 2,
+            quantityMax: row?.quantity_max ?? 4,
+            skipCooldown: row?.skip_cooldown ?? false,
+        });
+    } catch (error) {
+        console.error('❌ Ошибка загрузки настроек партии:', error);
+        res.status(500).json({ error: 'Ошибка загрузки' });
+    }
+});
+
+app.put('/api/party/config', async (req: Request, res: Response) => {
+    try {
+        const { elementsCount, quantityMax, skipCooldown } = req.body as {
+            elementsCount?: number;
+            quantityMax?: number;
+            skipCooldown?: boolean;
+        };
+        const ec = Math.min(10, Math.max(1, Math.floor(Number(elementsCount) ?? 0) || 1));
+        const qm = Math.min(99, Math.max(1, Math.floor(Number(quantityMax) ?? 0) || 1));
+        const sc = Boolean(skipCooldown);
+        await query(
+            'UPDATE party_config SET elements_count = $1, quantity_max = $2, skip_cooldown = $3 WHERE id = 1',
+            [ec, qm, sc],
+        );
+        res.json({ elementsCount: ec, quantityMax: qm, skipCooldown: sc });
+    } catch (error) {
+        console.error('❌ Ошибка сохранения настроек партии:', error);
+        res.status(500).json({ error: 'Ошибка сохранения' });
+    }
+});
+
+app.patch('/api/party/config/skip-cooldown', async (req: Request, res: Response) => {
+    try {
+        const { skipCooldown } = req.body as { skipCooldown?: boolean };
+        const sc = Boolean(skipCooldown);
+        await query('UPDATE party_config SET skip_cooldown = $1 WHERE id = 1', [sc]);
+        res.json({ skipCooldown: sc });
+    } catch (error) {
+        console.error('❌ Ошибка переключения skip_cooldown:', error);
+        res.status(500).json({ error: 'Ошибка' });
+    }
+});
+
+app.get('/api/party/items', async (req: Request, res: Response) => {
+    try {
+        const rows = await query<PartyItemRow>(
+            'SELECT id, text, sort_order FROM party_items ORDER BY sort_order, id',
+        );
+        res.json({ items: rows });
+    } catch (error) {
+        console.error('❌ Ошибка загрузки партии:', error);
+        res.status(500).json({ error: 'Ошибка загрузки партии' });
+    }
+});
+
+app.post('/api/party/items', async (req: Request, res: Response) => {
+    try {
+        const { text } = req.body as { text: string };
+        if (!text || typeof text !== 'string' || !text.trim()) {
+            return res.status(400).json({ error: 'Поле text обязательно' });
+        }
+        const maxOrder = await queryOne<{ max: number | null }>(
+            'SELECT MAX(sort_order) AS max FROM party_items',
+        );
+        const sortOrder = (maxOrder?.max ?? -1) + 1;
+        const result = await query<PartyItemRow>(
+            'INSERT INTO party_items (text, sort_order) VALUES ($1, $2) RETURNING id, text, sort_order',
+            [text.trim(), sortOrder],
+        );
+        res.status(201).json(result[0]);
+    } catch (error) {
+        console.error('❌ Ошибка добавления элемента партии:', error);
+        res.status(500).json({ error: 'Ошибка добавления' });
+    }
+});
+
+app.put('/api/party/items/:id', async (req: Request, res: Response) => {
+    try {
+        const id = parseInt(req.params.id, 10);
+        if (isNaN(id)) return res.status(400).json({ error: 'Некорректный id' });
+        const { text } = req.body as { text?: string };
+        if (!text || typeof text !== 'string' || !text.trim()) {
+            return res.status(400).json({ error: 'Поле text обязательно' });
+        }
+        const result = await query<PartyItemRow>(
+            'UPDATE party_items SET text = $2 WHERE id = $1 RETURNING id, text, sort_order',
+            [id, text.trim()],
+        );
+        if (result.length === 0) return res.status(404).json({ error: 'Элемент не найден' });
+        res.json(result[0]);
+    } catch (error) {
+        console.error('❌ Ошибка обновления элемента партии:', error);
+        res.status(500).json({ error: 'Ошибка обновления' });
+    }
+});
+
+app.delete('/api/party/items/:id', async (req: Request, res: Response) => {
+    try {
+        const id = parseInt(req.params.id, 10);
+        if (isNaN(id)) return res.status(400).json({ error: 'Некорректный id' });
+        await query('DELETE FROM party_items WHERE id = $1', [id]);
+        res.json({ success: true });
+    } catch (error) {
+        console.error('❌ Ошибка удаления элемента партии:', error);
+        res.status(500).json({ error: 'Ошибка удаления' });
+    }
+});
+
 // === API для таблицы лидеров (публичное) ===
 
 app.get('/api/leaderboard', async (req: Request, res: Response) => {

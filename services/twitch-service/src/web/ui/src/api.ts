@@ -1,4 +1,4 @@
-import type { CommandsData, CustomCommand, LinksConfig, CountersData, Counter } from './types';
+import type { CommandsData, CustomCommand, LinksConfig, CountersData, Counter, PartyItemsData, PartyItem, PartyConfig } from './types';
 
 async function handleJson<T>(response: Response, defaultError: string): Promise<T> {
   if (!response.ok) {
@@ -111,5 +111,60 @@ export async function incrementCounter(id: string): Promise<Counter> {
     method: 'PATCH',
   });
   return handleJson<Counter>(response, 'Ошибка инкремента счётчика');
+}
+
+// === API для партии ===
+
+export async function fetchPartyItems(): Promise<PartyItemsData> {
+  const response = await fetch('/api/party/items');
+  return handleJson<PartyItemsData>(response, 'Ошибка загрузки партии');
+}
+
+export async function fetchPartyConfig(): Promise<PartyConfig> {
+  const response = await fetch('/api/party/config');
+  return handleJson<PartyConfig>(response, 'Ошибка загрузки настроек');
+}
+
+export async function updatePartyConfig(config: PartyConfig): Promise<PartyConfig> {
+  const response = await fetch('/api/party/config', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(config),
+  });
+  return handleJson<PartyConfig>(response, 'Ошибка сохранения');
+}
+
+export async function setPartySkipCooldown(skipCooldown: boolean): Promise<{ skipCooldown: boolean }> {
+  const response = await fetch('/api/party/config/skip-cooldown', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ skipCooldown }),
+  });
+  return handleJson<{ skipCooldown: boolean }>(response, 'Ошибка');
+}
+
+export async function createPartyItem(text: string): Promise<PartyItem> {
+  const response = await fetch('/api/party/items', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text }),
+  });
+  return handleJson<PartyItem>(response, 'Ошибка добавления');
+}
+
+export async function updatePartyItem(id: number, text: string): Promise<PartyItem> {
+  const response = await fetch(`/api/party/items/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text }),
+  });
+  return handleJson<PartyItem>(response, 'Ошибка обновления');
+}
+
+export async function deletePartyItem(id: number): Promise<void> {
+  const response = await fetch(`/api/party/items/${id}`, {
+    method: 'DELETE',
+  });
+  await handleJson<unknown>(response, 'Ошибка удаления');
 }
 

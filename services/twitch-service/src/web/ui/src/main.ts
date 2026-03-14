@@ -13,8 +13,15 @@ import {
   updateCounter,
   deleteCounter,
   toggleCounter,
+  fetchPartyItems,
+  createPartyItem,
+  updatePartyItem,
+  deletePartyItem,
+  fetchPartyConfig,
+  updatePartyConfig,
+  setPartySkipCooldown,
 } from './api';
-import type { CommandsData, CustomCommand, CountersData, Counter } from './types';
+import type { CommandsData, CustomCommand, CountersData, Counter, PartyItemsData } from './types';
 import './components/command-dialog/command-dialog';
 import type { CommandDialogElement, CommandDialogSaveDetail } from './components/command-dialog/command-dialog';
 import './components/link-dialog/link-dialog';
@@ -136,19 +143,20 @@ async function loadCommands(): Promise<void> {
 
 function renderCounters(data: CountersData): void {
   const container = document.getElementById('counters-container');
-  const emptyState = document.getElementById('empty-counters-state');
-  if (!container || !emptyState) return;
-
-  if (data.counters.length === 0) {
-    container.style.display = 'none';
-    emptyState.style.display = 'block';
-    return;
-  }
+  if (!container) return;
 
   container.style.display = 'grid';
-  emptyState.style.display = 'none';
 
-  container.innerHTML = data.counters
+  const addCounterCard = `
+    <div class="command-card add-command-card" id="add-counter-card-trigger">
+      <div class="add-command-content">
+        <div class="add-command-icon">+</div>
+        <div class="add-command-text">Добавить счётчик</div>
+      </div>
+    </div>
+  `;
+
+  const counterCards = data.counters
     .map(
       (counter) => {
         const encodedId = encodeURIComponent(counter.id);
@@ -201,6 +209,8 @@ function renderCounters(data: CountersData): void {
       },
     )
     .join('');
+
+  container.innerHTML = addCounterCard + counterCards;
 }
 
 async function loadCounters(): Promise<void> {
@@ -210,6 +220,73 @@ async function loadCounters(): Promise<void> {
   } catch (error) {
     if (error instanceof Error) {
       showAlert(`Ошибка загрузки счётчиков: ${error.message}`, 'error');
+    }
+  }
+}
+
+function renderPartyItems(data: PartyItemsData): void {
+  const container = document.getElementById('party-items-container');
+  if (!container) return;
+
+  container.style.display = 'grid';
+
+  const addPartyCard = `
+    <div class="command-card add-command-card" id="add-party-item-card-trigger">
+      <div class="add-command-content">
+        <div class="add-command-icon">+</div>
+        <div class="add-command-text">Добавить элемент</div>
+      </div>
+    </div>
+  `;
+
+  const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const itemCards = data.items
+    .map(
+      (item) => `
+    <div class="command-card party-item-card" data-id="${item.id}">
+      <div class="command-response">${esc(item.text)}</div>
+      <div class="command-actions">
+        <button class="btn btn-small" data-action="edit">✏️ Изменить</button>
+        <button class="btn btn-small btn-danger" data-action="delete">🗑️ Удалить</button>
+      </div>
+    </div>
+  `,
+    )
+    .join('');
+
+  container.innerHTML = addPartyCard + itemCards;
+}
+
+async function loadPartyItems(): Promise<void> {
+  try {
+    const data = await fetchPartyItems();
+    renderPartyItems(data);
+  } catch (error) {
+    if (error instanceof Error) {
+      showAlert(`Ошибка загрузки партии: ${error.message}`, 'error');
+    }
+  }
+}
+
+async function loadPartyConfig(): Promise<void> {
+  try {
+    const config = await fetchPartyConfig();
+    const ec = document.getElementById('party-elements-count') as HTMLInputElement;
+    const qm = document.getElementById('party-quantity-max') as HTMLInputElement;
+    const toggle = document.getElementById('party-skip-cooldown-toggle');
+    if (ec) ec.value = String(config.elementsCount);
+    if (qm) qm.value = String(config.quantityMax);
+    if (toggle) {
+      const on = config.skipCooldown;
+      toggle.classList.toggle('on', on);
+      toggle.classList.toggle('off', !on);
+      toggle.dataset.enabled = String(on);
+      const textEl = toggle.querySelector('.status-toggle-text');
+      if (textEl) textEl.textContent = on ? 'Ограничение ВЫКЛ' : 'Ограничение ВКЛ';
+    }
+  } catch (error) {
+    if (error instanceof Error) {
+      showAlert(`Ошибка загрузки настроек партии: ${error.message}`, 'error');
     }
   }
 }
@@ -266,19 +343,100 @@ async function bootstrap(): Promise<void> {
   await loadCommands();
   await loadCounters();
   await loadDuelsStatus();
+  await loadPartyItems();
+  await loadPartyConfig();
 
-  // Кнопка "Добавить команду" (карточка)
+  // Карточки "Добавить" (команды, счётчики, партия)
   document.addEventListener('click', (event) => {
     const target = event.target as HTMLElement;
     if (target.closest('#add-command-card-trigger')) {
       commandDialog.openForCreate();
+    } else if (target.closest('#add-counter-card-trigger')) {
+      counterDialog.openForCreate();
+    } else if (target.closest('#add-party-item-card-trigger')) {
+      (async () => {
+        const text = prompt('Элемент (например: хомяко‑адвоката):');
+        if (!text?.trim()) return;
+        try {
+          await createPartyItem(text.trim());
+          showAlert('Элемент добавлен');
+          await loadPartyItems();
+        } catch (error) {
+          if (error instanceof Error) showAlert(`Ошибка: ${error.message}`, 'error');
+        }
+      })();
     }
   });
 
-  // Кнопка добавления счётчика
-  const addCounterBtn = document.getElementById('add-counter-btn');
-  addCounterBtn?.addEventListener('click', () => {
-    counterDialog.openForCreate();
+  // Партия: переключатель «без кулдауна» (тест)
+  const partySkipCooldownToggle = document.getElementById('party-skip-cooldown-toggle');
+  partySkipCooldownToggle?.addEventListener('click', async () => {
+    const on = partySkipCooldownToggle.dataset.enabled === 'true';
+    const newVal = !on;
+    try {
+      await setPartySkipCooldown(newVal);
+      partySkipCooldownToggle.dataset.enabled = String(newVal);
+      partySkipCooldownToggle.classList.toggle('on', newVal);
+      partySkipCooldownToggle.classList.toggle('off', !newVal);
+      const textEl = partySkipCooldownToggle.querySelector('.status-toggle-text');
+      if (textEl) textEl.textContent = newVal ? 'Ограничение ВЫКЛ' : 'Ограничение ВКЛ';
+      showAlert(newVal ? 'Тестовый режим: кулдаун отключён' : 'Кулдаун включён (раз в сутки)');
+    } catch (error) {
+      if (error instanceof Error) showAlert(`Ошибка: ${error.message}`, 'error');
+    }
+  });
+
+  // Партия: сохранить настройки
+  const partyConfigSaveBtn = document.getElementById('party-config-save-btn');
+  partyConfigSaveBtn?.addEventListener('click', async () => {
+    const ec = document.getElementById('party-elements-count') as HTMLInputElement;
+    const qm = document.getElementById('party-quantity-max') as HTMLInputElement;
+    const elementsCount = Math.min(10, Math.max(1, parseInt(ec?.value || '2', 10) || 2));
+    const quantityMax = Math.min(99, Math.max(1, parseInt(qm?.value || '4', 10) || 4));
+    try {
+      const toggle = document.getElementById('party-skip-cooldown-toggle');
+      const skipCooldown = toggle?.dataset.enabled === 'true';
+      await updatePartyConfig({ elementsCount, quantityMax, skipCooldown: skipCooldown ?? false });
+      showAlert('Настройки сохранены');
+    } catch (error) {
+      if (error instanceof Error) showAlert(`Ошибка: ${error.message}`, 'error');
+    }
+  });
+
+  // Партия: редактирование и удаление
+  const partyItemsContainer = document.getElementById('party-items-container');
+  partyItemsContainer?.addEventListener('click', async (event) => {
+    const target = event.target as HTMLElement;
+    const card = target.closest<HTMLElement>('.party-item-card');
+    if (!card) return;
+    const id = parseInt(card.dataset.id ?? '', 10);
+    if (isNaN(id)) return;
+
+    const action = target.closest<HTMLElement>('[data-action]')?.dataset.action;
+    if (action === 'edit') {
+      const data = await fetchPartyItems();
+      const item = data.items.find((i) => i.id === id);
+      if (!item) return;
+      const text = prompt('Элемент:', item.text);
+      if (text === null || !text.trim()) return;
+      try {
+        await updatePartyItem(id, text.trim());
+        showAlert('Элемент обновлён');
+        await loadPartyItems();
+      } catch (error) {
+        if (error instanceof Error) showAlert(`Ошибка: ${error.message}`, 'error');
+      }
+    }
+    if (action === 'delete') {
+      if (!confirm('Удалить элемент?')) return;
+      try {
+        await deletePartyItem(id);
+        showAlert('Элемент удалён');
+        await loadPartyItems();
+      } catch (error) {
+        if (error instanceof Error) showAlert(`Ошибка: ${error.message}`, 'error');
+      }
+    }
   });
 
   // Обработчик событий для счётчиков
