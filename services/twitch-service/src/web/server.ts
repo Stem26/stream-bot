@@ -819,15 +819,29 @@ app.get('/api/leaderboard', async (req: Request, res: Response) => {
         const limit = parseInt(req.query.limit as string) || 100;
         const offset = (page - 1) * limit;
 
-        // Получаем общее количество записей
+        const streamerUsername = (process.env.TWITCH_CHANNEL || 'kunilika666').toLowerCase();
+
+        // Количество для пагинации (без стримера)
         const totalResult = await queryOne<{ count: string }>(
             `SELECT COUNT(*) as count
              FROM twitch_player_stats
-             WHERE points > 0 OR duel_wins > 0`
+             WHERE (points > 0 OR duel_wins > 0) AND LOWER(twitch_username) != $1`,
+            [streamerUsername]
         );
         const total = parseInt(totalResult?.count || '0', 10);
 
-        // Получаем записи для текущей страницы
+        // Стример — всегда отдельно, сверху
+        const streamerRow = await queryOne<any>(
+            `SELECT twitch_username, COALESCE(points, 0) as points,
+                    COALESCE(duel_wins, 0) as duel_wins,
+                    COALESCE(duel_losses, 0) as duel_losses,
+                    COALESCE(duel_draws, 0) as duel_draws
+             FROM twitch_player_stats
+             WHERE LOWER(twitch_username) = $1 AND (points > 0 OR duel_wins > 0)`,
+            [streamerUsername]
+        );
+
+        // Таблица без стримера (чтобы не дублировать)
         const players = await query<any>(
             `SELECT twitch_username, 
                     COALESCE(points, 0) as points,
@@ -835,14 +849,15 @@ app.get('/api/leaderboard', async (req: Request, res: Response) => {
                     COALESCE(duel_losses, 0) as duel_losses,
                     COALESCE(duel_draws, 0) as duel_draws
              FROM twitch_player_stats
-             WHERE points > 0 OR duel_wins > 0
+             WHERE (points > 0 OR duel_wins > 0) AND LOWER(twitch_username) != $1
              ORDER BY points DESC, duel_wins DESC
-             LIMIT $1 OFFSET $2`,
-            [limit, offset]
+             LIMIT $2 OFFSET $3`,
+            [streamerUsername, limit, offset]
         );
         
         res.json({ 
             players,
+            streamerPlayer: streamerRow ?? null,
             pagination: {
                 page,
                 limit,

@@ -12,6 +12,7 @@ interface LeaderboardPlayer {
 
 interface LeaderboardResponse {
   players: LeaderboardPlayer[];
+  streamerPlayer: LeaderboardPlayer | null;
   pagination: {
     total: number;
     totalPages: number;
@@ -55,8 +56,17 @@ export class PublicDuelElement extends HTMLElement {
         return;
       }
 
+      const streamer = data.streamerPlayer ?? null;
+
       container.className = 'leaderboard-table';
       container.innerHTML = `
+        ${streamer ? `
+        <div class="streamer-row">
+          <div class="streamer-badge">🎮 Стример</div>
+          <div class="streamer-name">${this.escapeHtml(streamer.twitch_username)}</div>
+          <div class="streamer-stats">${streamer.points || 0} очк. · Побед: ${streamer.duel_wins || 0} | Проигр.: ${streamer.duel_losses || 0} | Ничьих: ${streamer.duel_draws || 0}</div>
+        </div>
+        ` : ''}
         <table>
           <thead>
             <tr>
