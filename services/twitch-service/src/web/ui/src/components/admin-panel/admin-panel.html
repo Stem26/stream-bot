@@ -62,9 +62,44 @@
   </div>
   <div class="tab-content"
        id="tab-counters">
-    <div id="counters-container"
-         class="commands-grid">
-      <div class="loading">Загрузка счётчиков...</div>
+    <div class="counters-table-wrap">
+      <div class="counters-table-header">
+        <button type="button" class="btn btn-small" id="add-counter-btn">Добавить счётчик</button>
+      </div>
+      <div id="counters-container" class="counters-table-container loading-state">
+        <div class="loading">Загрузка счётчиков...</div>
+        <table class="counters-table" id="counters-table" style="display: none;">
+          <thead>
+            <tr>
+              <th class="col-num">№</th>
+              <th class="col-trigger">Триггер</th>
+              <th class="col-value">Значение</th>
+              <th class="col-description">Шаблон</th>
+              <th class="col-status">Статус</th>
+              <th class="col-actions">Действия</th>
+            </tr>
+          </thead>
+          <tbody id="counters-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+    <template id="template-counter-row">
+      <tr class="counter-table-row" data-id="">
+        <td class="col-num"></td>
+        <td class="col-trigger"><span class="trigger-text"></span></td>
+        <td class="col-value"></td>
+        <td class="col-description"></td>
+        <td class="col-status">
+          <button type="button" class="status-badge" data-action="toggle"></button>
+        </td>
+        <td class="col-actions">
+          <button type="button" class="btn-icon" data-action="edit" title="Настройки">⚙️</button>
+        </td>
+      </tr>
+    </template>
+    <div class="empty-state" id="counters-empty-state" style="display: none;">
+      <h3>Счётчики не найдены</h3>
+      <p>Создайте счётчик, нажав на кнопку выше</p>
     </div>
   </div>
   <div class="tab-content"
@@ -228,7 +263,7 @@
     </div>
     <div class="party-table-wrap">
       <div class="party-table-header">
-        <button type="button" class="btn btn-small" id="add-party-item-btn">Создать</button>
+        <button type="button" class="btn btn-small" id="add-party-item-btn">Добавить партию</button>
       </div>
       <div id="party-items-container" class="party-items-table-container loading-state">
         <div class="loading">Загрузка...</div>
@@ -236,39 +271,3 @@
     </div>
   </div>
 </div>
-<template id="template-add-counter-card">
-  <div class="command-card add-command-card" id="add-counter-card-trigger">
-    <div class="add-command-content">
-      <div class="add-command-icon">+</div>
-      <div class="add-command-text">Добавить счётчик</div>
-    </div>
-  </div>
-</template>
-<template id="template-counter-card">
-  <div class="command-card counter-card" data-id="">
-    <div class="command-header">
-      <div class="command-trigger">
-        <span class="trigger-main"></span>
-        <span class="counter-variants"></span>
-      </div>
-      <div class="command-status">
-        <div class="status-toggle" data-action="toggle">
-          <div class="status-toggle-circle"></div>
-          <span class="status-toggle-text"></span>
-        </div>
-      </div>
-    </div>
-    <div class="counter-description-slot"><div class="command-description"></div></div>
-    <div class="counter-value-display">
-      <div class="counter-label">Текущее значение:</div>
-      <div class="counter-value"></div>
-    </div>
-    <div class="counter-template"></div>
-    <div class="command-aliases"></div>
-    <div class="command-actions">
-      <button type="button" class="btn btn-small" data-action="edit-value">✏️ Изменить значение</button>
-      <button type="button" class="btn btn-small" data-action="edit">⚙️ Настройки</button>
-      <button type="button" class="btn btn-small btn-danger" data-action="delete">🗑️ Удалить</button>
-    </div>
-  </div>
-</template>

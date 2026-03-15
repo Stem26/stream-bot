@@ -9,8 +9,13 @@ export interface CounterDialogSaveDetail {
   editId?: string;
 }
 
+export interface CounterDialogDeleteDetail {
+  id: string;
+}
+
 export class CounterDialogElement extends HTMLElement {
   private initialized = false;
+  private saveButton: HTMLButtonElement | null = null;
   private modal!: ReturnType<typeof createModal>;
 
   connectedCallback(): void {
@@ -24,6 +29,7 @@ export class CounterDialogElement extends HTMLElement {
     });
 
     const form = this.querySelector<HTMLFormElement>('#counter-form');
+    this.saveButton = this.querySelector<HTMLButtonElement>('.form-actions .btn.btn-success');
     form?.addEventListener('submit', (e) => {
       e.preventDefault();
       const detail = this.collectFormData();
@@ -31,6 +37,19 @@ export class CounterDialogElement extends HTMLElement {
       this.dispatchEvent(
         new CustomEvent<CounterDialogSaveDetail>('save', {
           detail,
+          bubbles: true,
+        }),
+      );
+    });
+
+    const deleteBtn = this.querySelector<HTMLButtonElement>('#counter-delete-btn');
+    deleteBtn?.addEventListener('click', () => {
+      const editIdInput = this.querySelector<HTMLInputElement>('#edit-counter-id');
+      const id = editIdInput?.value || '';
+      if (!id) return;
+      this.dispatchEvent(
+        new CustomEvent<CounterDialogDeleteDetail>('delete', {
+          detail: { id },
           bubbles: true,
         }),
       );
@@ -49,6 +68,26 @@ export class CounterDialogElement extends HTMLElement {
     templateTextarea?.addEventListener('input', updateCounter);
     templateTextarea?.addEventListener('change', updateCounter);
     valueInput?.addEventListener('input', updateCounter);
+
+    const requiredFields = [
+      this.querySelector<HTMLInputElement>('#counter-id'),
+      this.querySelector<HTMLInputElement>('#counter-trigger'),
+      this.querySelector<HTMLTextAreaElement>('#counter-template'),
+    ].filter(Boolean) as (HTMLInputElement | HTMLTextAreaElement)[];
+
+    requiredFields.forEach((el) => {
+      el.addEventListener('blur', () => {
+        const empty = !el.value.trim();
+        el.classList.toggle('is-invalid', empty);
+        this.validateForm();
+      });
+      el.addEventListener('input', () => {
+        if (el.value.trim()) el.classList.remove('is-invalid');
+        this.validateForm();
+      });
+    });
+
+    this.validateForm();
   }
 
   openForCreate(): void {
@@ -57,16 +96,23 @@ export class CounterDialogElement extends HTMLElement {
     const editIdInput = this.querySelector<HTMLInputElement>('#edit-counter-id');
     const idInput = this.querySelector<HTMLInputElement>('#counter-id');
     const form = this.querySelector<HTMLFormElement>('#counter-form');
+    const deleteBtn = this.querySelector<HTMLButtonElement>('#counter-delete-btn');
 
     modalTitle && (modalTitle.textContent = 'Добавить счётчик');
     form?.reset();
+    ['#counter-id', '#counter-trigger', '#counter-template'].forEach((sel) => {
+      this.querySelector<HTMLInputElement | HTMLTextAreaElement>(sel)?.classList.remove('is-invalid');
+    });
     if (editIdInput) editIdInput.value = '';
     if (idInput) idInput.disabled = false;
 
     const valueInput = this.querySelector<HTMLInputElement>('#counter-value');
     if (valueInput) valueInput.value = '0';
 
+    if (deleteBtn) deleteBtn.style.display = 'none';
+
     this.updateCounterTemplateCounter();
+    this.validateForm();
     this.open();
   }
 
@@ -80,6 +126,7 @@ export class CounterDialogElement extends HTMLElement {
     const templateInput = this.querySelector<HTMLTextAreaElement>('#counter-template');
     const valueInput = this.querySelector<HTMLInputElement>('#counter-value');
     const descriptionInput = this.querySelector<HTMLInputElement>('#counter-description');
+    const deleteBtn = this.querySelector<HTMLButtonElement>('#counter-delete-btn');
 
     if (modalTitle) modalTitle.textContent = 'Редактировать счётчик';
     if (editIdInput) editIdInput.value = counter.id;
@@ -92,6 +139,14 @@ export class CounterDialogElement extends HTMLElement {
     if (templateInput) templateInput.value = counter.responseTemplate;
     if (valueInput) valueInput.value = String(counter.value ?? 0);
     if (descriptionInput) descriptionInput.value = counter.description ?? '';
+
+    ['#counter-id', '#counter-trigger', '#counter-template'].forEach((sel) => {
+      this.querySelector<HTMLInputElement | HTMLTextAreaElement>(sel)?.classList.remove('is-invalid');
+    });
+
+    if (deleteBtn) deleteBtn.style.display = 'inline-flex';
+
+    this.validateForm();
 
     this.updateCounterTemplateCounter();
     this.open();
@@ -114,6 +169,19 @@ export class CounterDialogElement extends HTMLElement {
 
   private open(): void {
     this.modal.show();
+  }
+
+  private isRequiredFilled(): boolean {
+    const id = this.querySelector<HTMLInputElement>('#counter-id')?.value.trim();
+    const trigger = this.querySelector<HTMLInputElement>('#counter-trigger')?.value.trim();
+    const template = this.querySelector<HTMLTextAreaElement>('#counter-template')?.value.trim();
+    return Boolean(id && trigger && template);
+  }
+
+  private validateForm(): void {
+    if (!this.saveButton) return;
+    const valid = this.isRequiredFilled();
+    this.saveButton.disabled = !valid;
   }
 
   private collectFormData(): CounterDialogSaveDetail | null {

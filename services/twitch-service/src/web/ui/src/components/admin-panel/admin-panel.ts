@@ -27,7 +27,7 @@ import type { CommandsData, CustomCommand, CountersData, PartyItemsData } from '
 import type { CommandDialogElement, CommandDialogSaveDetail } from '../command-dialog/command-dialog';
 import type { LinkDialogSaveDetail } from '../../interfaces/link-dialog';
 import type { LinkDialogElement } from '../link-dialog/link-dialog';
-import type { CounterDialogElement, CounterDialogSaveDetail } from '../counter-dialog/counter-dialog';
+import type { CounterDialogElement, CounterDialogSaveDetail, CounterDialogDeleteDetail } from '../counter-dialog/counter-dialog';
 import type { PartyDialogElement, PartyDialogSaveDetail } from '../party-dialog/party-dialog';
 
 function escapeHtml(s: string): string {
@@ -222,56 +222,54 @@ export class AdminPanelElement extends HTMLElement {
 
   private renderCounters(data: CountersData): void {
     const container = this.querySelector<HTMLElement>('#counters-container');
-    if (!container) return;
+    const table = this.querySelector<HTMLTableElement>('#counters-table');
+    const tbody = this.querySelector<HTMLTableSectionElement>('#counters-tbody');
+    const emptyState = this.querySelector<HTMLElement>('#counters-empty-state');
+    if (!container || !table || !tbody || !emptyState) return;
 
-    container.style.display = 'grid';
-    container.innerHTML = '';
+    container.classList.remove('loading-state');
+    const loadingEl = container.querySelector('.loading');
+    if (loadingEl) (loadingEl as HTMLElement).style.display = 'none';
+    tbody.innerHTML = '';
 
-    const variantsText = (t: string) => `${t}инфо · ${t}откат · ${t}[число]`;
-    const addTpl = this.getTemplate('template-add-counter-card');
-    const cardTpl = this.getTemplate('template-counter-card');
-    if (addTpl) container.appendChild(addTpl.content.cloneNode(true));
-    if (!cardTpl) return;
-
-    for (const counter of data.counters) {
-      const card = cardTpl.content.cloneNode(true) as DocumentFragment;
-      const root = card.firstElementChild as HTMLElement;
-      if (!root) continue;
-      root.classList.toggle('disabled', !counter.enabled);
-      root.dataset.id = encodeURIComponent(counter.id);
-      const variants = variantsText(counter.trigger);
-      (root.querySelector('.trigger-main') as HTMLElement).textContent = counter.trigger;
-      const variantsEl = root.querySelector('.counter-variants') as HTMLElement;
-      variantsEl.textContent = variants;
-      variantsEl.title = variants;
-      const toggle = root.querySelector('.status-toggle');
-      toggle?.classList.toggle('on', counter.enabled);
-      toggle?.classList.toggle('off', !counter.enabled);
-      (toggle?.querySelector('.status-toggle-text') as HTMLElement).textContent = counter.enabled ? 'ВКЛ' : 'ВЫКЛ';
-      const desc = root.querySelector('.counter-description-slot .command-description') as HTMLElement;
-      if (desc) {
-        desc.textContent = counter.description || '\u00A0';
-        desc.classList.toggle('empty', !counter.description);
-        if (counter.description) desc.title = counter.description;
-      }
-      (root.querySelector('.counter-value') as HTMLElement).textContent = String(counter.value);
-      const templateEl = root.querySelector('.counter-template') as HTMLElement;
-      const strong = document.createElement('strong');
-      strong.textContent = 'Шаблон ответа: ';
-      templateEl.appendChild(strong);
-      templateEl.appendChild(document.createTextNode(counter.responseTemplate));
-      templateEl.title = `Шаблон ответа: ${counter.responseTemplate}`;
-      const aliasesEl = root.querySelector('.command-aliases');
-      if (aliasesEl && counter.aliases?.length) {
-        counter.aliases.forEach((alias) => {
-          const tag = document.createElement('span');
-          tag.className = 'alias-tag';
-          tag.textContent = alias;
-          aliasesEl.appendChild(tag);
-        });
-      }
-      container.appendChild(card);
+    const rowTpl = this.getTemplate('template-counter-row');
+    if (!rowTpl || !data.counters.length) {
+      table.style.display = 'none';
+      emptyState.style.display = data.counters.length === 0 ? 'block' : 'none';
+      return;
     }
+
+    table.style.display = 'table';
+    emptyState.style.display = 'none';
+
+    data.counters.forEach((counter, index) => {
+      const tr = rowTpl.content.cloneNode(true) as DocumentFragment;
+      const row = tr.firstElementChild as HTMLTableRowElement;
+      if (!row) return;
+      row.dataset.id = encodeURIComponent(counter.id);
+      row.classList.toggle('disabled', !counter.enabled);
+
+      const numCell = row.querySelector('.col-num');
+      const triggerCell = row.querySelector('.col-trigger .trigger-text');
+      const valueCell = row.querySelector('.col-value');
+      const descCell = row.querySelector('.col-description');
+      const statusBtn = row.querySelector<HTMLButtonElement>('.col-status .status-badge');
+
+      if (numCell) numCell.textContent = String(index + 1);
+      if (triggerCell) triggerCell.textContent = counter.trigger;
+      if (valueCell) valueCell.textContent = String(counter.value);
+      if (descCell) {
+        const tpl = counter.responseTemplate || '';
+        descCell.textContent = tpl || '—';
+        if (tpl) descCell.setAttribute('title', tpl);
+      }
+      if (statusBtn) {
+        statusBtn.textContent = counter.enabled ? 'ВКЛ' : 'ВЫКЛ';
+        statusBtn.classList.toggle('on', counter.enabled);
+        statusBtn.classList.toggle('off', !counter.enabled);
+      }
+      tbody.appendChild(tr);
+    });
   }
 
   private async loadCounters(): Promise<void> {
@@ -638,7 +636,7 @@ export class AdminPanelElement extends HTMLElement {
       const target = event.target as HTMLElement;
       if (target.closest('#add-command-btn')) {
         commandDialog.openForCreate();
-      } else if (target.closest('#add-counter-card-trigger')) {
+      } else if (target.closest('#add-counter-btn')) {
         counterDialog.openForCreate();
       } else if (target.closest('#add-party-item-btn')) {
         partyDialog.openForCreate();
@@ -728,58 +726,27 @@ export class AdminPanelElement extends HTMLElement {
     countersContainer?.addEventListener('click', async (event) => {
       const target = event.target as HTMLElement | null;
       if (!target) return;
-      const card = target.closest<HTMLElement>('.counter-card');
-      if (!card) return;
-      const encodedId = card.getAttribute('data-id');
-      if (!encodedId) return;
-      const id = decodeURIComponent(encodedId);
-      const actionEl = target.closest<HTMLElement>('[data-action]');
-      const action = actionEl?.getAttribute('data-action');
-      if (!action) return;
+      const row = target.closest<HTMLElement>('.counter-table-row');
+      const actionBtn = target.closest<HTMLElement>('[data-action]');
+      const action = actionBtn?.getAttribute('data-action');
 
-      if (action === 'toggle') {
+      if (action === 'toggle' && row) {
+        const encodedId = row.getAttribute('data-id');
+        if (!encodedId) return;
+        const id = decodeURIComponent(encodedId);
         try {
           await toggleCounter(id);
           await this.loadCounters();
         } catch (error) {
           if (error instanceof Error) showAlert(`Ошибка: ${error.message}`, 'error');
         }
+        return;
       }
 
-      if (action === 'edit-value') {
-        const newValue = prompt('Введите новое значение счётчика:');
-        if (newValue !== null) {
-          const parsedValue = parseInt(newValue, 10);
-          if (!isNaN(parsedValue)) {
-            try {
-              const data = await fetchCounters();
-              const counter = data.counters.find((c) => c.id === id);
-              if (!counter) {
-                showAlert('Счётчик не найден', 'error');
-                return;
-              }
-              await updateCounter(id, { ...counter, value: parsedValue });
-              await this.loadCounters();
-            } catch (error) {
-              if (error instanceof Error) showAlert(`Ошибка: ${error.message}`, 'error');
-            }
-          } else {
-            showAlert('Некорректное значение', 'error');
-          }
-        }
-      }
-
-      if (action === 'delete') {
-        if (!confirm('Удалить счётчик?')) return;
-        try {
-          await deleteCounter(id);
-          await this.loadCounters();
-        } catch (error) {
-          if (error instanceof Error) showAlert(`Ошибка: ${error.message}`, 'error');
-        }
-      }
-
-      if (action === 'edit') {
+      if (action === 'edit' && row) {
+        const encodedId = row.getAttribute('data-id');
+        if (!encodedId) return;
+        const id = decodeURIComponent(encodedId);
         try {
           const data = await fetchCounters();
           const counter = data.counters.find((c) => c.id === id);
@@ -787,6 +754,21 @@ export class AdminPanelElement extends HTMLElement {
             showAlert('Счётчик не найден', 'error');
             return;
           }
+          counterDialog.openForEdit(counter);
+        } catch (error) {
+          if (error instanceof Error) showAlert(`Ошибка загрузки счётчика: ${error.message}`, 'error');
+        }
+        return;
+      }
+
+      if (row && !actionBtn) {
+        const encodedId = row.getAttribute('data-id');
+        if (!encodedId) return;
+        const id = decodeURIComponent(encodedId);
+        try {
+          const data = await fetchCounters();
+          const counter = data.counters.find((c) => c.id === id);
+          if (!counter) return;
           counterDialog.openForEdit(counter);
         } catch (error) {
           if (error instanceof Error) showAlert(`Ошибка загрузки счётчика: ${error.message}`, 'error');
@@ -803,6 +785,20 @@ export class AdminPanelElement extends HTMLElement {
         } else {
           await createCounter(counter);
         }
+        counterDialog.close();
+        await this.loadCounters();
+      } catch (error) {
+        if (error instanceof Error) showAlert(`Ошибка: ${error.message}`, 'error');
+      }
+    });
+
+    counterDialog.addEventListener('delete', async (event: Event) => {
+      const customEvent = event as CustomEvent<CounterDialogDeleteDetail>;
+      const { id } = customEvent.detail;
+      if (!id) return;
+      if (!confirm('Удалить счётчик?')) return;
+      try {
+        await deleteCounter(id);
         counterDialog.close();
         await this.loadCounters();
       } catch (error) {

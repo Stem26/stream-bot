@@ -11,6 +11,7 @@ export interface PartyDialogSaveDetail {
 export class PartyDialogElement extends HTMLElement {
   private initialized = false;
   private modal!: ReturnType<typeof createModal>;
+  private saveButton: HTMLButtonElement | null = null;
 
   connectedCallback(): void {
     if (this.initialized) return;
@@ -34,6 +35,7 @@ export class PartyDialogElement extends HTMLElement {
     });
 
     const form = this.querySelector<HTMLFormElement>('#party-item-form');
+    this.saveButton = this.querySelector<HTMLButtonElement>('.form-actions .btn.btn-success');
     form?.addEventListener('submit', (e) => {
       e.preventDefault();
       const detail = this.collectFormData();
@@ -45,6 +47,21 @@ export class PartyDialogElement extends HTMLElement {
         }),
       );
     });
+
+    const textInput = this.querySelector<HTMLInputElement>('#party-item-text');
+    if (textInput) {
+      textInput.addEventListener('blur', () => {
+        const empty = !textInput.value.trim();
+        textInput.classList.toggle('is-invalid', empty);
+        this.validateForm();
+      });
+      textInput.addEventListener('input', () => {
+        if (textInput.value.trim()) textInput.classList.remove('is-invalid');
+        this.validateForm();
+      });
+    }
+
+    this.validateForm();
   }
 
   openForCreate(): void {
@@ -56,10 +73,12 @@ export class PartyDialogElement extends HTMLElement {
 
     if (modalTitle) modalTitle.textContent = 'Добавить элемент';
     form?.reset();
+    textInput?.classList.remove('is-invalid');
     if (editIdInput) editIdInput.value = '';
     if (textInput) textInput.placeholder = 'например: хомяко‑адвоката';
     const deleteBtn = this.querySelector<HTMLButtonElement>('#party-delete-btn');
     if (deleteBtn) deleteBtn.style.display = 'none';
+    this.validateForm();
     this.open();
   }
 
@@ -71,9 +90,13 @@ export class PartyDialogElement extends HTMLElement {
 
     if (modalTitle) modalTitle.textContent = 'Редактировать элемент';
     if (editIdInput) editIdInput.value = String(item.id);
-    if (textInput) textInput.value = item.text;
+    if (textInput) {
+      textInput.value = item.text;
+      textInput.classList.remove('is-invalid');
+    }
     const deleteBtn = this.querySelector<HTMLButtonElement>('#party-delete-btn');
     if (deleteBtn) deleteBtn.style.display = '';
+    this.validateForm();
     this.open();
   }
 
@@ -83,6 +106,17 @@ export class PartyDialogElement extends HTMLElement {
 
   private open(): void {
     this.modal.show();
+  }
+
+  private isRequiredFilled(): boolean {
+    const text = this.querySelector<HTMLInputElement>('#party-item-text')?.value.trim();
+    return Boolean(text);
+  }
+
+  private validateForm(): void {
+    if (!this.saveButton) return;
+    const valid = this.isRequiredFilled();
+    this.saveButton.disabled = !valid;
   }
 
   private collectFormData(): PartyDialogSaveDetail | null {
