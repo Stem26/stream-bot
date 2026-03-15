@@ -246,7 +246,8 @@ export class AdminPanelElement extends HTMLElement {
     `;
     const tbody = table.querySelector('tbody')!;
 
-    data.items.forEach((item, index) => {
+    const sorted = [...data.items].sort((a, b) => a.text.localeCompare(b.text, 'ru'));
+    sorted.forEach((item, index) => {
       const tr = document.createElement('tr');
       tr.className = 'party-table-row';
       tr.dataset.id = String(item.id);
