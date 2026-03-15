@@ -23,10 +23,11 @@
       </button>
     </div>
     <div class="commands-table-wrap">
-      <div class="commands-table-header">
-        <button type="button" class="btn btn-small" id="add-command-btn">Добавить команду</button>
-      </div>
-      <div id="commands-container" class="commands-table-container loading-state">
+      <div class="commands-table-card">
+        <div class="commands-table-header">
+          <button type="button" class="btn btn-small" id="add-command-btn">Добавить команду</button>
+        </div>
+        <div id="commands-container" class="commands-table-container loading-state">
         <div class="loading">Загрузка команд...</div>
         <table class="commands-table" id="commands-table" style="display: none;">
           <thead>
@@ -40,6 +41,7 @@
           </thead>
           <tbody id="commands-tbody"></tbody>
         </table>
+        </div>
       </div>
     </div>
     <template id="template-command-row">
@@ -63,10 +65,11 @@
   <div class="tab-content"
        id="tab-counters">
     <div class="counters-table-wrap">
-      <div class="counters-table-header">
-        <button type="button" class="btn btn-small" id="add-counter-btn">Добавить счётчик</button>
-      </div>
-      <div id="counters-container" class="counters-table-container loading-state">
+      <div class="counters-table-card">
+        <div class="counters-table-header">
+          <button type="button" class="btn btn-small" id="add-counter-btn">Добавить счётчик</button>
+        </div>
+        <div id="counters-container" class="counters-table-container loading-state">
         <div class="loading">Загрузка счётчиков...</div>
         <table class="counters-table" id="counters-table" style="display: none;">
           <thead>
@@ -81,6 +84,7 @@
           </thead>
           <tbody id="counters-tbody"></tbody>
         </table>
+        </div>
       </div>
     </div>
     <template id="template-counter-row">
@@ -262,11 +266,13 @@
       <p class="admin-description">Пример: 2 элемента, макс 5 → «Партия выдала 3 дракоша‑сосед и 2 хомяко‑адвоката для @user». Раз в сутки на пользователя.</p>
     </div>
     <div class="party-table-wrap">
-      <div class="party-table-header">
-        <button type="button" class="btn btn-small" id="add-party-item-btn">Добавить партию</button>
-      </div>
-      <div id="party-items-container" class="party-items-table-container loading-state">
+      <div class="party-table-card">
+        <div class="party-table-header">
+          <button type="button" class="btn btn-small" id="add-party-item-btn">Добавить партию</button>
+        </div>
+        <div id="party-items-container" class="party-items-table-container loading-state">
         <div class="loading">Загрузка...</div>
+        </div>
       </div>
     </div>
   </div>
