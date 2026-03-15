@@ -15,7 +15,8 @@ let broadcastDuelBannedChanged: (() => void) | null = null;
 
 // Middleware
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
+// Статика с долгим кешем — фон и ассеты не перезапрашиваются при переходах
+app.use(express.static(path.join(__dirname, 'public'), { maxAge: '1y', immutable: true }));
 
 // Авторизация админки пока только через nginx (auth_basic). Middleware в приложении не используется.
 
