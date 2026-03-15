@@ -23,14 +23,12 @@ import {
 // Файл для хранения состояния счётчиков (в корне монорепы)
 const COUNTERS_STATE_FILE = path.resolve(__dirname, '../../../../../counters-state.json');
 
-// Общая директория данных Twitch-сервиса (ту же использует и web/server.ts)
-// Через process.cwd(), чтобы и в dev, и в prod использовать один и тот же src/data.
-const DATA_DIR = path.resolve(process.cwd(), 'src/data');
-
-// Файл с общим текстом всех ссылок (для команды !ссылки)
-const LINKS_CONFIG_FILE = path.join(DATA_DIR, 'links-config.json');
-
-// Файл для хранения кастомных команд
+// Файл для хранения кастомных команд (если понадобится fallback)
+const DATA_DIR = (() => {
+    const fromModule = path.resolve(__dirname, '..', 'data');
+    if (fs.existsSync(fromModule)) return fromModule;
+    return path.resolve(process.cwd(), 'src/data');
+})();
 const CUSTOM_COMMANDS_FILE = path.join(DATA_DIR, 'custom-commands.json');
 
 interface CountersState {
@@ -82,21 +80,14 @@ function saveCountersState(state: CountersState): void {
     }
 }
 
-function loadLinksConfig(): LinksConfig {
+async function loadLinksConfigFromDb(): Promise<LinksConfig> {
     try {
-        if (fs.existsSync(LINKS_CONFIG_FILE)) {
-            const data = fs.readFileSync(LINKS_CONFIG_FILE, 'utf-8');
-            const parsed = JSON.parse(data) as LinksConfig;
-            return {
-                allLinksText: parsed.allLinksText || ''
-            };
-        }
+        const row = await queryOne<{ all_links_text: string }>('SELECT all_links_text FROM links_config WHERE id = 1');
+        return { allLinksText: row?.all_links_text ?? '' };
     } catch (error) {
-        console.error('⚠️ Ошибка загрузки links-config:', error);
+        console.error('⚠️ Ошибка загрузки links_config из БД:', error);
+        return { allLinksText: '' };
     }
-    return {
-        allLinksText: ''
-    };
 }
 
 async function loadCustomCommandsFromDb(): Promise<CustomCommand[]> {
@@ -287,6 +278,7 @@ export class NightBotMonitor {
         register(['!персонажи'], (ch, u, m, msg) => void this.handleCharactersListCommand(ch, u, msg));
         register(['!игры', '!help'], (ch, u, m, msg) => void this.handleGamesCommand(ch, u, msg));
         register(['!ссылки', '!links'], (ch, u, m, msg) => void this.handleLinksCommand(ch, u, msg));
+        register(['!команда', '!команды', '!commands'], (ch, u, m, msg) => void this.handleAllCommandsCommand(ch, u, msg));
         register(['!партия', '!party'], (ch, u, m, msg) => void this.handlePartyCommand(ch, u, msg));
 
         return map;
@@ -330,8 +322,7 @@ export class NightBotMonitor {
             this.deathCounters.set(username, count);
         }
 
-        // Загружаем конфиг ссылок
-        this.linksConfig = loadLinksConfig();
+        // Конфиг ссылок загружается из БД в main через reloadLinksConfigAsync()
 
         // Загружаем кастомные команды
         this.reloadCustomCommands();
@@ -426,14 +417,19 @@ export class NightBotMonitor {
     }
 
     /**
-     * Перезагружает конфиг ссылок из файла
+     * Перезагружает конфиг ссылок из БД (асинхронно)
      */
-    public reloadLinksConfig(): void {
-        this.linksConfig = loadLinksConfig();
+    public async reloadLinksConfigAsync(): Promise<void> {
+        this.linksConfig = await loadLinksConfigFromDb();
         const preview = this.linksConfig.allLinksText
             ? this.linksConfig.allLinksText.substring(0, 80).replace(/\s+/g, ' ')
             : '(пусто)';
-        console.log(`✅ Конфиг ссылок перезагружен, длина=${this.linksConfig.allLinksText.length} символов, превью: ${preview}`);
+        console.log(`✅ Конфиг ссылок перезагружен (БД), длина=${this.linksConfig.allLinksText.length} символов, превью: ${preview}`);
+    }
+
+    /** Вызов перезагрузки конфига ссылок (для колбэка без await) */
+    public reloadLinksConfig(): void {
+        void this.reloadLinksConfigAsync();
     }
 
     /**
@@ -2353,6 +2349,7 @@ export class NightBotMonitor {
         console.log(`📋 Команда !игры от ${user} в ${channel}`);
 
         const commandsList = [
+            '!команды (!команда, !commands) — список включённых команд из таблицы',
             '!dick - вырастить письку',
             '!top_dick - топ длинных',
             '!bottom_dick - топ коротких',
@@ -2370,7 +2367,7 @@ export class NightBotMonitor {
             '!jump/!j - прыжок'
         ];
 
-        const response = `📋 Доступные команды: ${commandsList.join(' • ')}`;
+        const response = `📋 Список доступных команд в чате: ${commandsList.join(' • ')}`;
 
         try {
             await this.sendMessage(channel, response);
@@ -2459,6 +2456,61 @@ export class NightBotMonitor {
             } catch {
                 // ignore
             }
+        }
+    }
+
+    /**
+     * Обработка команды !команда / !команды / !commands
+     * Отправляет в чат все включённые кастомные команды: триггер и ответ каждой
+     */
+    private async handleAllCommandsCommand(channel: string, user: string, msg: any) {
+        console.log(`📋 Команда !команда от ${user} в ${channel}`);
+
+        if (this.isAnnouncementOnCooldown('!команда')) {
+            return;
+        }
+
+        try {
+            const allCommands = await loadCustomCommandsFromDb();
+            const enabled = allCommands.filter((c) => c.enabled);
+            if (enabled.length === 0) {
+                await this.sendMessage(channel, 'Нет включённых команд.');
+                this.setAnnouncementCooldown('!команда');
+                return;
+            }
+
+            const parts = enabled.map((cmd) => {
+                const trigger = cmd.trigger.startsWith('!') ? cmd.trigger : `!${cmd.trigger}`;
+                const aliases = (cmd.aliases ?? []).filter(Boolean);
+                return aliases.length > 0 ? `${trigger} (${aliases.join(', ')})` : trigger;
+            });
+
+            const separator = ', ';
+            const full = parts.join(separator);
+            const maxLen = 480;
+
+            if (full.length <= maxLen) {
+                await this.sendMessage(channel, full);
+            } else {
+                let chunk = '';
+                for (const part of parts) {
+                    const next = chunk ? chunk + separator + part : part;
+                    if (next.length > maxLen && chunk) {
+                        await this.sendMessage(channel, chunk);
+                        chunk = part;
+                    } else {
+                        chunk = next;
+                    }
+                }
+                if (chunk) {
+                    await this.sendMessage(channel, chunk);
+                }
+            }
+
+            this.setAnnouncementCooldown('!команда');
+            console.log(`✅ Список команд (${enabled.length}) отправлен в чат`);
+        } catch (error) {
+            console.error('❌ Ошибка при отправке списка команд:', error);
         }
     }
 

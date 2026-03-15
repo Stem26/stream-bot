@@ -224,6 +224,18 @@ export async function initDatabase(): Promise<void> {
         ON CONFLICT (id) DO NOTHING
       `);
 
+      // Конфиг текста для команды !ссылки (одна строка)
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS links_config (
+          id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+          all_links_text TEXT NOT NULL DEFAULT ''
+        )
+      `);
+      await client.query(`
+        INSERT INTO links_config (id, all_links_text) VALUES (1, '')
+        ON CONFLICT (id) DO NOTHING
+      `);
+
       // Кулдаун партии: пользователь — раз в сутки
       await client.query(`
         CREATE TABLE IF NOT EXISTS party_cooldown (

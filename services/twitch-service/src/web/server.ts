@@ -1,5 +1,4 @@
 import express, { Request, Response } from 'express';
-import * as fs from 'fs';
 import * as path from 'path';
 import * as http from 'http';
 import WebSocket from 'ws';
@@ -12,12 +11,6 @@ const PORT = process.env.WEB_PORT || 3000;
 const WS_PATH = '/ws';
 let wss: WebSocket.Server | null = null;
 let broadcastDuelBannedChanged: (() => void) | null = null;
-
-// Пути к файлам/данным
-// Команды теперь хранятся в БД (таблица custom_commands),
-// а конфиг ссылок пока остаётся в JSON файле.
-const DATA_DIR = path.resolve(process.cwd(), 'src/data');
-const LINKS_FILE = path.join(DATA_DIR, 'links-config.json');
 
 // Middleware
 app.use(express.json());
@@ -288,30 +281,25 @@ async function incrementCounterInDb(id: string): Promise<Counter | null> {
     return { ...existing, value: newValue };
 }
 
-function loadLinks(): LinksConfig {
+async function getLinksFromDb(): Promise<LinksConfig> {
     try {
-        if (fs.existsSync(LINKS_FILE)) {
-            const data = fs.readFileSync(LINKS_FILE, 'utf-8');
-            return JSON.parse(data);
-        }
+        const row = await queryOne<{ all_links_text: string }>('SELECT all_links_text FROM links_config WHERE id = 1');
+        return { allLinksText: row?.all_links_text ?? '' };
     } catch (error) {
-        console.error('⚠️ Ошибка загрузки links-config:', error);
+        console.error('⚠️ Ошибка загрузки links_config из БД:', error);
+        return { allLinksText: '' };
     }
-    return {
-        allLinksText: ''
-    };
 }
 
-function saveLinks(config: LinksConfig): boolean {
+async function saveLinksToDb(config: LinksConfig): Promise<boolean> {
     try {
-        const dir = path.dirname(LINKS_FILE);
-        if (!fs.existsSync(dir)) {
-            fs.mkdirSync(dir, { recursive: true });
-        }
-        fs.writeFileSync(LINKS_FILE, JSON.stringify(config, null, 2), 'utf-8');
+        await query(
+            'INSERT INTO links_config (id, all_links_text) VALUES (1, $1) ON CONFLICT (id) DO UPDATE SET all_links_text = EXCLUDED.all_links_text',
+            [config.allLinksText]
+        );
         return true;
     } catch (error) {
-        console.error('⚠️ Ошибка сохранения links-config:', error);
+        console.error('⚠️ Ошибка сохранения links_config в БД:', error);
         return false;
     }
 }
@@ -329,18 +317,18 @@ app.get('/api/commands', async (req: Request, res: Response) => {
     }
 });
 
-// === API для блока "Все ссылки" ===
+// === API для блока "Все ссылки" (хранится в БД links_config) ===
 
-app.get('/api/links', (req: Request, res: Response) => {
+app.get('/api/links', async (req: Request, res: Response) => {
     try {
-        const config = loadLinks();
+        const config = await getLinksFromDb();
         res.json(config);
     } catch (error) {
         res.status(500).json({ error: 'Ошибка загрузки ссылок' });
     }
 });
 
-app.put('/api/links', (req: Request, res: Response) => {
+app.put('/api/links', async (req: Request, res: Response) => {
     try {
         const { allLinksText } = req.body as Partial<LinksConfig>;
 
@@ -350,9 +338,8 @@ app.put('/api/links', (req: Request, res: Response) => {
 
         const config: LinksConfig = { allLinksText };
 
-        if (saveLinks(config)) {
-            console.log('✅ Конфиг ссылок обновлён');
-            // Уведомляем Twitch-сервис, чтобы он тут же перечитал конфиг
+        if (await saveLinksToDb(config)) {
+            console.log('✅ Конфиг ссылок обновлён (БД)');
             notifyCommandsChanged();
             res.json(config);
         } else {

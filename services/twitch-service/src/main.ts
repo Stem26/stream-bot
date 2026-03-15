@@ -81,6 +81,7 @@ async function main() {
 
     // Chat monitor / commands / moderation
     const nightBotMonitor = new NightBotMonitor();
+    await nightBotMonitor.reloadLinksConfigAsync();
 
     // Устанавливаем колбэк для перезагрузки команд, счётчиков и ссылок при изменениях через веб-интерфейс
     setOnCommandsChangedCallback(() => {
