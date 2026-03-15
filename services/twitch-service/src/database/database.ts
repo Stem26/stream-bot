@@ -210,6 +210,36 @@ export async function initDatabase(): Promise<void> {
         ON CONFLICT (id) DO NOTHING
       `);
 
+      // Настройки модерации чата: вкл/выкл, проверка по символам, по буквам, лимиты, таймаут
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS chat_moderation_config (
+          id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+          moderation_enabled BOOLEAN NOT NULL DEFAULT true,
+          check_symbols BOOLEAN NOT NULL DEFAULT true,
+          check_letters BOOLEAN NOT NULL DEFAULT true,
+          max_message_length INTEGER NOT NULL DEFAULT 300,
+          max_letters_digits INTEGER NOT NULL DEFAULT 300,
+          timeout_minutes INTEGER NOT NULL DEFAULT 10
+        )
+      `);
+      await client.query(`
+        ALTER TABLE chat_moderation_config ADD COLUMN IF NOT EXISTS max_letters_digits INTEGER NOT NULL DEFAULT 300
+      `).catch(() => {});
+      await client.query(`
+        ALTER TABLE chat_moderation_config ADD COLUMN IF NOT EXISTS moderation_enabled BOOLEAN NOT NULL DEFAULT true
+      `).catch(() => {});
+      await client.query(`
+        ALTER TABLE chat_moderation_config ADD COLUMN IF NOT EXISTS check_symbols BOOLEAN NOT NULL DEFAULT true
+      `).catch(() => {});
+      await client.query(`
+        ALTER TABLE chat_moderation_config ADD COLUMN IF NOT EXISTS check_letters BOOLEAN NOT NULL DEFAULT true
+      `).catch(() => {});
+      await client.query(`
+        INSERT INTO chat_moderation_config (id, max_message_length, max_letters_digits, timeout_minutes)
+        VALUES (1, 300, 300, 10)
+        ON CONFLICT (id) DO NOTHING
+      `);
+
       // Дейлики дуэлей: ежедневная награда и серия побед (одна строка)
       await client.query(`
         CREATE TABLE IF NOT EXISTS duel_daily_config (

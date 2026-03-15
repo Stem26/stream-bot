@@ -1003,6 +1003,165 @@ app.post('/api/admin/duels/set-cooldown-skip', (req: Request, res: Response) => 
     }
 });
 
+// Настройки модерации чата (анти-спам)
+type ChatModerationRow = {
+    moderation_enabled: boolean;
+    check_symbols: boolean;
+    check_letters: boolean;
+    max_message_length: number;
+    max_letters_digits: number;
+    timeout_minutes: number;
+};
+
+const defaultModerationConfig = () => ({
+    moderationEnabled: true,
+    checkSymbols: true,
+    checkLetters: true,
+    maxMessageLength: 300,
+    maxLettersDigits: 300,
+    timeoutMinutes: 10,
+});
+
+app.get('/api/admin/chat-moderation/config', async (_req: Request, res: Response) => {
+    try {
+        const row = await queryOne<ChatModerationRow>(
+            'SELECT moderation_enabled, check_symbols, check_letters, max_message_length, max_letters_digits, timeout_minutes FROM chat_moderation_config WHERE id = 1'
+        );
+        if (!row) {
+            res.json(defaultModerationConfig());
+            return;
+        }
+        res.json({
+            moderationEnabled: row.moderation_enabled ?? true,
+            checkSymbols: row.check_symbols ?? true,
+            checkLetters: row.check_letters ?? true,
+            maxMessageLength: row.max_message_length,
+            maxLettersDigits: row.max_letters_digits ?? 300,
+            timeoutMinutes: row.timeout_minutes,
+        });
+    } catch (error) {
+        console.error('❌ Ошибка получения конфига модерации чата:', error);
+        res.status(500).json({ error: 'Ошибка получения конфига модерации чата' });
+    }
+});
+
+app.post('/api/admin/chat-moderation/config', async (req: Request, res: Response) => {
+    try {
+        const moderationEnabled =
+            req.body?.moderationEnabled != null ? Boolean(req.body.moderationEnabled) : undefined;
+        const checkSymbols =
+            req.body?.checkSymbols != null ? Boolean(req.body.checkSymbols) : undefined;
+        const checkLetters =
+            req.body?.checkLetters != null ? Boolean(req.body.checkLetters) : undefined;
+        const maxMessageLength =
+            req.body?.maxMessageLength != null ? Number(req.body.maxMessageLength) : undefined;
+        const maxLettersDigits =
+            req.body?.maxLettersDigits != null ? Number(req.body.maxLettersDigits) : undefined;
+        const timeoutMinutes =
+            req.body?.timeoutMinutes != null ? Number(req.body.timeoutMinutes) : undefined;
+
+        if (
+            (maxMessageLength != null &&
+                (Number.isNaN(maxMessageLength) || maxMessageLength < 1)) ||
+            (maxLettersDigits != null &&
+                (Number.isNaN(maxLettersDigits) || maxLettersDigits < 1)) ||
+            (timeoutMinutes != null &&
+                (Number.isNaN(timeoutMinutes) || timeoutMinutes < 1))
+        ) {
+            res.status(400).json({
+                error: 'Значения должны быть положительными числами',
+            });
+            return;
+        }
+
+        const updates: string[] = [];
+        const params: unknown[] = [];
+        let i = 1;
+
+        if (moderationEnabled != null) {
+            updates.push(`moderation_enabled = $${i++}`);
+            params.push(moderationEnabled);
+            if (!moderationEnabled) {
+                updates.push(`check_symbols = $${i++}`);
+                params.push(false);
+                updates.push(`check_letters = $${i++}`);
+                params.push(false);
+            }
+        }
+        if (checkSymbols != null && moderationEnabled !== false) {
+            updates.push(`check_symbols = $${i++}`);
+            params.push(checkSymbols);
+        }
+        if (checkLetters != null && moderationEnabled !== false) {
+            updates.push(`check_letters = $${i++}`);
+            params.push(checkLetters);
+        }
+        if (maxMessageLength != null) {
+            updates.push(`max_message_length = $${i++}`);
+            params.push(maxMessageLength);
+        }
+        if (maxLettersDigits != null) {
+            updates.push(`max_letters_digits = $${i++}`);
+            params.push(maxLettersDigits);
+        }
+        if (timeoutMinutes != null) {
+            updates.push(`timeout_minutes = $${i++}`);
+            params.push(timeoutMinutes);
+        }
+
+        if (updates.length === 0) {
+            const row = await queryOne<ChatModerationRow>(
+                'SELECT moderation_enabled, check_symbols, check_letters, max_message_length, max_letters_digits, timeout_minutes FROM chat_moderation_config WHERE id = 1'
+            );
+            const out = row
+                ? {
+                      moderationEnabled: row.moderation_enabled ?? true,
+                      checkSymbols: row.check_symbols ?? true,
+                      checkLetters: row.check_letters ?? true,
+                      maxMessageLength: row.max_message_length,
+                      maxLettersDigits: row.max_letters_digits ?? 300,
+                      timeoutMinutes: row.timeout_minutes,
+                  }
+                : defaultModerationConfig();
+            res.json(out);
+            return;
+        }
+
+        await query(
+            `UPDATE chat_moderation_config SET ${updates.join(', ')} WHERE id = 1`,
+            params as number[]
+        );
+
+        const row = await queryOne<ChatModerationRow>(
+            'SELECT moderation_enabled, check_symbols, check_letters, max_message_length, max_letters_digits, timeout_minutes FROM chat_moderation_config WHERE id = 1'
+        );
+        const config = row
+            ? {
+                  moderationEnabled: row.moderation_enabled ?? true,
+                  checkSymbols: row.check_symbols ?? true,
+                  checkLetters: row.check_letters ?? true,
+                  maxMessageLength: row.max_message_length,
+                  maxLettersDigits: row.max_letters_digits ?? 300,
+                  timeoutMinutes: row.timeout_minutes,
+              }
+            : defaultModerationConfig();
+
+        console.log(
+            '[Модерация] Сохранено: Модерация чата=' +
+                (config.moderationEnabled ? 'ВКЛ' : 'ВЫКЛ') +
+                ', Проверка по символам=' +
+                (config.checkSymbols ? 'ВКЛ' : 'ВЫКЛ') +
+                ', Проверка по буквам и цифрам=' +
+                (config.checkLetters ? 'ВКЛ' : 'ВЫКЛ')
+        );
+        if (onChatModerationConfigUpdatedCallback) onChatModerationConfigUpdatedCallback();
+        res.json(config);
+    } catch (error) {
+        console.error('❌ Ошибка сохранения конфига модерации чата:', error);
+        res.status(500).json({ error: 'Ошибка сохранения конфига модерации чата' });
+    }
+});
+
 // Настройки дуэлей (таймаут, очки, штраф за промах)
 type DuelConfigRow = { timeout_minutes: number; win_points: number; loss_points: number; miss_penalty: number };
 
@@ -1269,6 +1428,7 @@ let setDuelCooldownSkipCallback: ((skip: boolean) => void) | null = null;
 let onDuelConfigUpdatedCallback: ((config: { timeoutMinutes: number; winPoints: number; lossPoints: number; missPenalty: number }) => void) | null = null;
 let onDuelDailyConfigUpdatedCallback: ((config: { dailyGamesCount: number; dailyRewardPoints: number; streakWinsCount: number; streakRewardPoints: number }) => void) | null = null;
 let onLinksConfigUpdatedCallback: ((config: LinksConfig) => void) | null = null;
+let onChatModerationConfigUpdatedCallback: (() => void) | null = null;
 
 export function setOnCommandsChangedCallback(callback: () => void) {
     onCommandsChangedCallback = callback;
@@ -1284,6 +1444,10 @@ export function setOnLinksSendCallback(callback: () => void | Promise<void>) {
 
 export function setOnLinksConfigUpdatedCallback(callback: (config: LinksConfig) => void) {
     onLinksConfigUpdatedCallback = callback;
+}
+
+export function setOnChatModerationConfigUpdatedCallback(callback: () => void) {
+    onChatModerationConfigUpdatedCallback = callback;
 }
 
 export function setOnEnableDuelsCallback(callback: () => void | Promise<void>) {

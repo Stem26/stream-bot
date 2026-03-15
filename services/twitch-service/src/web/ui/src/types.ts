@@ -54,3 +54,12 @@ export interface PartyConfig {
   skipCooldown: boolean;
 }
 
+export interface ChatModerationConfig {
+  moderationEnabled: boolean;
+  checkSymbols: boolean;
+  checkLetters: boolean;
+  maxMessageLength: number;
+  maxLettersDigits: number;
+  timeoutMinutes: number;
+}
+

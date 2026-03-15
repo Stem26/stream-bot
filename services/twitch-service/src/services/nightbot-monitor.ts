@@ -211,6 +211,21 @@ export class NightBotMonitor {
     // Конфиг общего текста ссылок для команды !ссылки
     private linksConfig: LinksConfig = { allLinksText: '' };
 
+    // Настройки анти-спама чата
+    private spamConfig = {
+        moderationEnabled: true,
+        checkSymbols: true,
+        checkLetters: true,
+        maxMessageLength: 25,
+        maxLettersDigits: 100,
+        windowMs: 5 * 60 * 1000,
+        softViolationsBeforeTimeout: 2,
+        timeoutMinutes: 10,
+    };
+    private spamViolations = new Map<string, number[]>();
+    private spamConfigLastLoaded = 0;
+    private readonly SPAM_CONFIG_TTL_MS = 60 * 1000;
+
     // Команды, которые работают всегда (не требуют активного стрима)
     private readonly ALWAYS_AVAILABLE_COMMANDS = new Set([
         '!discord', '!ds', '!дискорд', '!дс',
@@ -769,7 +784,7 @@ export class NightBotMonitor {
                 this.warmupChattersCache();
             }
 
-            this.chatClient.onMessage((channel, user, message, msg) => {
+            this.chatClient.onMessage(async (channel, user, message, msg) => {
                 const username = user.toLowerCase();
 
                 // Игнорируем сообщения от ботов (включая свои собственные)
@@ -813,8 +828,15 @@ export class NightBotMonitor {
                     );
                 });
 
-                const trimmedMessage = message.trim().toLowerCase();
+                const originalMessage = message.trim();
+                const trimmedMessage = originalMessage.toLowerCase();
                 console.log(`📨 ${user}: ${message}`);
+
+                // Анти-спам: сначала проверяем слишком длинные сообщения
+                const spamHandled = await this.handleSpamIfNeeded(username, originalMessage);
+                if (spamHandled) {
+                    return;
+                }
 
                 // Игнорировать команды если они отключены
                 if (!ENABLE_BOT_FEATURES) {
@@ -2256,6 +2278,124 @@ export class NightBotMonitor {
         } catch (error: any) {
             console.error(`❌ Ошибка !vanish:`, error?.message || error);
         }
+    }
+
+    private async ensureSpamConfigLoaded(): Promise<void> {
+        const now = Date.now();
+        if (now - this.spamConfigLastLoaded < this.SPAM_CONFIG_TTL_MS) {
+            return;
+        }
+        try {
+            const row = await queryOne<{
+                moderation_enabled: boolean;
+                check_symbols: boolean;
+                check_letters: boolean;
+                max_message_length: number;
+                max_letters_digits: number;
+                timeout_minutes: number;
+            }>(
+                'SELECT moderation_enabled, check_symbols, check_letters, max_message_length, max_letters_digits, timeout_minutes FROM chat_moderation_config WHERE id = 1'
+            );
+            if (row) {
+                this.spamConfig.moderationEnabled = row.moderation_enabled ?? this.spamConfig.moderationEnabled;
+                this.spamConfig.checkSymbols = row.check_symbols ?? this.spamConfig.checkSymbols;
+                this.spamConfig.checkLetters = row.check_letters ?? this.spamConfig.checkLetters;
+                this.spamConfig.maxMessageLength = row.max_message_length ?? this.spamConfig.maxMessageLength;
+                this.spamConfig.maxLettersDigits = row.max_letters_digits ?? this.spamConfig.maxLettersDigits;
+                this.spamConfig.timeoutMinutes = row.timeout_minutes ?? this.spamConfig.timeoutMinutes;
+            }
+            this.spamConfigLastLoaded = now;
+        } catch (error: any) {
+            console.error('⚠️ Ошибка загрузки настроек модерации чата:', error?.message || error);
+            this.spamConfigLastLoaded = now;
+        }
+    }
+
+    /** Сброс кеша настроек модерации (вызывается после сохранения в админке). */
+    invalidateSpamConfigCache(): void {
+        this.spamConfigLastLoaded = 0;
+    }
+
+    private isSpammyMessage(message: string): boolean {
+        if (!message || !this.spamConfig.moderationEnabled) return false;
+        if (!this.spamConfig.checkSymbols && !this.spamConfig.checkLetters) return false;
+
+        const len = message.length;
+        let alnumCount = 0;
+        let maxRunAlnum = 0;
+        let currentRun = 0;
+        let currentChar = '';
+
+        for (let i = 0; i < len; i++) {
+            const ch = message[i];
+            if (/[0-9a-zA-ZА-Яа-яЁё]/.test(ch)) {
+                alnumCount++;
+                if (ch === currentChar) {
+                    currentRun++;
+                } else {
+                    currentRun = 1;
+                    currentChar = ch;
+                }
+                if (currentRun > maxRunAlnum) maxRunAlnum = currentRun;
+            } else {
+                currentRun = 0;
+                currentChar = '';
+            }
+        }
+
+        const overBySymbols = this.spamConfig.checkSymbols && len > this.spamConfig.maxMessageLength;
+        const overByLetters = this.spamConfig.checkLetters && maxRunAlnum > this.spamConfig.maxLettersDigits;
+
+        if (!overBySymbols && !overByLetters) return false;
+
+        if (overByLetters) return true;
+
+        if (overBySymbols) {
+            const letterRatio = len > 0 ? alnumCount / len : 0;
+            if (letterRatio > 0.6) return false;
+            // Исключение: сообщение из коротких токенов через пробелы (смайлики, эмодзи, короткие фразы) — не спам
+            const tokens = message.trim().split(/\s+/).filter(Boolean);
+            const hasAlnum = alnumCount > 0;
+            const allTokensShort = tokens.length >= 3 && tokens.every((t) => t.length <= 12);
+            if (hasAlnum && allTokensShort) return false;
+            return true;
+        }
+
+        return false;
+    }
+
+    private async handleSpamIfNeeded(username: string, message: string): Promise<boolean> {
+        await this.ensureSpamConfigLoaded();
+
+        if (!this.isSpammyMessage(message)) {
+            return false;
+        }
+
+        const key = username.toLowerCase();
+        const now = Date.now();
+        const windowMs = this.spamConfig.windowMs;
+
+        const prev = this.spamViolations.get(key) ?? [];
+        const recent = prev.filter((ts) => now - ts < windowMs);
+        recent.push(now);
+        this.spamViolations.set(key, recent);
+
+        try {
+            if (recent.length <= this.spamConfig.softViolationsBeforeTimeout) {
+                console.log(`🧹 SPAM soft-block для ${key}, нарушение #${recent.length}`);
+                await this.timeoutUser(username, 1, 'Chat spam (soft vanish)');
+            } else {
+                const durationSec = Math.max(1, this.spamConfig.timeoutMinutes * 60);
+                console.log(
+                    `⛔ SPAM timeout для ${key} на ${durationSec} секунд (нарушений за окно: ${recent.length})`
+                );
+                await this.timeoutUser(username, durationSec, 'Chat spam');
+            }
+        } catch (error: any) {
+            console.error('❌ Ошибка применения анти-спама:', error?.message || error);
+        }
+
+        return true;
     }
 
     /**

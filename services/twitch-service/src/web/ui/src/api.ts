@@ -1,4 +1,14 @@
-import type { CommandsData, CustomCommand, LinksConfig, CountersData, Counter, PartyItemsData, PartyItem, PartyConfig } from './types';
+import type {
+  CommandsData,
+  CustomCommand,
+  LinksConfig,
+  CountersData,
+  Counter,
+  PartyItemsData,
+  PartyItem,
+  PartyConfig,
+  ChatModerationConfig,
+} from './types';
 
 async function handleJson<T>(response: Response, defaultError: string): Promise<T> {
   if (!response.ok) {
@@ -182,5 +192,23 @@ export async function deletePartyItem(id: number): Promise<void> {
     method: 'DELETE',
   });
   await handleJson<unknown>(response, 'Ошибка удаления');
+}
+
+// === API для модерации чата ===
+
+export async function fetchChatModerationConfig(): Promise<ChatModerationConfig> {
+  const response = await fetch('/api/admin/chat-moderation/config');
+  return handleJson<ChatModerationConfig>(response, 'Ошибка загрузки настроек модерации');
+}
+
+export async function updateChatModerationConfig(
+  config: ChatModerationConfig,
+): Promise<ChatModerationConfig> {
+  const response = await fetch('/api/admin/chat-moderation/config', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(config),
+  });
+  return handleJson<ChatModerationConfig>(response, 'Ошибка сохранения настроек модерации');
 }
 

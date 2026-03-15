@@ -7,7 +7,7 @@ import { clearDuelQueue, resetDuelsOnStreamEnd, clearDuelChallenges, setOnDuelBa
 import { clearActiveUsers } from "./commands/twitch-rat";
 import { log } from './utils/event-logger';
 import { initDatabase, closeDatabase, query, queryOne } from './database/database';
-import { startWebServer, getBroadcastDuelBannedChanged, setOnCommandsChangedCallback, setOnCommandExecuteCallback, setOnLinksSendCallback, setOnEnableDuelsCallback, setOnDisableDuelsCallback, setOnPardonAllCallback, setGetDuelBannedListCallback, setPardonDuelUserCallback, setGetDuelsStatusCallback, setGetDuelCooldownSkipCallback, setSetDuelCooldownSkipCallback, setOnDuelConfigUpdatedCallback, setOnDuelDailyConfigUpdatedCallback, setOnLinksConfigUpdatedCallback } from './web/server';
+import { startWebServer, getBroadcastDuelBannedChanged, setOnCommandsChangedCallback, setOnCommandExecuteCallback, setOnLinksSendCallback, setOnEnableDuelsCallback, setOnDisableDuelsCallback, setOnPardonAllCallback, setGetDuelBannedListCallback, setPardonDuelUserCallback, setGetDuelsStatusCallback, setGetDuelCooldownSkipCallback, setSetDuelCooldownSkipCallback, setOnDuelConfigUpdatedCallback, setOnDuelDailyConfigUpdatedCallback, setOnLinksConfigUpdatedCallback, setOnChatModerationConfigUpdatedCallback } from './web/server';
 
 async function main() {
     const config = loadConfig();
@@ -97,6 +97,10 @@ async function main() {
     // При изменении интервала ротации ссылок в админке — мягко перезапускаем таймеры, сохраняя текущий индекс
     setOnLinksConfigUpdatedCallback(() => {
         streamMonitor.reloadLinkRotation();
+    });
+
+    setOnChatModerationConfigUpdatedCallback(() => {
+        nightBotMonitor.invalidateSpamConfigCache();
     });
 
     // Chat monitor / commands / moderation

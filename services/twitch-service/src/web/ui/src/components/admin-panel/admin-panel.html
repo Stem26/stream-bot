@@ -9,6 +9,7 @@
     <button class="tab-btn" data-tab="counters">🔢 Счётчики</button>
     <button class="tab-btn" data-tab="duels">⚔️ Дуэли</button>
     <button class="tab-btn" data-tab="party">🎉 Партия</button>
+    <button class="tab-btn" data-tab="moderation">🛡️ Модерация чата</button>
   </div>
   <div class="tab-content active"
        id="tab-commands">
@@ -289,6 +290,85 @@
         <div id="party-items-container" class="party-items-table-container loading-state">
         <div class="loading">Загрузка...</div>
         </div>
+      </div>
+    </div>
+  </div>
+  <div class="tab-content"
+       id="tab-moderation">
+    <div class="admin-section">
+      <h3>Модерация чата</h3>
+      <p class="admin-description">
+        Первые 2 слишком длинных сообщения скрываются (как vanish), при повторе за последние 5 минут — тайм-аут.
+      </p>
+      <div class="admin-duels-toggle-row">
+        <span class="admin-duels-label">Модерация чата</span>
+        <div class="status-toggle off"
+             id="chat-moderation-enabled-toggle"
+             data-enabled="false"
+             title="Включить/выключить всю модерацию (при выключении сбрасываются оба типа проверок)">
+          <div class="status-toggle-circle"></div>
+          <span class="status-toggle-text">Загрузка...</span>
+        </div>
+      </div>
+      <div class="admin-duels-toggle-row">
+        <span class="admin-duels-label">Проверка по символам</span>
+        <div class="status-toggle off"
+             id="chat-check-symbols-toggle"
+             data-enabled="false"
+             title="Лимит по общей длине сообщения (символов)">
+          <div class="status-toggle-circle"></div>
+          <span class="status-toggle-text">ВЫКЛ</span>
+        </div>
+      </div>
+      <div class="admin-duels-toggle-row">
+        <span class="admin-duels-label">Проверка по буквам и цифрам</span>
+        <div class="status-toggle off"
+             id="chat-check-letters-toggle"
+             data-enabled="false"
+             title="Лимит по количеству букв и цифр в сообщении">
+          <div class="status-toggle-circle"></div>
+          <span class="status-toggle-text">ВЫКЛ</span>
+        </div>
+      </div>
+      <div class="admin-duels-config-fields">
+        <div class="admin-duels-config-row">
+          <label for="chat-max-length">Макс. длина сообщения (символов)</label>
+          <input type="number"
+                 id="chat-max-length"
+                 min="1"
+                 step="1"
+                 value="300" />
+        </div>
+        <div class="admin-duels-config-row">
+          <label for="chat-max-letters-digits">Макс. длина сообщения (букв и цифр)</label>
+          <input type="number"
+                 id="chat-max-letters-digits"
+                 min="1"
+                 step="1"
+                 value="300" />
+        </div>
+        <div class="admin-duels-config-row">
+          <label for="chat-spam-timeout-min">Тайм-аут за спам (мин)</label>
+          <input type="number"
+                 id="chat-spam-timeout-min"
+                 min="1"
+                 step="1"
+                 value="10" />
+        </div>
+        <button type="button"
+                class="btn btn-success"
+                id="chat-moderation-save-btn"
+                disabled>
+          Сохранить настройки
+        </button>
+      </div>
+      <div class="moderation-rules-block">
+        <button type="button"
+                class="btn btn-small"
+                id="chat-moderation-rules-btn"
+                title="Подробная инструкция по правилам анти-спама">
+          📋 Правила бана
+        </button>
       </div>
     </div>
   </div>

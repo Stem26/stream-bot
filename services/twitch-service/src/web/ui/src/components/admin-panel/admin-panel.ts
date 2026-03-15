@@ -23,13 +23,22 @@ import {
   fetchPartyConfig,
   updatePartyConfig,
   setPartySkipCooldown,
+  fetchChatModerationConfig,
+  updateChatModerationConfig,
 } from '../../api';
-import type { CommandsData, CustomCommand, CountersData, PartyItemsData } from '../../types';
+import type {
+  CommandsData,
+  CustomCommand,
+  CountersData,
+  PartyItemsData,
+  ChatModerationConfig,
+} from '../../types';
 import type { CommandDialogElement, CommandDialogSaveDetail } from '../command-dialog/command-dialog';
 import type { LinkDialogSaveDetail } from '../../interfaces/link-dialog';
 import type { LinkDialogElement } from '../link-dialog/link-dialog';
 import type { CounterDialogElement, CounterDialogSaveDetail, CounterDialogDeleteDetail } from '../counter-dialog/counter-dialog';
 import type { PartyDialogElement, PartyDialogSaveDetail } from '../party-dialog/party-dialog';
+import type { ModerationRulesDialogElement } from '../moderation-rules-dialog/moderation-rules-dialog';
 
 function escapeHtml(s: string): string {
   return s
@@ -62,6 +71,7 @@ export class AdminPanelElement extends HTMLElement {
   private lastDuelConfig: DuelConfigValues | null = null;
   private lastDailyConfig: DailyConfigValues | null = null;
   private lastLinksRotationMinutes: number | null = null;
+  private lastChatModerationConfig: ChatModerationConfig | null = null;
 
   connectedCallback(): void {
     if (this.initialized) return;
@@ -645,6 +655,7 @@ export class AdminPanelElement extends HTMLElement {
     await this.applyDevModeVisibility();
     await this.loadPartyItems();
     await this.loadPartyConfig();
+    await this.loadChatModerationConfig();
     this.connectDuelBannedWs();
 
     document.addEventListener('click', (event) => {
@@ -1157,6 +1168,135 @@ export class AdminPanelElement extends HTMLElement {
         if (error instanceof Error) showAlert(`Ошибка: ${error.message}`, 'error');
       }
     });
+    const maxLenInput = this.querySelector('#chat-max-length') as HTMLInputElement | null;
+    const maxLettersDigitsInput = this.querySelector('#chat-max-letters-digits') as HTMLInputElement | null;
+    const timeoutInput = this.querySelector('#chat-spam-timeout-min') as HTMLInputElement | null;
+    const moderationSaveBtn = this.querySelector('#chat-moderation-save-btn') as HTMLButtonElement | null;
+    const moderationEnabledToggle = this.querySelector('#chat-moderation-enabled-toggle') as HTMLElement | null;
+    const checkSymbolsToggle = this.querySelector('#chat-check-symbols-toggle') as HTMLElement | null;
+    const checkLettersToggle = this.querySelector('#chat-check-letters-toggle') as HTMLElement | null;
+
+    const setModerationToggleState = (el: HTMLElement | null, on: boolean, text: string) => {
+      if (!el) return;
+      el.classList.toggle('on', on);
+      el.classList.toggle('off', !on);
+      el.setAttribute('data-enabled', String(on));
+      const textEl = el.querySelector('.status-toggle-text');
+      if (textEl) textEl.textContent = text;
+    };
+
+    const touchModerationDirty = () => {
+      if (moderationSaveBtn) moderationSaveBtn.disabled = false;
+    };
+
+    moderationEnabledToggle?.addEventListener('click', () => {
+      const on = moderationEnabledToggle.getAttribute('data-enabled') === 'true';
+      const newVal = !on;
+      console.log(`[Модерация] Тогл «Модерация чата» → ${newVal ? 'ВКЛ' : 'ВЫКЛ'}`);
+      setModerationToggleState(moderationEnabledToggle, newVal, newVal ? 'ВКЛ' : 'ВЫКЛ');
+      if (!newVal) {
+        setModerationToggleState(checkSymbolsToggle, false, 'ВЫКЛ');
+        setModerationToggleState(checkLettersToggle, false, 'ВЫКЛ');
+      }
+      touchModerationDirty();
+    });
+    checkSymbolsToggle?.addEventListener('click', () => {
+      if (moderationEnabledToggle?.getAttribute('data-enabled') !== 'true') return;
+      const on = checkSymbolsToggle.getAttribute('data-enabled') === 'true';
+      const newVal = !on;
+      console.log(`[Модерация] Тогл «Проверка по символам» → ${newVal ? 'ВКЛ' : 'ВЫКЛ'}`);
+      setModerationToggleState(checkSymbolsToggle, newVal, newVal ? 'ВКЛ' : 'ВЫКЛ');
+      touchModerationDirty();
+    });
+    checkLettersToggle?.addEventListener('click', () => {
+      if (moderationEnabledToggle?.getAttribute('data-enabled') !== 'true') return;
+      const on = checkLettersToggle.getAttribute('data-enabled') === 'true';
+      const newVal = !on;
+      console.log(`[Модерация] Тогл «Проверка по буквам и цифрам» → ${newVal ? 'ВКЛ' : 'ВЫКЛ'}`);
+      setModerationToggleState(checkLettersToggle, newVal, newVal ? 'ВКЛ' : 'ВЫКЛ');
+      touchModerationDirty();
+    });
+
+    maxLenInput?.addEventListener('input', touchModerationDirty);
+    maxLettersDigitsInput?.addEventListener('input', touchModerationDirty);
+    timeoutInput?.addEventListener('input', touchModerationDirty);
+
+    moderationSaveBtn?.addEventListener('click', async () => {
+      if (!maxLenInput || !maxLettersDigitsInput || !timeoutInput) return;
+      const moderationEnabled = moderationEnabledToggle?.getAttribute('data-enabled') === 'true';
+      const checkSymbols = checkSymbolsToggle?.getAttribute('data-enabled') === 'true';
+      const checkLetters = checkLettersToggle?.getAttribute('data-enabled') === 'true';
+      const maxMessageLength = Math.max(1, parseInt(maxLenInput.value || '300', 10) || 300);
+      const maxLettersDigits = Math.max(1, parseInt(maxLettersDigitsInput.value || '300', 10) || 300);
+      const timeoutMinutes = Math.max(1, parseInt(timeoutInput.value || '10', 10) || 10);
+      try {
+        const saved = await updateChatModerationConfig({
+          moderationEnabled,
+          checkSymbols: moderationEnabled ? checkSymbols : false,
+          checkLetters: moderationEnabled ? checkLetters : false,
+          maxMessageLength,
+          maxLettersDigits,
+          timeoutMinutes,
+        });
+        this.lastChatModerationConfig = saved;
+        if (moderationSaveBtn) moderationSaveBtn.disabled = true;
+        showAlert('Настройки модерации чата сохранены', 'success');
+      } catch (error) {
+        if (error instanceof Error) showAlert(`Ошибка: ${error.message}`, 'error');
+      }
+    });
+
+    const moderationRulesBtn = this.querySelector('#chat-moderation-rules-btn') as HTMLButtonElement | null;
+    moderationRulesBtn?.addEventListener('click', () => {
+      const dialog = document.querySelector('moderation-rules-dialog') as ModerationRulesDialogElement | null;
+      dialog?.open(this.lastChatModerationConfig ?? undefined);
+    });
+  }
+
+  private async loadChatModerationConfig(): Promise<void> {
+    try {
+      const config = await fetchChatModerationConfig();
+      this.lastChatModerationConfig = config;
+      const maxLenInput = this.querySelector('#chat-max-length') as HTMLInputElement | null;
+      const maxLettersDigitsInput = this.querySelector('#chat-max-letters-digits') as HTMLInputElement | null;
+      const timeoutInput = this.querySelector('#chat-spam-timeout-min') as HTMLInputElement | null;
+      const saveBtn = this.querySelector('#chat-moderation-save-btn') as HTMLButtonElement | null;
+      const moderationEnabledToggle = this.querySelector('#chat-moderation-enabled-toggle') as HTMLElement | null;
+      const checkSymbolsToggle = this.querySelector('#chat-check-symbols-toggle') as HTMLElement | null;
+      const checkLettersToggle = this.querySelector('#chat-check-letters-toggle') as HTMLElement | null;
+      if (maxLenInput) maxLenInput.value = String(config.maxMessageLength ?? 300);
+      if (maxLettersDigitsInput) maxLettersDigitsInput.value = String(config.maxLettersDigits ?? 300);
+      if (timeoutInput) timeoutInput.value = String(config.timeoutMinutes ?? 10);
+      const modOn = config.moderationEnabled ?? true;
+      const symOn = config.checkSymbols ?? true;
+      const letOn = config.checkLetters ?? true;
+      if (moderationEnabledToggle) {
+        moderationEnabledToggle.classList.toggle('on', modOn);
+        moderationEnabledToggle.classList.toggle('off', !modOn);
+        moderationEnabledToggle.setAttribute('data-enabled', String(modOn));
+        const t = moderationEnabledToggle.querySelector('.status-toggle-text');
+        if (t) t.textContent = modOn ? 'ВКЛ' : 'ВЫКЛ';
+      }
+      if (checkSymbolsToggle) {
+        checkSymbolsToggle.classList.toggle('on', symOn);
+        checkSymbolsToggle.classList.toggle('off', !symOn);
+        checkSymbolsToggle.setAttribute('data-enabled', String(symOn));
+        const t = checkSymbolsToggle.querySelector('.status-toggle-text');
+        if (t) t.textContent = symOn ? 'ВКЛ' : 'ВЫКЛ';
+      }
+      if (checkLettersToggle) {
+        checkLettersToggle.classList.toggle('on', letOn);
+        checkLettersToggle.classList.toggle('off', !letOn);
+        checkLettersToggle.setAttribute('data-enabled', String(letOn));
+        const t = checkLettersToggle.querySelector('.status-toggle-text');
+        if (t) t.textContent = letOn ? 'ВКЛ' : 'ВЫКЛ';
+      }
+      if (saveBtn) saveBtn.disabled = true;
+    } catch (error) {
+      if (error instanceof Error) {
+        showAlert(`Ошибка загрузки настроек модерации: ${error.message}`, 'error');
+      }
+    }
   }
 }
 
