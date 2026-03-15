@@ -88,65 +88,58 @@ export class AdminPanelElement extends HTMLElement {
   private renderCommands(data: CommandsData): void {
     const container = this.querySelector<HTMLElement>('#commands-container');
     const emptyState = this.querySelector<HTMLElement>('#empty-state');
-    if (!container || !emptyState) return;
+    const table = this.querySelector<HTMLTableElement>('#commands-table');
+    const tbody = this.querySelector<HTMLElement>('#commands-tbody');
+    const rowTpl = this.getTemplate('template-command-row');
+    const loadingEl = container?.querySelector<HTMLElement>('.loading');
 
-    container.style.display = 'grid';
-    emptyState.style.display = 'none';
-    container.innerHTML = '';
+    if (!container || !emptyState || !table || !tbody || !rowTpl) return;
 
-    const addTpl = this.getTemplate('template-add-command-card');
-    const cardTpl = this.getTemplate('template-command-card');
-    if (addTpl) container.appendChild(addTpl.content.cloneNode(true));
-    if (!cardTpl) return;
+    container.classList.remove('loading-state');
+    if (loadingEl) loadingEl.style.display = 'none';
+    tbody.innerHTML = '';
 
-    for (const cmd of data.commands) {
-      const card = cardTpl.content.cloneNode(true) as DocumentFragment;
-      const root = card.firstElementChild as HTMLElement;
-      if (!root) continue;
-      root.classList.toggle('disabled', !cmd.enabled);
-      root.dataset.id = encodeURIComponent(cmd.id);
-      root.dataset.messageType = cmd.messageType;
-      root.dataset.color = cmd.color ?? '';
-      root.querySelector('.command-trigger')!.textContent = cmd.trigger;
-      const colorBadge = root.querySelector('.command-status .color-badge') as HTMLElement;
-      if (colorBadge) {
-        if (cmd.messageType === 'announcement') {
-          colorBadge.className = `color-badge ${cmd.color ?? 'primary'}`;
-          colorBadge.textContent = cmd.color ?? 'primary';
-        } else {
-          colorBadge.className = 'color-badge';
-          colorBadge.style.background = '#6c757d';
-          colorBadge.textContent = 'сообщение';
-        }
-      }
-      const toggle = root.querySelector('.status-toggle');
-      toggle?.classList.toggle('on', cmd.enabled);
-      toggle?.classList.toggle('off', !cmd.enabled);
-      (toggle?.querySelector('.status-toggle-text') as HTMLElement).textContent = cmd.enabled ? 'ВКЛ' : 'ВЫКЛ';
-      const desc = root.querySelector('.command-description') as HTMLElement;
-      if (desc) {
-        desc.textContent = cmd.description || '\u00A0';
-        desc.classList.toggle('empty', !cmd.description);
-        if (cmd.description) desc.title = cmd.description;
-      }
-      const response = root.querySelector('.command-response') as HTMLElement;
-      if (response) {
-        response.textContent = cmd.response;
-        response.title = cmd.response;
-      }
-      const aliasesEl = root.querySelector('.command-aliases');
-      if (aliasesEl && cmd.aliases?.length) {
-        cmd.aliases.forEach((alias) => {
-          const tag = document.createElement('span');
-          tag.className = 'alias-tag';
-          tag.textContent = alias;
-          aliasesEl.appendChild(tag);
-        });
-      }
-      const sendBtn = root.querySelector('[data-action="send"]') as HTMLButtonElement;
-      if (sendBtn) sendBtn.disabled = !cmd.enabled;
-      container.appendChild(card);
+    if (data.commands.length === 0) {
+      table.style.display = 'none';
+      if (loadingEl) loadingEl.style.display = 'none';
+      emptyState.style.display = 'block';
+      return;
     }
+
+    emptyState.style.display = 'none';
+    table.style.display = 'table';
+
+    data.commands.forEach((cmd, index) => {
+      const tr = (rowTpl.content.cloneNode(true) as DocumentFragment).firstElementChild as HTMLTableRowElement;
+      tr.dataset.id = encodeURIComponent(cmd.id);
+      tr.dataset.messageType = cmd.messageType;
+      tr.dataset.color = cmd.color ?? '';
+      tr.classList.toggle('disabled', !cmd.enabled);
+
+      const numCell = tr.querySelector('.col-num');
+      const triggerCell = tr.querySelector('.col-trigger');
+      const responseCell = tr.querySelector('.col-response');
+      const statusBtn = tr.querySelector<HTMLButtonElement>('.col-status [data-action="toggle"]');
+      const sendBtn = tr.querySelector<HTMLButtonElement>('.col-actions [data-action="send"]');
+
+      if (numCell) numCell.textContent = String(index + 1);
+      const triggerText = triggerCell?.querySelector('.trigger-text');
+      if (triggerText) {
+        triggerText.textContent = cmd.trigger;
+        triggerCell!.setAttribute('title', cmd.trigger);
+      }
+      if (responseCell) {
+        responseCell.textContent = cmd.response;
+        responseCell.setAttribute('title', cmd.response);
+      }
+      if (statusBtn) {
+        statusBtn.textContent = cmd.enabled ? 'ВКЛ' : 'ВЫКЛ';
+        statusBtn.className = `status-badge ${cmd.enabled ? 'on' : 'off'}`;
+        statusBtn.title = cmd.enabled ? 'Выключить' : 'Включить';
+      }
+      if (sendBtn) sendBtn.disabled = !cmd.enabled;
+      tbody.appendChild(tr);
+    });
   }
 
   private async loadCommands(): Promise<void> {
@@ -239,7 +232,6 @@ export class AdminPanelElement extends HTMLElement {
         <tr>
           <th class="col-num">№</th>
           <th class="col-name">Название</th>
-          <th class="col-actions">Действия</th>
         </tr>
       </thead>
       <tbody></tbody>
@@ -254,14 +246,6 @@ export class AdminPanelElement extends HTMLElement {
       tr.innerHTML = `
         <td class="col-num">${index + 1}</td>
         <td class="col-name" title="${escapeHtml(item.text)}">${escapeHtml(item.text)}</td>
-        <td class="col-actions">
-          <button type="button" 
-          class="btn-icon btn-icon-danger" 
-          data-action="delete" 
-          title="Удалить">
-          🗑️
-          </button>
-        </td>
       `;
       tbody.appendChild(tr);
     });
@@ -357,7 +341,7 @@ export class AdminPanelElement extends HTMLElement {
 
     document.addEventListener('click', (event) => {
       const target = event.target as HTMLElement;
-      if (target.closest('#add-command-card-trigger')) {
+      if (target.closest('#add-command-btn')) {
         commandDialog.openForCreate();
       } else if (target.closest('#add-counter-card-trigger')) {
         counterDialog.openForCreate();
@@ -377,7 +361,6 @@ export class AdminPanelElement extends HTMLElement {
         partySkipCooldownToggle.classList.toggle('off', !newVal);
         const textEl = partySkipCooldownToggle.querySelector('.status-toggle-text');
         if (textEl) textEl.textContent = newVal ? 'Ограничение ВЫКЛ' : 'Ограничение ВКЛ';
-        showAlert(newVal ? 'Тестовый режим: кулдаун отключён' : 'Кулдаун включён (раз в сутки)');
       } catch (error) {
         if (error instanceof Error) showAlert(`Ошибка: ${error.message}`, 'error');
       }
@@ -393,7 +376,6 @@ export class AdminPanelElement extends HTMLElement {
         const toggle = this.querySelector('#party-skip-cooldown-toggle');
         const skipCooldown = (toggle as HTMLElement)?.getAttribute('data-enabled') === 'true';
         await updatePartyConfig({ elementsCount, quantityMax, skipCooldown: skipCooldown ?? false });
-        showAlert('Настройки сохранены');
       } catch (error) {
         if (error instanceof Error) showAlert(`Ошибка: ${error.message}`, 'error');
       }
@@ -405,11 +387,22 @@ export class AdminPanelElement extends HTMLElement {
       try {
         if (editId != null) {
           await updatePartyItem(editId, text);
-          showAlert('Элемент обновлён');
         } else {
           await createPartyItem(text);
-          showAlert('Элемент добавлен');
         }
+        partyDialog.close();
+        await this.loadPartyItems();
+      } catch (error) {
+        if (error instanceof Error) showAlert(`Ошибка: ${error.message}`, 'error');
+      }
+    });
+
+    partyDialog.addEventListener('delete', async (event: Event) => {
+      const customEvent = event as CustomEvent<{ editId: number }>;
+      const editId = customEvent.detail?.editId;
+      if (editId == null) return;
+      try {
+        await deletePartyItem(editId);
         partyDialog.close();
         await this.loadPartyItems();
       } catch (error) {
@@ -428,29 +421,7 @@ export class AdminPanelElement extends HTMLElement {
       const actionBtn = target.closest<HTMLElement>('[data-action]');
       const action = actionBtn?.getAttribute('data-action');
 
-      if (action === 'copy') {
-        const nameCell = row.querySelector('.col-name');
-        const textToCopy = nameCell?.textContent ?? '';
-        try {
-          await navigator.clipboard.writeText(textToCopy);
-          showAlert('Скопировано');
-        } catch {
-          showAlert('Не удалось скопировать', 'error');
-        }
-        return;
-      }
-      if (action === 'delete') {
-        if (!confirm('Удалить элемент?')) return;
-        try {
-          await deletePartyItem(id);
-          showAlert('Элемент удалён');
-          await this.loadPartyItems();
-        } catch (error) {
-          if (error instanceof Error) showAlert(`Ошибка: ${error.message}`, 'error');
-        }
-        return;
-      }
-      // Клик по строке (не по кнопке) — открыть диалог редактирования
+      // Клик по строке — открыть диалог редактирования
       if (!actionBtn) {
         const data = await fetchPartyItems();
         const item = data.items.find((i) => i.id === id);
@@ -475,7 +446,6 @@ export class AdminPanelElement extends HTMLElement {
         try {
           await toggleCounter(id);
           await this.loadCounters();
-          showAlert('Статус счётчика изменён');
         } catch (error) {
           if (error instanceof Error) showAlert(`Ошибка: ${error.message}`, 'error');
         }
@@ -495,7 +465,6 @@ export class AdminPanelElement extends HTMLElement {
               }
               await updateCounter(id, { ...counter, value: parsedValue });
               await this.loadCounters();
-              showAlert('Значение счётчика обновлено');
             } catch (error) {
               if (error instanceof Error) showAlert(`Ошибка: ${error.message}`, 'error');
             }
@@ -510,7 +479,6 @@ export class AdminPanelElement extends HTMLElement {
         try {
           await deleteCounter(id);
           await this.loadCounters();
-          showAlert('Счётчик удалён');
         } catch (error) {
           if (error instanceof Error) showAlert(`Ошибка: ${error.message}`, 'error');
         }
@@ -537,10 +505,8 @@ export class AdminPanelElement extends HTMLElement {
       try {
         if (editId) {
           await updateCounter(editId, counter);
-          showAlert('Счётчик обновлён');
         } else {
           await createCounter(counter);
-          showAlert('Счётчик создан');
         }
         counterDialog.close();
         await this.loadCounters();
@@ -561,65 +527,26 @@ export class AdminPanelElement extends HTMLElement {
     commandsContainer.addEventListener('click', async (event) => {
       const target = event.target as HTMLElement | null;
       if (!target) return;
-      const card = target.closest<HTMLElement>('.command-card');
-      if (!card) return;
-      const encodedId = card.getAttribute('data-id');
+      const row = target.closest<HTMLElement>('.command-table-row');
+      if (!row) return;
+      const encodedId = row.getAttribute('data-id');
       if (!encodedId) return;
       const id = decodeURIComponent(encodedId);
-      const messageType = card.getAttribute('data-message-type');
-      const color = card.getAttribute('data-color');
-
-      const copySource = target.closest<HTMLElement>('.command-trigger, .command-response, .alias-tag');
-      if (copySource) {
-        let textToCopy = copySource.textContent?.trim() ?? '';
-        if (copySource.classList.contains('command-response') && messageType === 'announcement') {
-          const colorSuffix = color && color !== 'primary' ? color : '';
-          const announceCommand = colorSuffix ? `/announce${colorSuffix}` : '/announce';
-          textToCopy = `${announceCommand} ${textToCopy}`;
-        }
-        if (textToCopy) {
-          try {
-            if (navigator.clipboard && navigator.clipboard.writeText) {
-              await navigator.clipboard.writeText(textToCopy);
-            }
-            showAlert('Текст скопирован в буфер обмена');
-          } catch (error) {
-            console.error('Clipboard copy failed', error);
-          }
-        }
-        return;
-      }
-
       const actionEl = target.closest<HTMLElement>('[data-action]');
       const action = actionEl?.getAttribute('data-action');
-
-      if (!action) {
-        try {
-          const data = await fetchCommands();
-          const command = data.commands.find((cmd) => cmd.id === id);
-          if (!command) {
-            showAlert('Команда не найдена', 'error');
-            return;
-          }
-          commandDialog.openForEdit(command);
-        } catch (error) {
-          if (error instanceof Error) showAlert(`Ошибка загрузки команды: ${error.message}`, 'error');
-        }
-        return;
-      }
 
       if (action === 'toggle') {
         try {
           await toggleCommand(id);
           await this.loadCommands();
-          showAlert('Статус команды изменён');
         } catch (error) {
           if (error instanceof Error) showAlert(`Ошибка: ${error.message}`, 'error');
         }
+        return;
       }
 
       if (action === 'send') {
-        if (card.classList.contains('disabled')) {
+        if (row.classList.contains('disabled')) {
           showAlert('Команда выключена. Включи её, чтобы отправить в чат.', 'error');
           return;
         }
@@ -629,24 +556,27 @@ export class AdminPanelElement extends HTMLElement {
             const err = await res.json().catch(() => ({}));
             throw new Error((err as { error?: string }).error || `HTTP ${res.status}`);
           }
-          showAlert('Команда отправлена в чат');
         } catch (error) {
           if (error instanceof Error) showAlert(`Ошибка отправки команды: ${error.message}`, 'error');
         }
+        return;
       }
 
-      if (action === 'delete') {
-        if (!confirm('Удалить команду?')) return;
-        try {
-          await deleteCommand(id);
-          await this.loadCommands();
-          showAlert('Команда удалена');
-        } catch (error) {
-          if (error instanceof Error) showAlert(`Ошибка: ${error.message}`, 'error');
+      const triggerTextEl = row.querySelector('.trigger-text');
+      if (triggerTextEl && triggerTextEl.contains(target)) {
+        const text = triggerTextEl.textContent?.trim() ?? '';
+        if (text) {
+          try {
+            await navigator.clipboard.writeText(text);
+            showAlert('Триггер скопирован');
+          } catch {
+            showAlert('Не удалось скопировать', 'error');
+          }
         }
+        return;
       }
 
-      if (action === 'edit') {
+      if (!actionEl) {
         try {
           const data = await fetchCommands();
           const command = data.commands.find((cmd) => cmd.id === id);
@@ -661,16 +591,27 @@ export class AdminPanelElement extends HTMLElement {
       }
     });
 
+    commandDialog.addEventListener('delete', async (event: Event) => {
+      const customEvent = event as CustomEvent<{ editId: string }>;
+      const editId = customEvent.detail?.editId;
+      if (!editId) return;
+      try {
+        await deleteCommand(editId);
+        commandDialog.close();
+        await this.loadCommands();
+      } catch (error) {
+        if (error instanceof Error) showAlert(`Ошибка: ${error.message}`, 'error');
+      }
+    });
+
     commandDialog.addEventListener('save', async (event: Event) => {
       const customEvent = event as CustomEvent<CommandDialogSaveDetail>;
       const { command, editId } = customEvent.detail;
       try {
         if (editId) {
           await updateCommand(editId, command as CustomCommand);
-          showAlert('Команда обновлена');
         } else {
           await createCommand(command as CustomCommand);
-          showAlert('Команда создана');
         }
         commandDialog.close();
         await this.loadCommands();
@@ -684,7 +625,6 @@ export class AdminPanelElement extends HTMLElement {
       const { allLinksText } = customEvent.detail;
       try {
         await updateLinksConfig(allLinksText);
-        showAlert('Ссылки сохранены');
         linkDialog.close();
       } catch (error) {
         if (error instanceof Error) showAlert(`Ошибка сохранения ссылок: ${error.message}`, 'error');
@@ -694,7 +634,6 @@ export class AdminPanelElement extends HTMLElement {
     linkDialog.addEventListener('send', async () => {
       try {
         await fetch('/api/links/send', { method: 'POST' });
-        showAlert('Ссылки отправлены в чат');
       } catch (error) {
         if (error instanceof Error) showAlert(`Ошибка отправки ссылок: ${error.message}`, 'error');
       }
@@ -712,7 +651,6 @@ export class AdminPanelElement extends HTMLElement {
           const err = await res.json().catch(() => ({}));
           throw new Error((err as { error?: string }).error || `HTTP ${res.status}`);
         }
-        showAlert(enabled ? 'Дуэли выключены' : 'Дуэли включены');
         await this.loadDuelsStatus();
       } catch (error) {
         if (error instanceof Error) showAlert(`Ошибка: ${error.message}`, 'error');
@@ -727,7 +665,6 @@ export class AdminPanelElement extends HTMLElement {
           const err = await res.json().catch(() => ({}));
           throw new Error((err as { error?: string }).error || `HTTP ${res.status}`);
         }
-        showAlert('Амнистия выполнена, все таймауты сняты');
       } catch (error) {
         if (error instanceof Error) showAlert(`Ошибка: ${error.message}`, 'error');
       }

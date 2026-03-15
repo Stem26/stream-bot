@@ -39,6 +39,15 @@ export class CommandDialogElement extends HTMLElement {
       btn.addEventListener('click', () => this.close());
     });
 
+    const deleteBtn = this.querySelector<HTMLButtonElement>('#command-delete-btn');
+    deleteBtn?.addEventListener('click', () => {
+      const editIdInput = this.querySelector<HTMLInputElement>('#edit-command-id');
+      const editId = editIdInput?.value?.trim();
+      if (!editId) return;
+      if (!confirm('Удалить команду?')) return;
+      this.dispatchEvent(new CustomEvent('delete', { detail: { editId }, bubbles: true }));
+    });
+
     const form = this.querySelector<HTMLFormElement>('#command-form');
     const cooldownInput = this.querySelector<HTMLInputElement>('#command-cooldown');
     const messageTypeSelect = this.querySelector<HTMLSelectElement>('#command-message-type');
@@ -132,6 +141,9 @@ export class CommandDialogElement extends HTMLElement {
       cooldown.value = '0';
     }
 
+    const deleteBtn = this.querySelector<HTMLButtonElement>('#command-delete-btn');
+    if (deleteBtn) deleteBtn.style.display = 'none';
+
     this.toggleColorField();
     this.validateForm();
     this.updateResponseCounter();
@@ -167,6 +179,9 @@ export class CommandDialogElement extends HTMLElement {
     ['#command-id', '#command-trigger', '#command-response'].forEach((sel) => {
       this.querySelector<HTMLInputElement | HTMLTextAreaElement>(sel)?.classList.remove('is-invalid');
     });
+
+    const deleteBtn = this.querySelector<HTMLButtonElement>('#command-delete-btn');
+    if (deleteBtn) deleteBtn.style.display = '';
 
     this.toggleColorField();
     this.validateForm();

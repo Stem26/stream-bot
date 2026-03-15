@@ -25,6 +25,11 @@ party-dialog .modal-content {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+
+  @media (max-width: 768px) {
+    height: 100vh;
+    max-height: 100vh;
+  }
 }
 
 party-dialog #party-item-form {

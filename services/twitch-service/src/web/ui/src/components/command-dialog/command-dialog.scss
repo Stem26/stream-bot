@@ -21,11 +21,17 @@ command-dialog .modal-content {
   padding: 30px;
   max-width: 600px;
   width: 510px;
-  max-height: 90vh;
+  height: 90vh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+
+  @media (max-width: 768px) {
+    height: 100vh;
+  }
 }
+
+
 
 command-dialog #command-form {
   display: flex;
@@ -35,9 +41,8 @@ command-dialog #command-form {
 }
 
 command-dialog .modal-body {
-  flex: 1;
   overflow-y: auto;
-  min-height: 0;
+  padding-right: 10px;
 }
 
 command-dialog .modal-header {

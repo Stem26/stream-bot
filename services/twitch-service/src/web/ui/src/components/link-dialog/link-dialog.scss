@@ -37,10 +37,15 @@ link-dialog .modal-content {
   border-radius: 0;
   padding: 30px;
   max-width: 600px;
-  max-height: 80vh;
   width: 510px;
+  height: 90vh;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+
+  @media (max-width: 768px) {
+    height: 100vh;
+  }
 }
 
 link-dialog #links-form {

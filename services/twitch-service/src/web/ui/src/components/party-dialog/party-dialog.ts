@@ -22,6 +22,17 @@ export class PartyDialogElement extends HTMLElement {
       btn.addEventListener('click', () => this.close());
     });
 
+    const deleteBtn = this.querySelector<HTMLButtonElement>('#party-delete-btn');
+    deleteBtn?.addEventListener('click', () => {
+      const editIdInput = this.querySelector<HTMLInputElement>('#edit-party-item-id');
+      const editIdStr = editIdInput?.value?.trim();
+      if (!editIdStr) return;
+      const editId = parseInt(editIdStr, 10);
+      if (Number.isNaN(editId)) return;
+      if (!confirm('Удалить элемент?')) return;
+      this.dispatchEvent(new CustomEvent('delete', { detail: { editId }, bubbles: true }));
+    });
+
     const form = this.querySelector<HTMLFormElement>('#party-item-form');
     form?.addEventListener('submit', (e) => {
       e.preventDefault();
@@ -47,6 +58,8 @@ export class PartyDialogElement extends HTMLElement {
     form?.reset();
     if (editIdInput) editIdInput.value = '';
     if (textInput) textInput.placeholder = 'например: хомяко‑адвоката';
+    const deleteBtn = this.querySelector<HTMLButtonElement>('#party-delete-btn');
+    if (deleteBtn) deleteBtn.style.display = 'none';
     this.open();
   }
 
@@ -59,6 +72,8 @@ export class PartyDialogElement extends HTMLElement {
     if (modalTitle) modalTitle.textContent = 'Редактировать элемент';
     if (editIdInput) editIdInput.value = String(item.id);
     if (textInput) textInput.value = item.text;
+    const deleteBtn = this.querySelector<HTMLButtonElement>('#party-delete-btn');
+    if (deleteBtn) deleteBtn.style.display = '';
     this.open();
   }
 

@@ -1,7 +1,7 @@
 <div class="modal">
   <div class="modal-content">
     <div class="modal-header">
-      <h2 id="modal-title">фываыфва команду</h2>
+      <h2 id="modal-title">Добавить команду</h2>
       <button type="button"
               class="modal-close-btn"
               data-close>×
@@ -30,7 +30,7 @@
           <label for="command-aliases">Алиасы</label>
           <input type="text"
                  id="command-aliases"
-                 placeholder="!ds, !дс, !дискорд" />
+                 placeholder="!ds, !дс, !дискорд"/>
           <small>Дополнительные варианты команды через запятую</small>
         </div>
         <div class="form-group form-group-textarea">
@@ -45,7 +45,8 @@
                     required
                     placeholder="Текст ответа или ссылка"></textarea>
           <small>Текст, который бот отправит в чат. Макс. 500 символов в одном сообщении.</small>
-          <small class="hint-time">Время: <code>{time:Europe/Moscow}</code>, <code>{time:Asia/Tokyo}</code> — любой IANA часовой пояс.</small>
+          <small class="hint-time">Время: <code>{time:Europe/Moscow}</code>, <code>{time:Asia/Tokyo}</code> — любой IANA
+            часовой пояс.</small>
         </div>
         <div class="form-group">
           <label for="command-description">Описание</label>
@@ -83,11 +84,9 @@
         </div>
       </div>
       <div class="form-actions">
-        <button type="submit"
-                class="btn btn-success">
-          Сохранить
-        </button>
+        <button type="button" class="btn btn-danger" id="command-delete-btn" style="display: none;">Удалить</button>
+        <button type="submit" class="btn btn-success">Сохранить</button>
       </div>
     </form>
   </div>
-  </div>
+</div>

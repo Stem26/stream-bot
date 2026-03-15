@@ -21,10 +21,14 @@ counter-dialog .modal-content {
   padding: 30px;
   max-width: 600px;
   width: 510px;
-  max-height: 90vh;
+  height: 90vh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+
+  @media (max-width: 768px) {
+    height: 100vh;
+  }
 }
 
 counter-dialog #counter-form {

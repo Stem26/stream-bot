@@ -13,6 +13,10 @@ body {
 
 body.modal-open {
   overflow: hidden;
+
+  .btn-back-fixed {
+    z-index: 0;
+  }
 }
 
 .container {
@@ -70,7 +74,7 @@ body.modal-open {
   border: none;
   padding: 10px 15px;
   border-radius: 8px;
-  font-size: 16px;
+  font-size: 14px;
   cursor: pointer;
   transition: all 0.3s;
 }
@@ -634,6 +638,7 @@ body.modal-open {
   background: #fff;
   box-sizing: border-box;
   padding: 0 10px;
+  border-radius: 15px;
 
   thead th {
     text-align: left;
@@ -704,20 +709,169 @@ body.modal-open {
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+}
 
-  .col-actions {
-    width: 110px;
-    min-width: 110px;
-    text-align: right;
-    white-space: nowrap;
+.commands-table-wrap {
+  margin-top: 20px;
+}
 
-    .btn-icon {
-      margin-left: 6px;
+.commands-table-header {
+  margin-bottom: 12px;
+}
+
+.commands-table-container {
+
+  &.loading-state {
+    padding: 20px 24px;
+    color: #6c757d;
+  }
+}
+
+.commands-table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: separate;
+  border-spacing: 0 10px;
+  background: #fff;
+  box-sizing: border-box;
+  padding: 0 10px;
+  border-radius: 15px;
+
+  thead th {
+    text-align: left;
+    padding: 14px 16px;
+    font-weight: 600;
+    color: #333;
+    font-size: 0.9em;
+    border-bottom: 2px solid #e0e8f0;
+    background: #fff;
+
+    &:first-child {
+      padding-left: 16px;
+    }
+    &:last-child {
+      padding-right: 16px;
+    }
+  }
+
+  tbody tr.command-table-row {
+    cursor: pointer;
+    background: #fafbfc;
+    transition: border-left-color 0.3s ease, background-color 0.3s ease;
+
+    &:hover {
+      background: #e8f0fa;
+    }
+    &.disabled {
+      opacity: 0.75;
+    }
+
+    td {
+      padding: 14px 16px;
+      vertical-align: middle;
+      border-color: transparent;
+      border-top-color: #28619a;
+      border-bottom-color: #28619a;
+      border-width: 1px 1px 1px 0;
+      border-style: solid;
+      background: inherit;
+      box-sizing: border-box;
 
       &:first-child {
-        margin-left: 0;
+        padding-left: 16px;
+        border-left: 0.5rem solid hsl(210, 59%, 38%);
+        border-radius: 0.5rem 0 0 0.5rem;
+      }
+      &:last-child {
+        padding-right: 16px;
+        border-color: transparent;
+        border-right: 1px solid #28619a;
+        border-top-color: #28619a;
+        border-bottom-color: #28619a;
+        border-radius: 0 0.5rem 0.5rem 0;
       }
     }
+
+    .col-num {
+      width: 56px;
+      min-width: 56px;
+      color: #6c757d;
+      font-size: 0.9em;
+      white-space: nowrap;
+    }
+
+    .col-trigger {
+      min-width: 100px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+
+      .trigger-text {
+        display: inline-block;
+        max-width: 100%;
+        width: fit-content;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        cursor: copy;
+      }
+    }
+
+    .col-response {
+      min-width: 120px;
+      max-width: 280px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .col-status {
+      width: 70px;
+      min-width: 70px;
+    }
+
+    .col-actions {
+      width: 1%;
+      max-width: 52px;
+      min-width: 52px;
+      padding-left: 8px;
+      padding-right: 8px;
+      text-align: right;
+      white-space: nowrap;
+      box-sizing: border-box;
+
+      .btn-icon {
+        margin-left: 4px;
+        &:first-child {
+          margin-left: 0;
+        }
+      }
+    }
+  }
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 0.8em;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: background 0.2s, color 0.2s;
+
+  &.on {
+    background: #c6f6d5;
+    color: #22543d;
+    border-color: #9ae6b4;
+  }
+  &.off {
+    background: #fed7d7;
+    color: #742a2a;
+    border-color: #feb2b2;
+  }
+  &:hover {
+    opacity: 0.9;
   }
 }
 
@@ -998,6 +1152,76 @@ body.modal-open {
     scroll-snap-stop: normal;
   }
 
+  .commands-table-wrap {
+    margin-top: 16px;
+  }
+
+  .commands-table-container {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+
+    &.loading-state {
+      padding: 16px 12px;
+    }
+  }
+
+  .commands-table {
+    border-spacing: 0 8px;
+    min-width: 200px;
+
+    thead th {
+      padding: 10px 12px;
+      font-size: 0.85em;
+
+      &.col-num,
+      &.col-response {
+        display: none;
+      }
+    }
+
+    tbody tr.command-table-row td {
+      padding: 12px;
+
+      &.col-num,
+      &.col-response {
+        display: none;
+      }
+
+      /* На мобилке первый видимый столбец — Триггер, даём ему левые стили */
+      &.col-trigger {
+        border-left: 0.5rem solid hsl(210, 59%, 38%);
+        border-radius: 0.5rem 0 0 0.5rem;
+      }
+    }
+
+    .col-trigger {
+      min-width: 0;
+    }
+    .col-status {
+      width: 56px;
+      min-width: 56px;
+    }
+    .col-actions {
+      width: 76px;
+      min-width: 76px;
+      padding-left: 8px;
+      padding-right: 8px;
+      font-size: 0.8em;
+      white-space: nowrap;
+
+      .btn-icon {
+        width: 32px;
+        height: 32px;
+        margin-left: 4px;
+      }
+    }
+  }
+
+  .status-badge {
+    padding: 3px 8px;
+    font-size: 0.75em;
+  }
+
   // Адаптация таблицы лидеров под мобилку
   .leaderboard-table {
     font-size: 14px;
@@ -1203,14 +1427,11 @@ body.modal-open {
     margin-left: 0;
   }
 
-  // Таблица партии на мобилке
   .party-table-wrap {
     margin-top: 16px;
   }
 
   .party-items-table-container {
-    padding-left: 12px;
-    padding-right: 12px;
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
 
@@ -1221,12 +1442,15 @@ body.modal-open {
 
   .party-items-table {
     border-spacing: 0 8px;
-    min-width: 280px;
+    min-width: 200px;
 
     thead th {
       padding: 10px 12px;
       font-size: 0.85em;
 
+      &.col-num {
+        display: none;
+      }
       &:first-child {
         padding-left: 12px;
       }
@@ -1238,37 +1462,28 @@ body.modal-open {
     tbody tr.party-table-row td {
       padding: 12px;
 
+      &.col-num {
+        display: none;
+      }
+      /* Одна видимая колонка (Название) — левый и правый бордер, скругления */
+      &.col-name {
+        border-left-width: 0.5rem;
+        border-left-style: solid;
+        border-left-color: hsl(210, 59%, 38%);
+        border-right: 1px solid #28619a;
+        border-radius: 0.5rem;
+      }
       &:first-child {
         padding-left: 12px;
-        border-radius: 0.4rem 0 0 0.4rem;
       }
       &:last-child {
         padding-right: 12px;
-        border-right: 1px solid #28619a;
-        border-radius: 0 0.4rem 0.4rem 0;
       }
-    }
-
-    .col-num {
-      width: 40px;
-      min-width: 40px;
-      font-size: 0.85em;
     }
 
     .col-name {
       min-width: 0;
       font-size: 0.9em;
-    }
-
-    .col-actions {
-      width: 88px;
-      min-width: 88px;
-
-      .btn-icon {
-        width: 32px;
-        height: 32px;
-        margin-left: 4px;
-      }
     }
   }
 

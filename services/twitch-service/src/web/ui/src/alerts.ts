@@ -2,6 +2,10 @@ export function showAlert(message: string, type: 'success' | 'error' = 'success'
   const container = document.getElementById('alert-container');
   if (!container) return;
 
+  container.querySelectorAll('.alert').forEach((el) => {
+    if (el.textContent === message) el.remove();
+  });
+
   const alert = document.createElement('div');
   alert.className = `alert alert-${type}`;
   alert.textContent = message;

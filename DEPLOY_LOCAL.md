@@ -147,7 +147,7 @@ pm2 logs --lines 50
 ```bash
 cd /root/stream-bot
 git pull origin main
-npm i
+npm i``
 npm run build:telegram
 pm2 restart telegram-bot
 pm2 logs telegram-bot --lines 50
