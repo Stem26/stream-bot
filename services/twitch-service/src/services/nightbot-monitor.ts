@@ -2490,24 +2490,29 @@ export class NightBotMonitor {
             const full = parts.join(separator);
             const maxLen = 480;
 
-            // Сначала отдельной строкой заголовок
-            await this.sendMessage(channel, '📋Список доступных команд в чате:');
+            const header = '📋Список доступных команд в чате:';
 
-            if (full.length <= maxLen) {
-                await this.sendMessage(channel, full);
+            if (full.length + header.length + 1 <= maxLen) {
+                // Всё помещается в одно сообщение
+                await this.sendMessage(channel, `${header}\n${full}`);
             } else {
+                // Делим на чанки, в первый добавляем заголовок
                 let chunk = '';
+                let isFirstChunk = true;
                 for (const part of parts) {
                     const next = chunk ? chunk + separator + part : part;
                     if (next.length > maxLen && chunk) {
-                        await this.sendMessage(channel, chunk);
+                        const text = isFirstChunk ? `${header}\n${chunk}` : chunk;
+                        await this.sendMessage(channel, text);
+                        isFirstChunk = false;
                         chunk = part;
                     } else {
                         chunk = next;
                     }
                 }
                 if (chunk) {
-                    await this.sendMessage(channel, chunk);
+                    const text = isFirstChunk ? `${header}\n${chunk}` : chunk;
+                    await this.sendMessage(channel, text);
                 }
             }
 
