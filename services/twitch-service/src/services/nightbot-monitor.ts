@@ -2367,7 +2367,7 @@ export class NightBotMonitor {
             '!jump/!j - прыжок'
         ];
 
-        const response = `📋 Список доступных команд в чате: ${commandsList.join(' • ')}`;
+        const response = `📋Список доступных команд в чате:\n${commandsList.join(' • ')}`;
 
         try {
             await this.sendMessage(channel, response);
@@ -2488,6 +2488,9 @@ export class NightBotMonitor {
             const separator = ', ';
             const full = parts.join(separator);
             const maxLen = 480;
+
+            // Сначала отдельной строкой заголовок
+            await this.sendMessage(channel, '📋Список доступных команд в чате:');
 
             if (full.length <= maxLen) {
                 await this.sendMessage(channel, full);

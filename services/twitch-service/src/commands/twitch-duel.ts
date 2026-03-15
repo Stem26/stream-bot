@@ -2,10 +2,8 @@ import { TwitchPlayersStorageDB } from '../services/TwitchPlayersStorageDB';
 import { STREAMER_USERNAME } from '../config/env';
 import { sendOverlayDuel, DuelMode } from '../services/overlay-api';
 
-// Инициализируем хранилище игроков
 const storage = new TwitchPlayersStorageDB();
 
-// Типы данных
 export interface TwitchPlayerData {
   twitchUsername: string;
   size: number;
@@ -17,11 +15,9 @@ export interface TwitchPlayerData {
   duelWins?: number;
   duelLosses?: number;
   duelDraws?: number;
-  // ежедневные дуэли
   duelsToday?: number;
   lastDuelDate?: string;
   lastDailyQuestRewardDate?: string;
-  // серия побед
   duelWinStreak?: number;
   streakRewardActive?: boolean;
 }
