@@ -25,3 +25,19 @@ admin-panel .empty-state {
 admin-panel .moderation-rules-block {
   margin-top: 1.5rem;
 }
+
+.party-input-text {
+  width: 100%;
+  padding: 10px 12px;
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 500;
+  background: #fff;
+  transition: border-color 0.2s;
+
+  &:focus {
+    outline: none;
+    border-color: #667eea;
+  }
+}

@@ -350,18 +350,31 @@ export class AdminPanelElement extends HTMLElement {
   private async loadPartyConfig(): Promise<void> {
     try {
       const config = await fetchPartyConfig();
+      const triggerInput = this.querySelector('#party-trigger') as HTMLInputElement;
+      const responseTextInput = this.querySelector('#party-response-text') as HTMLInputElement;
       const ec = this.querySelector('#party-elements-count') as HTMLInputElement;
       const qm = this.querySelector('#party-quantity-max') as HTMLInputElement;
       const toggle = this.querySelector('#party-skip-cooldown-toggle');
+      if (triggerInput) triggerInput.value = config.trigger ?? '!партия';
+      if (responseTextInput) responseTextInput.value = config.responseText ?? 'Партия выдала';
       if (ec) ec.value = String(config.elementsCount);
       if (qm) qm.value = String(config.quantityMax);
+      const enabledToggle = this.querySelector('#party-enabled-toggle');
+      if (enabledToggle) {
+        const on = config.enabled !== false;
+        enabledToggle.classList.toggle('on', on);
+        enabledToggle.classList.toggle('off', !on);
+        enabledToggle.setAttribute('data-enabled', String(on));
+        const textEl = enabledToggle.querySelector('.status-toggle-text');
+        if (textEl) textEl.textContent = on ? 'ВКЛ' : 'ВЫКЛ';
+      }
       if (toggle) {
         const on = config.skipCooldown;
         toggle.classList.toggle('on', on);
         toggle.classList.toggle('off', !on);
         toggle.setAttribute('data-enabled', String(on));
         const textEl = toggle.querySelector('.status-toggle-text');
-        if (textEl) textEl.textContent = on ? 'Ограничение ВЫКЛ' : 'Ограничение ВКЛ';
+        if (textEl) textEl.textContent = on ? 'ВЫКЛ' : 'ВКЛ';
       }
     } catch (error) {
       if (error instanceof Error) {
@@ -685,16 +698,67 @@ export class AdminPanelElement extends HTMLElement {
       }
     });
 
+    const partyEnabledToggle = this.querySelector('#party-enabled-toggle');
+    partyEnabledToggle?.addEventListener('click', async () => {
+      const on = (partyEnabledToggle as HTMLElement).getAttribute('data-enabled') === 'true';
+      const newVal = !on;
+      (partyEnabledToggle as HTMLElement).setAttribute('data-enabled', String(newVal));
+      partyEnabledToggle.classList.toggle('on', newVal);
+      partyEnabledToggle.classList.toggle('off', !newVal);
+      const textEl = partyEnabledToggle.querySelector('.status-toggle-text');
+      if (textEl) textEl.textContent = newVal ? 'ВКЛ' : 'ВЫКЛ';
+      console.log(`[Партия] Тогл «Партия» → ${newVal ? 'ВКЛ' : 'ВЫКЛ'}`);
+      try {
+        const triggerInput = this.querySelector('#party-trigger') as HTMLInputElement;
+        const responseTextInput = this.querySelector('#party-response-text') as HTMLInputElement;
+        const ec = this.querySelector('#party-elements-count') as HTMLInputElement;
+        const qm = this.querySelector('#party-quantity-max') as HTMLInputElement;
+        const skipToggle = this.querySelector('#party-skip-cooldown-toggle');
+        const trigger = (triggerInput?.value ?? '!партия').trim() || '!партия';
+        const responseText = (responseTextInput?.value ?? 'Партия выдала').trim() || 'Партия выдала';
+        const elementsCount = Math.min(10, Math.max(1, parseInt(ec?.value || '2', 10) || 2));
+        const quantityMax = Math.min(99, Math.max(1, parseInt(qm?.value || '4', 10) || 4));
+        const skipCooldown = (skipToggle as HTMLElement)?.getAttribute('data-enabled') === 'true';
+        await updatePartyConfig({
+          enabled: newVal,
+          trigger: trigger.startsWith('!') ? trigger : `!${trigger}`,
+          responseText,
+          elementsCount,
+          quantityMax,
+          skipCooldown: skipCooldown ?? false,
+        });
+        console.log(`[Партия] Сохранено: Партия=${newVal ? 'ВКЛ' : 'ВЫКЛ'}`);
+      } catch (error) {
+        (partyEnabledToggle as HTMLElement).setAttribute('data-enabled', String(on));
+        partyEnabledToggle.classList.toggle('on', on);
+        partyEnabledToggle.classList.toggle('off', !on);
+        if (textEl) textEl.textContent = on ? 'ВКЛ' : 'ВЫКЛ';
+        if (error instanceof Error) showAlert(`Ошибка сохранения: ${error.message}`, 'error');
+      }
+    });
+
     const partyConfigSaveBtn = this.querySelector('#party-config-save-btn');
     partyConfigSaveBtn?.addEventListener('click', async () => {
+      const triggerInput = this.querySelector('#party-trigger') as HTMLInputElement;
+      const responseTextInput = this.querySelector('#party-response-text') as HTMLInputElement;
       const ec = this.querySelector('#party-elements-count') as HTMLInputElement;
       const qm = this.querySelector('#party-quantity-max') as HTMLInputElement;
+      const enabled = (this.querySelector('#party-enabled-toggle') as HTMLElement)?.getAttribute('data-enabled') === 'true';
+      const trigger = (triggerInput?.value ?? '!партия').trim() || '!партия';
+      const responseText = (responseTextInput?.value ?? 'Партия выдала').trim() || 'Партия выдала';
       const elementsCount = Math.min(10, Math.max(1, parseInt(ec?.value || '2', 10) || 2));
       const quantityMax = Math.min(99, Math.max(1, parseInt(qm?.value || '4', 10) || 4));
       try {
         const toggle = this.querySelector('#party-skip-cooldown-toggle');
         const skipCooldown = (toggle as HTMLElement)?.getAttribute('data-enabled') === 'true';
-        await updatePartyConfig({ elementsCount, quantityMax, skipCooldown: skipCooldown ?? false });
+        await updatePartyConfig({
+          enabled: enabled ?? true,
+          trigger: trigger.startsWith('!') ? trigger : `!${trigger}`,
+          responseText,
+          elementsCount,
+          quantityMax,
+          skipCooldown: skipCooldown ?? false,
+        });
       } catch (error) {
         if (error instanceof Error) showAlert(`Ошибка: ${error.message}`, 'error');
       }

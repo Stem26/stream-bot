@@ -755,14 +755,17 @@ app.patch('/api/counters/:id/increment', async (req: Request, res: Response) => 
 // === API для партии (список на выдачу, раз в сутки на пользователя) ===
 
 type PartyItemRow = { id: number; text: string; sort_order: number };
-type PartyConfigRow = { elements_count: number; quantity_max: number; skip_cooldown: boolean };
+type PartyConfigRow = { enabled: boolean; trigger: string; response_text: string; elements_count: number; quantity_max: number; skip_cooldown: boolean };
+let onPartyConfigUpdatedCallback: (() => void) | null = null;
 
 app.get('/api/party/config', async (req: Request, res: Response) => {
     try {
         const row = await queryOne<PartyConfigRow>(
-            'SELECT elements_count, quantity_max, skip_cooldown FROM party_config WHERE id = 1',
+            'SELECT trigger, response_text, elements_count, quantity_max, skip_cooldown FROM party_config WHERE id = 1',
         );
         res.json({
+            trigger: row?.trigger ?? '!партия',
+            responseText: row?.response_text ?? 'Партия выдала',
             elementsCount: row?.elements_count ?? 2,
             quantityMax: row?.quantity_max ?? 4,
             skipCooldown: row?.skip_cooldown ?? false,
@@ -775,19 +778,52 @@ app.get('/api/party/config', async (req: Request, res: Response) => {
 
 app.put('/api/party/config', async (req: Request, res: Response) => {
     try {
-        const { elementsCount, quantityMax, skipCooldown } = req.body as {
+        const { enabled, trigger, responseText, elementsCount, quantityMax, skipCooldown } = req.body as {
+            enabled?: boolean;
+            trigger?: string;
+            responseText?: string;
             elementsCount?: number;
             quantityMax?: number;
             skipCooldown?: boolean;
         };
+        const tr = (trigger != null && String(trigger).trim()) ? String(trigger).trim() : undefined;
+        const rt = (responseText != null && String(responseText).trim()) ? String(responseText).trim() : undefined;
         const ec = Math.min(10, Math.max(1, Math.floor(Number(elementsCount) ?? 0) || 1));
         const qm = Math.min(99, Math.max(1, Math.floor(Number(quantityMax) ?? 0) || 1));
         const sc = Boolean(skipCooldown);
+        const updates: string[] = ['elements_count = $1', 'quantity_max = $2', 'skip_cooldown = $3'];
+        const params: unknown[] = [ec, qm, sc];
+        let i = 4;
+        if (typeof enabled === 'boolean') {
+            updates.push(`enabled = $${i++}`);
+            params.push(enabled);
+        }
+        if (tr !== undefined) {
+            updates.push(`trigger = $${i++}`);
+            params.push(tr.startsWith('!') ? tr : `!${tr}`);
+        }
+        if (rt !== undefined) {
+            updates.push(`response_text = $${i++}`);
+            params.push(rt);
+        }
         await query(
-            'UPDATE party_config SET elements_count = $1, quantity_max = $2, skip_cooldown = $3 WHERE id = 1',
-            [ec, qm, sc],
+            `UPDATE party_config SET ${updates.join(', ')} WHERE id = 1`,
+            params as number[],
         );
-        res.json({ elementsCount: ec, quantityMax: qm, skipCooldown: sc });
+        if (onPartyConfigUpdatedCallback) onPartyConfigUpdatedCallback();
+        const row = await queryOne<PartyConfigRow>(
+            'SELECT enabled, trigger, response_text, elements_count, quantity_max, skip_cooldown FROM party_config WHERE id = 1',
+        );
+        const enabledVal = row?.enabled ?? true;
+        console.log(`[Партия] Сохранено: Партия=${enabledVal ? 'ВКЛ' : 'ВЫКЛ'}, триггер=${row?.trigger ?? '!партия'}`);
+        res.json({
+            enabled: enabledVal,
+            trigger: row?.trigger ?? '!партия',
+            responseText: row?.response_text ?? 'Партия выдала',
+            elementsCount: row?.elements_count ?? 2,
+            quantityMax: row?.quantity_max ?? 4,
+            skipCooldown: row?.skip_cooldown ?? false,
+        });
     } catch (error) {
         console.error('❌ Ошибка сохранения настроек партии:', error);
         res.status(500).json({ error: 'Ошибка сохранения' });
@@ -1448,6 +1484,10 @@ export function setOnLinksConfigUpdatedCallback(callback: (config: LinksConfig) 
 
 export function setOnChatModerationConfigUpdatedCallback(callback: () => void) {
     onChatModerationConfigUpdatedCallback = callback;
+}
+
+export function setOnPartyConfigUpdatedCallback(callback: () => void) {
+    onPartyConfigUpdatedCallback = callback;
 }
 
 export function setOnEnableDuelsCallback(callback: () => void | Promise<void>) {

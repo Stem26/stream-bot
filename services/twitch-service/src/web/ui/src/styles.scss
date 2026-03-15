@@ -662,8 +662,15 @@ body.modal-open {
       margin: 0;
     }
 
-    .party-config-toggle {
+    .party-config-toggles {
+      display: flex;
+      align-items: center;
+      gap: 20px;
       margin-left: auto;
+      flex-shrink: 0;
+    }
+
+    .party-config-toggle {
       flex-shrink: 0;
     }
   }

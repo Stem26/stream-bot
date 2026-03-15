@@ -175,7 +175,7 @@ export async function initDatabase(): Promise<void> {
         )
       `);
 
-      // Настройки партии: сколько названий выдавать, макс количество на каждое
+      // Настройки партии: триггер, начальный текст ответа, сколько названий выдавать, макс количество на каждое
       await client.query(`
         CREATE TABLE IF NOT EXISTS party_config (
           id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
@@ -186,6 +186,15 @@ export async function initDatabase(): Promise<void> {
       `);
       await client.query(
         `ALTER TABLE party_config ADD COLUMN IF NOT EXISTS skip_cooldown BOOLEAN NOT NULL DEFAULT FALSE`,
+      );
+      await client.query(
+        `ALTER TABLE party_config ADD COLUMN IF NOT EXISTS trigger TEXT NOT NULL DEFAULT '!партия'`,
+      );
+      await client.query(
+        `ALTER TABLE party_config ADD COLUMN IF NOT EXISTS response_text TEXT NOT NULL DEFAULT 'Партия выдала'`,
+      );
+      await client.query(
+        `ALTER TABLE party_config ADD COLUMN IF NOT EXISTS enabled BOOLEAN NOT NULL DEFAULT true`,
       );
       await client.query(`
         INSERT INTO party_config (id, elements_count, quantity_max, skip_cooldown) VALUES (1, 2, 4, FALSE)

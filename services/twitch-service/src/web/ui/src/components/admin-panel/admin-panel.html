@@ -248,14 +248,45 @@
     <div class="admin-section party-config-section">
       <div class="party-config-header">
         <h3>Настройки команды</h3>
-        <div class="party-config-toggle">
-          <div class="status-toggle off"
-               id="party-skip-cooldown-toggle"
-               data-enabled="false"
-               title="Тестовый режим — без ограничения раз в сутки">
-            <div class="status-toggle-circle"></div>
-            <span class="status-toggle-text">Ограничение ВКЛ</span>
+        <div class="party-config-toggles">
+          <div class="party-config-toggle">
+            <span class="party-config-toggle-label">Партия</span>
+            <div class="status-toggle on"
+                 id="party-enabled-toggle"
+                 data-enabled="true"
+                 title="Включить или выключить команду партии">
+              <div class="status-toggle-circle"></div>
+              <span class="status-toggle-text">ВКЛ</span>
+            </div>
           </div>
+          <div class="party-config-toggle">
+            <span class="party-config-toggle-label">Ограничение</span>
+            <div class="status-toggle off"
+                 id="party-skip-cooldown-toggle"
+                 data-enabled="false"
+                 title="Тестовый режим — без ограничения раз в сутки">
+              <div class="status-toggle-circle"></div>
+              <span class="status-toggle-text">ВКЛ</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="party-config-row">
+        <div class="party-config-field">
+          <label for="party-trigger">Триггер команды</label>
+          <input type="text"
+                 id="party-trigger"
+                 class="party-input-text"
+                 placeholder="!партия">
+          <small>Например: !партия или !суккубы. В !команды подтягивается автоматически.</small>
+        </div>
+        <div class="party-config-field">
+          <label for="party-response-text">Начальный текст ответа</label>
+          <input type="text"
+                 id="party-response-text"
+                 class="party-input-text"
+                 placeholder="Партия выдала">
+          <small>Например: Партия выдала или Суккубы выдали. Далее подставится «N элемент для @user».</small>
         </div>
       </div>
       <div class="party-config-row">
@@ -280,7 +311,7 @@
           Сохранить
         </button>
       </div>
-      <p class="admin-description">Пример: 2 элемента, макс 5 → «Партия выдала 3 дракоша‑сосед и 2 хомяко‑адвоката для @user». Раз в сутки на пользователя.</p>
+      <p class="admin-description">Пример: триггер !партия, текст «партия выдали» → «партия выдали 3 дракоша‑сосед и 2 хомяко‑адвоката для @user». Раз в сутки на пользователя.</p>
     </div>
     <div class="party-table-wrap">
       <div class="party-table-card">

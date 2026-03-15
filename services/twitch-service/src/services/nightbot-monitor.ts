@@ -225,6 +225,9 @@ export class NightBotMonitor {
     private spamViolations = new Map<string, number[]>();
     private spamConfigLastLoaded = 0;
     private readonly SPAM_CONFIG_TTL_MS = 60 * 1000;
+    /** Кеш message_id из IRC PRIVMSG (ключ channel:user:message) для удаления сообщений через Helix. */
+    private privmsgIdCache = new Map<string, string>();
+    private static readonly PRIVMSG_ID_CACHE_MAX = 100;
 
     // Команды, которые работают всегда (не требуют активного стрима)
     private readonly ALWAYS_AVAILABLE_COMMANDS = new Set([
@@ -236,7 +239,6 @@ export class NightBotMonitor {
         '!fp', '!фп',
         '!команда', '!команды', '!commands',
         '!ссылки', '!links',
-        '!партия', '!party',
         '!персонажи', '!персонаж',
         '!игры', '!help',
         '!смерть', '!смертьинфо', '!смертьоткат', '!смертьсброс',
@@ -248,19 +250,21 @@ export class NightBotMonitor {
     ]);
 
     // Мапа команд для чистого роутинга
-    private readonly commands = this.buildCommandsMap();
+    private commands = this.buildCommandsMap('!партия');
+    private partyTrigger = '!партия';
+    private partyResponseText = 'Партия выдала';
+    private partyEnabled = true;
     // Кастомные команды из JSON (обновляются динамически)
     private customCommands: Map<string, CustomCommand> = new Map();
     // Кастомные счётчики из БД (обновляются динамически)
     private counters: Map<string, any> = new Map();
     
-    private buildCommandsMap(): Map<string, CommandHandler> {
+    private buildCommandsMap(partyTrigger: string): Map<string, CommandHandler> {
         const map = new Map<string, CommandHandler>();
 
         const register = (aliases: string[], handler: CommandHandler) => {
             for (const alias of aliases) map.set(alias, handler);
         };
-
         register(['!dick'], (ch, u, m, msg) => {
             this.dickQueue = this.dickQueue
                 .then(() => this.handleDickCommand(ch, u, m, msg))
@@ -295,7 +299,9 @@ export class NightBotMonitor {
         register(['!игры', '!help'], (ch, u, m, msg) => void this.handleGamesCommand(ch, u, msg));
         register(['!ссылки', '!links'], (ch, u, m, msg) => void this.handleLinksCommand(ch, u, msg));
         register(['!команда', '!команды', '!commands'], (ch, u, m, msg) => void this.handleAllCommandsCommand(ch, u, msg));
-        register(['!партия', '!party'], (ch, u, m, msg) => void this.handlePartyCommand(ch, u, msg));
+        const partyTrig = (partyTrigger && partyTrigger.trim()) ? partyTrigger.trim().toLowerCase() : '!партия';
+        const partyTriggerNorm = partyTrig.startsWith('!') ? partyTrig : `!${partyTrig}`;
+        register([partyTriggerNorm], (ch, u, m, msg) => void this.handlePartyCommand(ch, u, msg));
 
         return map;
     }
@@ -696,6 +702,9 @@ export class NightBotMonitor {
             this.accessToken = accessToken;
             this.clientId = clientId;
 
+            await this.loadPartyConfigFromDb();
+            this.commands = this.buildCommandsMap(this.partyTrigger);
+
             console.log('🔄 Начинаем подключение к Twitch чату...');
             console.log('   Канал:', this.channelName);
 
@@ -832,8 +841,14 @@ export class NightBotMonitor {
                 const trimmedMessage = originalMessage.toLowerCase();
                 console.log(`📨 ${user}: ${message}`);
 
-                // Анти-спам: сначала проверяем слишком длинные сообщения
-                const spamHandled = await this.handleSpamIfNeeded(username, originalMessage);
+                let messageId = this.getChatMessageId(msg);
+                if (!messageId && this.channelName) {
+                    const cacheKey = `#${this.channelName}:${username}:${originalMessage}`;
+                    messageId = this.privmsgIdCache.get(cacheKey);
+                }
+
+                // Анти-спам: удаляем сообщение (если есть id) и таймаут
+                const spamHandled = await this.handleSpamIfNeeded(username, originalMessage, messageId);
                 if (spamHandled) {
                     return;
                 }
@@ -921,7 +936,7 @@ export class NightBotMonitor {
                     console.log(`🎯 Обработка команды: ${trimmedMessage}`);
                     
                     // Промо-команды и информационные команды работают всегда
-                    const isAlwaysAvailable = this.ALWAYS_AVAILABLE_COMMANDS.has(trimmedMessage);
+                    const isAlwaysAvailable = this.ALWAYS_AVAILABLE_COMMANDS.has(trimmedMessage) || trimmedMessage === this.partyTrigger;
 
                     // Игровые команды работают только когда стрим онлайн (или локально для теста)
                     if (!isAlwaysAvailable && !this.isStreamOnlineCheck() && !IS_LOCAL) {
@@ -991,7 +1006,28 @@ export class NightBotMonitor {
             // @twurple пока не имеет специального обработчика для viewermilestone
             this.chatClient.irc.onAnyMessage((ircMessage) => {
                 const raw = ircMessage as any;
-                
+                if (ircMessage.command === 'PRIVMSG') {
+                    const id = ircMessage.tags?.get?.('id');
+                    const channel = raw.channel ?? raw.params?.[0];
+                    let user = '';
+                    const prefix = raw.prefix;
+                    if (typeof prefix === 'string') {
+                        user = prefix.split('!')[0]?.toLowerCase?.() ?? '';
+                    } else if (prefix && typeof prefix === 'object' && 'nick' in prefix) {
+                        user = String((prefix as { nick?: string }).nick ?? '').toLowerCase();
+                    } else {
+                        user = (ircMessage.tags?.get?.('display-name') ?? ircMessage.tags?.get?.('login') ?? '').toString().toLowerCase();
+                    }
+                    const text = raw.params?.[1] ?? '';
+                    if (id && channel && user && typeof id === 'string') {
+                        const key = `${channel}:${user}:${text}`;
+                        this.privmsgIdCache.set(key, id);
+                        if (this.privmsgIdCache.size > NightBotMonitor.PRIVMSG_ID_CACHE_MAX) {
+                            const first = this.privmsgIdCache.keys().next().value;
+                            if (first != null) this.privmsgIdCache.delete(first);
+                        }
+                    }
+                }
                 if (ircMessage.command === 'USERNOTICE') {
                     const msgId = ircMessage.tags.get('msg-id');
 
@@ -2364,7 +2400,40 @@ export class NightBotMonitor {
         return false;
     }
 
-    private async handleSpamIfNeeded(username: string, message: string): Promise<boolean> {
+    /**
+     * Извлекает message_id из объекта сообщения (тег id в PRIVMSG, нужен для удаления через Helix).
+     */
+    private getChatMessageId(msg: any): string | undefined {
+        if (!msg) return undefined;
+        if (typeof msg.id === 'string' && msg.id) return msg.id;
+        const tags = msg.tags ?? msg.irc?.tags;
+        if (tags && typeof tags.get === 'function') {
+            const id = tags.get('id');
+            return typeof id === 'string' ? id : undefined;
+        }
+        return undefined;
+    }
+
+    /**
+     * Удаляет одно сообщение в чате через Helix API (как /delete &lt;message_id&gt;).
+     * Сообщение можно удалить в течение 6 часов после отправки.
+     */
+    private async deleteChatMessage(messageId: string): Promise<boolean> {
+        if (!this.broadcasterId || !this.moderatorId || !messageId) return false;
+        try {
+            await this.helix(
+                `https://api.twitch.tv/helix/moderation/chat?broadcaster_id=${this.broadcasterId}&moderator_id=${this.moderatorId}&message_id=${encodeURIComponent(messageId)}`,
+                { method: 'DELETE' }
+            );
+            console.log(`🗑️ Сообщение удалено (message_id: ${messageId.slice(0, 8)}…)`);
+            return true;
+        } catch (error: any) {
+            console.error('❌ Ошибка удаления сообщения:', error?.message || error);
+            return false;
+        }
+    }
+
+    private async handleSpamIfNeeded(username: string, message: string, messageId?: string): Promise<boolean> {
         await this.ensureSpamConfigLoaded();
 
         if (!this.isSpammyMessage(message)) {
@@ -2381,9 +2450,11 @@ export class NightBotMonitor {
         this.spamViolations.set(key, recent);
 
         try {
+            if (messageId) {
+                await this.deleteChatMessage(messageId);
+            }
             if (recent.length <= this.spamConfig.softViolationsBeforeTimeout) {
-                console.log(`🧹 SPAM soft-block для ${key}, нарушение #${recent.length}`);
-                await this.timeoutUser(username, 1, 'Chat spam (soft vanish)');
+                console.log(`🧹 SPAM: сообщение удалено для ${key}, нарушение #${recent.length} (без таймаута)`);
             } else {
                 const durationSec = Math.max(1, this.spamConfig.timeoutMinutes * 60);
                 console.log(
@@ -2519,11 +2590,43 @@ export class NightBotMonitor {
     }
 
     /**
-     * Обработка команды !партия / !party
+     * Загружает из БД триггер и начальный текст ответа партии, обновляет кеш.
+     */
+    private async loadPartyConfigFromDb(): Promise<void> {
+        try {
+            const row = await queryOne<{ enabled: boolean; trigger: string; response_text: string }>(
+                'SELECT enabled, trigger, response_text FROM party_config WHERE id = 1',
+            );
+            if (row && typeof row.enabled === 'boolean') {
+                this.partyEnabled = row.enabled;
+            }
+            if (row?.trigger) {
+                const t = row.trigger.trim();
+                this.partyTrigger = t.startsWith('!') ? t.toLowerCase() : `!${t.toLowerCase()}`;
+            }
+            if (row?.response_text != null) {
+                this.partyResponseText = String(row.response_text).trim() || 'Партия выдала';
+            }
+        } catch (e) {
+            console.error('⚠️ Ошибка загрузки настроек партии (триггер/текст):', e);
+        }
+    }
+
+    /** Вызывается при сохранении настроек партии в админке — перезагружает конфиг и пересобирает карту команд. */
+    reloadPartyConfigAndCommands(): void {
+        this.loadPartyConfigFromDb().then(() => {
+            this.commands = this.buildCommandsMap(this.partyTrigger);
+            console.log(`🎉 Партия: триггер обновлён на ${this.partyTrigger}`);
+        });
+    }
+
+    /**
+     * Обработка команды партии (триггер из настроек)
      * Случайный элемент из списка, раз в сутки на пользователя
      */
     private async handlePartyCommand(channel: string, user: string, msg: any) {
-        console.log(`🎉 Команда !партия от ${user} в ${channel}`);
+        if (!this.partyEnabled) return;
+        console.log(`🎉 Команда ${this.partyTrigger} от ${user} в ${channel}`);
 
         const COOLDOWN_HOURS = 24;
 
@@ -2554,9 +2657,11 @@ export class NightBotMonitor {
                 const lastUsed = new Date(cooldownRow.last_used_at).getTime();
                 const hoursSince = (Date.now() - lastUsed) / (1000 * 60 * 60);
                 if (hoursSince < COOLDOWN_HOURS) {
+                    const name = this.partyTrigger.replace(/^!/, '');
+                    const label = (name === 'партия' || name === 'party') ? 'партию' : name;
                     await this.sendMessage(
                         channel,
-                        `@${user}, можно использовать партию раз в сутки.`,
+                        `@${user}, можно использовать ${label} раз в сутки.`,
                     );
                     return;
                 }
@@ -2576,7 +2681,7 @@ export class NightBotMonitor {
             });
 
             const parts = picks.map((p) => `${p.qty} ${p.text}`).join(' и ');
-            const response = `Партия выдала ${parts} для @${user}`;
+            const response = `${this.partyResponseText} ${parts} для @${user}`;
 
             await this.sendMessage(channel, response);
 
@@ -2614,17 +2719,22 @@ export class NightBotMonitor {
         try {
             const allCommands = await loadCustomCommandsFromDb();
             const enabled = allCommands.filter((c) => c.enabled);
-            if (enabled.length === 0) {
+            const partyRow = await queryOne<{ enabled: boolean; trigger: string }>('SELECT enabled, trigger FROM party_config WHERE id = 1');
+            const partyEnabled = partyRow && typeof partyRow.enabled === 'boolean' ? partyRow.enabled : this.partyEnabled;
+            const partyTrig = partyRow?.trigger?.trim()
+                ? (partyRow.trigger.startsWith('!') ? partyRow.trigger : `!${partyRow.trigger}`)
+                : this.partyTrigger;
+            const parts: string[] = partyEnabled ? [partyTrig] : [];
+            for (const cmd of enabled) {
+                const trigger = cmd.trigger.startsWith('!') ? cmd.trigger : `!${cmd.trigger}`;
+                const aliases = (cmd.aliases ?? []).filter(Boolean);
+                parts.push(aliases.length > 0 ? `${trigger} (${aliases.join(', ')})` : trigger);
+            }
+            if (parts.length === 0) {
                 await this.sendMessage(channel, 'Нет включённых команд.');
                 this.setAnnouncementCooldown('!команда');
                 return;
             }
-
-            const parts = enabled.map((cmd) => {
-                const trigger = cmd.trigger.startsWith('!') ? cmd.trigger : `!${cmd.trigger}`;
-                const aliases = (cmd.aliases ?? []).filter(Boolean);
-                return aliases.length > 0 ? `${trigger} (${aliases.join(', ')})` : trigger;
-            });
 
             const separator = ', ';
             const full = parts.join(separator);

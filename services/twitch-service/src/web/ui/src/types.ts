@@ -49,6 +49,9 @@ export interface PartyItemsData {
 }
 
 export interface PartyConfig {
+  enabled: boolean;
+  trigger: string;
+  responseText: string;
   elementsCount: number;
   quantityMax: number;
   skipCooldown: boolean;
