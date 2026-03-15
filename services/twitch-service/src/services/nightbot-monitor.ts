@@ -2494,7 +2494,7 @@ export class NightBotMonitor {
 
             if (full.length + header.length + 1 <= maxLen) {
                 // Всё помещается в одно сообщение
-                await this.sendMessage(channel, `${header}\n${full}`);
+                await this.sendMessage(channel, `${header} ${full}`);
             } else {
                 // Делим на чанки, в первый добавляем заголовок
                 let chunk = '';
@@ -2502,7 +2502,7 @@ export class NightBotMonitor {
                 for (const part of parts) {
                     const next = chunk ? chunk + separator + part : part;
                     if (next.length > maxLen && chunk) {
-                        const text = isFirstChunk ? `${header}\n${chunk}` : chunk;
+                        const text = isFirstChunk ? `${header} ${chunk}` : chunk;
                         await this.sendMessage(channel, text);
                         isFirstChunk = false;
                         chunk = part;
@@ -2511,7 +2511,7 @@ export class NightBotMonitor {
                     }
                 }
                 if (chunk) {
-                    const text = isFirstChunk ? `${header}\n${chunk}` : chunk;
+                    const text = isFirstChunk ? `${header} ${chunk}` : chunk;
                     await this.sendMessage(channel, text);
                 }
             }
