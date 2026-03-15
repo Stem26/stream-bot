@@ -17,6 +17,25 @@ let broadcastDuelBannedChanged: (() => void) | null = null;
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Проверка авторизации для админских API (чтобы без nginx нельзя было менять настройки)
+function isAdminApiPath(p: string): boolean {
+  return (
+    p.startsWith('/api/admin') ||
+    p.startsWith('/api/commands') ||
+    p === '/api/links' ||
+    p.startsWith('/api/counters') ||
+    p.startsWith('/api/party')
+  );
+}
+app.use((req: Request, res: Response, next: () => void) => {
+  if (!isAdminApiPath(req.path)) return next();
+  const authHeader = req.headers.authorization;
+  const expected = process.env.ADMIN_PASSWORD || 'admin123';
+  const token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
+  if (token === expected) return next();
+  res.status(401).json({ error: 'Требуется авторизация' });
+});
+
 // Интерфейс команды
 interface CustomCommand {
     id: string;

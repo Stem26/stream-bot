@@ -1,3 +1,4 @@
+import { getAdminHeaders } from './admin-auth';
 import type {
   CommandsData,
   CustomCommand,
@@ -9,6 +10,10 @@ import type {
   PartyConfig,
   ChatModerationConfig,
 } from './types';
+
+function adminFetchHeaders(): Record<string, string> {
+  return { ...getAdminHeaders(), 'Content-Type': 'application/json' };
+}
 
 async function handleJson<T>(response: Response, defaultError: string): Promise<T> {
   if (!response.ok) {
@@ -27,14 +32,14 @@ async function handleJson<T>(response: Response, defaultError: string): Promise<
 }
 
 export async function fetchCommands(): Promise<CommandsData> {
-  const response = await fetch('/api/commands');
+  const response = await fetch('/api/commands', { headers: getAdminHeaders() });
   return handleJson<CommandsData>(response, 'Ошибка загрузки команд');
 }
 
 export async function createCommand(command: CustomCommand): Promise<CustomCommand> {
   const response = await fetch('/api/commands', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: adminFetchHeaders(),
     body: JSON.stringify(command),
   });
   return handleJson<CustomCommand>(response, 'Ошибка создания команды');
@@ -43,7 +48,7 @@ export async function createCommand(command: CustomCommand): Promise<CustomComma
 export async function updateCommand(id: string, command: CustomCommand): Promise<CustomCommand> {
   const response = await fetch(`/api/commands/${encodeURIComponent(id)}`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: adminFetchHeaders(),
     body: JSON.stringify(command),
   });
   return handleJson<CustomCommand>(response, 'Ошибка обновления команды');
@@ -59,6 +64,7 @@ export async function deleteCommand(id: string): Promise<void> {
 export async function toggleCommand(id: string): Promise<CustomCommand> {
   const response = await fetch(`/api/commands/${encodeURIComponent(id)}/toggle`, {
     method: 'PATCH',
+    headers: getAdminHeaders(),
   });
   return handleJson<CustomCommand>(response, 'Ошибка переключения команды');
 }
@@ -66,19 +72,20 @@ export async function toggleCommand(id: string): Promise<CustomCommand> {
 export async function toggleCommandRotation(id: string): Promise<CustomCommand> {
   const response = await fetch(`/api/commands/${encodeURIComponent(id)}/rotation-toggle`, {
     method: 'PATCH',
+    headers: getAdminHeaders(),
   });
   return handleJson<CustomCommand>(response, 'Ошибка переключения ротации команды');
 }
 
 export async function fetchLinksConfig(): Promise<LinksConfig> {
-  const response = await fetch('/api/links');
+  const response = await fetch('/api/links', { headers: getAdminHeaders() });
   return handleJson<LinksConfig>(response, 'Ошибка загрузки ссылок');
 }
 
 export async function updateLinksConfig(config: { allLinksText: string; rotationIntervalMinutes?: number }): Promise<LinksConfig> {
   const response = await fetch('/api/links', {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: adminFetchHeaders(),
     body: JSON.stringify(
       config.rotationIntervalMinutes != null
         ? {
@@ -96,14 +103,14 @@ export async function updateLinksConfig(config: { allLinksText: string; rotation
 // === API для счётчиков ===
 
 export async function fetchCounters(): Promise<CountersData> {
-  const response = await fetch('/api/counters');
+  const response = await fetch('/api/counters', { headers: getAdminHeaders() });
   return handleJson<CountersData>(response, 'Ошибка загрузки счётчиков');
 }
 
 export async function createCounter(counter: Counter): Promise<Counter> {
   const response = await fetch('/api/counters', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: adminFetchHeaders(),
     body: JSON.stringify(counter),
   });
   return handleJson<Counter>(response, 'Ошибка создания счётчика');
@@ -112,7 +119,7 @@ export async function createCounter(counter: Counter): Promise<Counter> {
 export async function updateCounter(id: string, counter: Counter): Promise<Counter> {
   const response = await fetch(`/api/counters/${encodeURIComponent(id)}`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: adminFetchHeaders(),
     body: JSON.stringify(counter),
   });
   return handleJson<Counter>(response, 'Ошибка обновления счётчика');
@@ -128,6 +135,7 @@ export async function deleteCounter(id: string): Promise<void> {
 export async function toggleCounter(id: string): Promise<Counter> {
   const response = await fetch(`/api/counters/${encodeURIComponent(id)}/toggle`, {
     method: 'PATCH',
+    headers: getAdminHeaders(),
   });
   return handleJson<Counter>(response, 'Ошибка переключения счётчика');
 }
@@ -135,6 +143,7 @@ export async function toggleCounter(id: string): Promise<Counter> {
 export async function incrementCounter(id: string): Promise<Counter> {
   const response = await fetch(`/api/counters/${encodeURIComponent(id)}/increment`, {
     method: 'PATCH',
+    headers: getAdminHeaders(),
   });
   return handleJson<Counter>(response, 'Ошибка инкремента счётчика');
 }
@@ -142,19 +151,19 @@ export async function incrementCounter(id: string): Promise<Counter> {
 // === API для партии ===
 
 export async function fetchPartyItems(): Promise<PartyItemsData> {
-  const response = await fetch('/api/party/items');
+  const response = await fetch('/api/party/items', { headers: getAdminHeaders() });
   return handleJson<PartyItemsData>(response, 'Ошибка загрузки партии');
 }
 
 export async function fetchPartyConfig(): Promise<PartyConfig> {
-  const response = await fetch('/api/party/config');
+  const response = await fetch('/api/party/config', { headers: getAdminHeaders() });
   return handleJson<PartyConfig>(response, 'Ошибка загрузки настроек');
 }
 
 export async function updatePartyConfig(config: PartyConfig): Promise<PartyConfig> {
   const response = await fetch('/api/party/config', {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: adminFetchHeaders(),
     body: JSON.stringify(config),
   });
   return handleJson<PartyConfig>(response, 'Ошибка сохранения');
@@ -163,7 +172,7 @@ export async function updatePartyConfig(config: PartyConfig): Promise<PartyConfi
 export async function setPartySkipCooldown(skipCooldown: boolean): Promise<{ skipCooldown: boolean }> {
   const response = await fetch('/api/party/config/skip-cooldown', {
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
+    headers: adminFetchHeaders(),
     body: JSON.stringify({ skipCooldown }),
   });
   return handleJson<{ skipCooldown: boolean }>(response, 'Ошибка');
@@ -172,7 +181,7 @@ export async function setPartySkipCooldown(skipCooldown: boolean): Promise<{ ski
 export async function createPartyItem(text: string): Promise<PartyItem> {
   const response = await fetch('/api/party/items', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: adminFetchHeaders(),
     body: JSON.stringify({ text }),
   });
   return handleJson<PartyItem>(response, 'Ошибка добавления');
@@ -181,7 +190,7 @@ export async function createPartyItem(text: string): Promise<PartyItem> {
 export async function updatePartyItem(id: number, text: string): Promise<PartyItem> {
   const response = await fetch(`/api/party/items/${id}`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: adminFetchHeaders(),
     body: JSON.stringify({ text }),
   });
   return handleJson<PartyItem>(response, 'Ошибка обновления');
@@ -190,6 +199,7 @@ export async function updatePartyItem(id: number, text: string): Promise<PartyIt
 export async function deletePartyItem(id: number): Promise<void> {
   const response = await fetch(`/api/party/items/${id}`, {
     method: 'DELETE',
+    headers: getAdminHeaders(),
   });
   await handleJson<unknown>(response, 'Ошибка удаления');
 }
@@ -197,7 +207,7 @@ export async function deletePartyItem(id: number): Promise<void> {
 // === API для модерации чата ===
 
 export async function fetchChatModerationConfig(): Promise<ChatModerationConfig> {
-  const response = await fetch('/api/admin/chat-moderation/config');
+  const response = await fetch('/api/admin/chat-moderation/config', { headers: getAdminHeaders() });
   return handleJson<ChatModerationConfig>(response, 'Ошибка загрузки настроек модерации');
 }
 
@@ -206,7 +216,7 @@ export async function updateChatModerationConfig(
 ): Promise<ChatModerationConfig> {
   const response = await fetch('/api/admin/chat-moderation/config', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: adminFetchHeaders(),
     body: JSON.stringify(config),
   });
   return handleJson<ChatModerationConfig>(response, 'Ошибка сохранения настроек модерации');

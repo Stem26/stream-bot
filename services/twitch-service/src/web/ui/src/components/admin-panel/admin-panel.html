@@ -1,4 +1,15 @@
-<div class="container">
+<div id="admin-auth-overlay" class="auth-modal active">
+  <div class="auth-content">
+    <h2>Вход в админку</h2>
+    <p class="auth-hint">Введите пароль администратора</p>
+    <input type="password" id="admin-auth-password" placeholder="Пароль" autocomplete="current-password" />
+    <div class="auth-actions">
+      <button type="button" class="btn btn-primary" id="admin-auth-submit">Войти</button>
+    </div>
+    <p id="admin-auth-error" class="auth-error" style="display:none;color:#c53030;margin-top:12px;"></p>
+  </div>
+</div>
+<div class="container" id="admin-panel-container" style="display: none;">
   <div class="header">
     <h1>🎮 Админ-панель</h1>
     <p>Управление ботом и командами</p>
