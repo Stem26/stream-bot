@@ -53,16 +53,32 @@ export async function toggleCommand(id: string): Promise<CustomCommand> {
   return handleJson<CustomCommand>(response, 'Ошибка переключения команды');
 }
 
+export async function toggleCommandRotation(id: string): Promise<CustomCommand> {
+  const response = await fetch(`/api/commands/${encodeURIComponent(id)}/rotation-toggle`, {
+    method: 'PATCH',
+  });
+  return handleJson<CustomCommand>(response, 'Ошибка переключения ротации команды');
+}
+
 export async function fetchLinksConfig(): Promise<LinksConfig> {
   const response = await fetch('/api/links');
   return handleJson<LinksConfig>(response, 'Ошибка загрузки ссылок');
 }
 
-export async function updateLinksConfig(allLinksText: string): Promise<LinksConfig> {
+export async function updateLinksConfig(config: { allLinksText: string; rotationIntervalMinutes?: number }): Promise<LinksConfig> {
   const response = await fetch('/api/links', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ allLinksText }),
+    body: JSON.stringify(
+      config.rotationIntervalMinutes != null
+        ? {
+            allLinksText: config.allLinksText,
+            rotationIntervalMinutes: config.rotationIntervalMinutes,
+          }
+        : {
+            allLinksText: config.allLinksText,
+          },
+    ),
   });
   return handleJson<LinksConfig>(response, 'Ошибка сохранения ссылок');
 }

@@ -9,6 +9,7 @@ import {
   fetchLinksConfig,
   updateLinksConfig,
   toggleCommand,
+  toggleCommandRotation,
   updateCommand,
   fetchCounters,
   createCounter,
@@ -60,6 +61,7 @@ export class AdminPanelElement extends HTMLElement {
   private duelBannedTickId: number | null = null;
   private lastDuelConfig: DuelConfigValues | null = null;
   private lastDailyConfig: DailyConfigValues | null = null;
+  private lastLinksRotationMinutes: number | null = null;
 
   connectedCallback(): void {
     if (this.initialized) return;
@@ -187,6 +189,7 @@ export class AdminPanelElement extends HTMLElement {
       const triggerCell = tr.querySelector('.col-trigger');
       const responseCell = tr.querySelector('.col-response');
       const statusBtn = tr.querySelector<HTMLButtonElement>('.col-status [data-action="toggle"]');
+      const rotationBtn = tr.querySelector<HTMLButtonElement>('.col-rotation [data-action="toggle-rotation"]');
       const sendBtn = tr.querySelector<HTMLButtonElement>('.col-actions [data-action="send"]');
 
       if (numCell) numCell.textContent = String(index + 1);
@@ -203,6 +206,11 @@ export class AdminPanelElement extends HTMLElement {
         statusBtn.textContent = cmd.enabled ? 'ВКЛ' : 'ВЫКЛ';
         statusBtn.className = `status-badge ${cmd.enabled ? 'on' : 'off'}`;
         statusBtn.title = cmd.enabled ? 'Выключить' : 'Включить';
+      }
+      if (rotationBtn) {
+        rotationBtn.textContent = cmd.inRotation ? 'ДА' : 'НЕТ';
+        rotationBtn.className = `status-badge rotation-badge ${cmd.inRotation ? 'on' : 'off'}`;
+        rotationBtn.title = cmd.inRotation ? 'Убрать из ротации' : 'Добавить в ротацию';
       }
       if (sendBtn) sendBtn.disabled = !cmd.enabled;
       tbody.appendChild(tr);
@@ -598,7 +606,14 @@ export class AdminPanelElement extends HTMLElement {
   private async initLinks(linkDialog: LinkDialogElement): Promise<void> {
     try {
       const config = await fetchLinksConfig();
-      linkDialog.open(config.allLinksText ?? '');
+      this.lastLinksRotationMinutes = config.rotationIntervalMinutes ?? 13;
+      const linksIntervalInput = this.querySelector<HTMLInputElement>('#links-rotation-interval-min');
+      if (linksIntervalInput) {
+        linksIntervalInput.value = String(this.lastLinksRotationMinutes);
+      }
+      linkDialog.open({
+        allLinksText: config.allLinksText ?? '',
+      });
       linkDialog.close();
     } catch (error) {
       if (error instanceof Error) {
@@ -809,7 +824,9 @@ export class AdminPanelElement extends HTMLElement {
     allLinksBtn.addEventListener('click', async () => {
       try {
         const config = await fetchLinksConfig();
-        linkDialog.open(config.allLinksText ?? '');
+        linkDialog.open({
+          allLinksText: config.allLinksText ?? '',
+        });
       } catch (error) {
         if (error instanceof Error) showAlert(`Ошибка загрузки ссылок: ${error.message}`, 'error');
       }
@@ -829,6 +846,16 @@ export class AdminPanelElement extends HTMLElement {
       if (action === 'toggle') {
         try {
           await toggleCommand(id);
+          await this.loadCommands();
+        } catch (error) {
+          if (error instanceof Error) showAlert(`Ошибка: ${error.message}`, 'error');
+        }
+        return;
+      }
+
+      if (action === 'toggle-rotation') {
+        try {
+          await toggleCommandRotation(id);
           await this.loadCommands();
         } catch (error) {
           if (error instanceof Error) showAlert(`Ошибка: ${error.message}`, 'error');
@@ -915,7 +942,7 @@ export class AdminPanelElement extends HTMLElement {
       const customEvent = event as CustomEvent<LinkDialogSaveDetail>;
       const { allLinksText } = customEvent.detail;
       try {
-        await updateLinksConfig(allLinksText);
+        await updateLinksConfig({ allLinksText });
         linkDialog.close();
       } catch (error) {
         if (error instanceof Error) showAlert(`Ошибка сохранения ссылок: ${error.message}`, 'error');
@@ -1075,6 +1102,39 @@ export class AdminPanelElement extends HTMLElement {
         await this.loadDuelBannedList();
       } catch (error) {
         if (error instanceof Error) showAlert(`Ошибка: ${error.message}`, 'error');
+      }
+    });
+
+    // Ротация ссылок — блок "Инфо"
+    const linksIntervalInput = this.querySelector<HTMLInputElement>('#links-rotation-interval-min');
+    const linksSaveBtn = this.querySelector<HTMLButtonElement>('#links-rotation-save-btn');
+
+    const updateLinksSaveButton = () => {
+      if (!linksIntervalInput || !linksSaveBtn) return;
+      const current = parseInt(linksIntervalInput.value, 10) || 0;
+      const same = this.lastLinksRotationMinutes !== null && this.lastLinksRotationMinutes === current;
+      linksSaveBtn.disabled = same || current <= 0;
+    };
+
+    linksIntervalInput?.addEventListener('input', updateLinksSaveButton);
+    linksIntervalInput?.addEventListener('change', updateLinksSaveButton);
+
+    linksSaveBtn?.addEventListener('click', async () => {
+      if (!linksIntervalInput) return;
+      const raw = parseInt(linksIntervalInput.value, 10) || 0;
+      const safeMinutes = Math.max(1, Math.min(120, raw));
+      try {
+        const config = await fetchLinksConfig();
+        const updated = await updateLinksConfig({
+          allLinksText: config.allLinksText ?? '',
+          rotationIntervalMinutes: safeMinutes,
+        });
+        this.lastLinksRotationMinutes = updated.rotationIntervalMinutes ?? safeMinutes;
+        linksIntervalInput.value = String(this.lastLinksRotationMinutes);
+        updateLinksSaveButton();
+        showAlert('Интервал ротации ссылок сохранён', 'success');
+      } catch (error) {
+        if (error instanceof Error) showAlert(`Ошибка сохранения интервала ротации: ${error.message}`, 'error');
       }
     });
 

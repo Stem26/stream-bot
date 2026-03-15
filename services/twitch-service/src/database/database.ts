@@ -143,9 +143,11 @@ export async function initDatabase(): Promise<void> {
           cooldown INTEGER NOT NULL DEFAULT 10,
           message_type TEXT NOT NULL DEFAULT 'announcement',
           color TEXT NOT NULL DEFAULT 'primary',
-          description TEXT NOT NULL DEFAULT ''
+          description TEXT NOT NULL DEFAULT '',
+          in_rotation BOOLEAN NOT NULL DEFAULT FALSE
         )
       `);
+      await client.query(`ALTER TABLE custom_commands ADD COLUMN IF NOT EXISTS in_rotation BOOLEAN NOT NULL DEFAULT FALSE`);
 
       await client.query(`CREATE INDEX IF NOT EXISTS idx_custom_commands_enabled ON custom_commands(enabled)`);
 
@@ -224,15 +226,17 @@ export async function initDatabase(): Promise<void> {
         ON CONFLICT (id) DO NOTHING
       `);
 
-      // Конфиг текста для команды !ссылки (одна строка)
+      // Конфиг текста для команды !ссылки + интервал ротации (одна строка)
       await client.query(`
         CREATE TABLE IF NOT EXISTS links_config (
           id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
-          all_links_text TEXT NOT NULL DEFAULT ''
+          all_links_text TEXT NOT NULL DEFAULT '',
+          rotation_interval_minutes INTEGER NOT NULL DEFAULT 13
         )
       `);
+      await client.query(`ALTER TABLE links_config ADD COLUMN IF NOT EXISTS rotation_interval_minutes INTEGER NOT NULL DEFAULT 13`);
       await client.query(`
-        INSERT INTO links_config (id, all_links_text) VALUES (1, '')
+        INSERT INTO links_config (id, all_links_text, rotation_interval_minutes) VALUES (1, '', 13)
         ON CONFLICT (id) DO NOTHING
       `);
 

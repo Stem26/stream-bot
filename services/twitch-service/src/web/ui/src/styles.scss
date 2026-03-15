@@ -1018,6 +1018,10 @@ body.modal-open {
       width: 70px;
       min-width: 70px;
     }
+    &.col-rotation {
+      width: 90px;
+      min-width: 90px;
+    }
     &.col-actions {
       width: 88px;
       min-width: 88px;
@@ -1100,6 +1104,11 @@ body.modal-open {
     .col-status {
       width: 70px;
       min-width: 70px;
+    }
+
+    .col-rotation {
+      width: 90px;
+      min-width: 90px;
     }
 
     .col-actions {
@@ -1300,6 +1309,10 @@ body.modal-open {
   &:hover {
     opacity: 0.9;
   }
+}
+
+.rotation-badge {
+  font-size: 0.78em;
 }
 
 .btn-icon {

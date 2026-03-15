@@ -1,4 +1,5 @@
 import express, { Request, Response } from 'express';
+import * as fs from 'fs';
 import * as path from 'path';
 import * as http from 'http';
 import WebSocket from 'ws';
@@ -27,6 +28,7 @@ interface CustomCommand {
     messageType: 'announcement' | 'message';
     color: 'primary' | 'blue' | 'green' | 'orange' | 'purple';
     description: string;
+    inRotation: boolean;
 }
 
 interface CommandsData {
@@ -35,6 +37,7 @@ interface CommandsData {
 
 interface LinksConfig {
     allLinksText: string;
+    rotationIntervalMinutes: number;
 }
 
 interface Counter {
@@ -63,6 +66,7 @@ type DbCommandRow = {
     message_type: string;
     color: string;
     description: string;
+    in_rotation: boolean;
 };
 
 function mapDbRowToCommand(row: DbCommandRow): CustomCommand {
@@ -76,19 +80,20 @@ function mapDbRowToCommand(row: DbCommandRow): CustomCommand {
         messageType: (row.message_type as CustomCommand['messageType']) ?? 'announcement',
         color: (row.color as CustomCommand['color']) ?? 'primary',
         description: row.description ?? '',
+        inRotation: row.in_rotation ?? false,
     };
 }
 
 async function getAllCommandsFromDb(): Promise<CommandsData> {
     const rows = await query<DbCommandRow>(
-        'SELECT id, trigger, aliases, response, enabled, cooldown, message_type, color, description FROM custom_commands ORDER BY id',
+        'SELECT id, trigger, aliases, response, enabled, cooldown, message_type, color, description, in_rotation FROM custom_commands ORDER BY id',
     );
     return { commands: rows.map(mapDbRowToCommand) };
 }
 
 async function getCommandByIdFromDb(id: string): Promise<CustomCommand | null> {
     const row = await queryOne<DbCommandRow>(
-        'SELECT id, trigger, aliases, response, enabled, cooldown, message_type, color, description FROM custom_commands WHERE id = $1',
+        'SELECT id, trigger, aliases, response, enabled, cooldown, message_type, color, description, in_rotation FROM custom_commands WHERE id = $1',
         [id],
     );
     return row ? mapDbRowToCommand(row) : null;
@@ -97,8 +102,8 @@ async function getCommandByIdFromDb(id: string): Promise<CustomCommand | null> {
 async function createCommandInDb(cmd: CustomCommand): Promise<void> {
     await query(
         `INSERT INTO custom_commands
-          (id, trigger, aliases, response, enabled, cooldown, message_type, color, description)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+          (id, trigger, aliases, response, enabled, cooldown, message_type, color, description, in_rotation)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
         [
             cmd.id,
             cmd.trigger,
@@ -109,6 +114,7 @@ async function createCommandInDb(cmd: CustomCommand): Promise<void> {
             cmd.messageType ?? 'announcement',
             cmd.color ?? 'primary',
             cmd.description ?? '',
+            cmd.inRotation ?? false,
         ],
     );
 }
@@ -125,6 +131,7 @@ async function updateCommandInDb(id: string, partial: Partial<CustomCommand>): P
         aliases: partial.aliases ?? existing.aliases,
     };
 
+    const mergedWithRotation = { ...merged, inRotation: partial.inRotation ?? existing.inRotation };
     await query(
         `UPDATE custom_commands
          SET trigger = $2,
@@ -134,22 +141,23 @@ async function updateCommandInDb(id: string, partial: Partial<CustomCommand>): P
              cooldown = $6,
              message_type = $7,
              color = $8,
-             description = $9
+             description = $9,
+             in_rotation = $10
          WHERE id = $1`,
         [
-            merged.id,
-            merged.trigger,
-            merged.aliases ?? [],
-            merged.response,
-            merged.enabled,
-            merged.cooldown,
-            merged.messageType,
-            merged.color,
-            merged.description ?? '',
+            mergedWithRotation.id,
+            mergedWithRotation.trigger,
+            mergedWithRotation.aliases ?? [],
+            mergedWithRotation.response,
+            mergedWithRotation.enabled,
+            mergedWithRotation.cooldown,
+            mergedWithRotation.messageType,
+            mergedWithRotation.color,
+            mergedWithRotation.description ?? '',
+            mergedWithRotation.inRotation,
         ],
     );
-
-    return merged;
+    return mergedWithRotation;
 }
 
 async function deleteCommandInDb(id: string): Promise<boolean> {
@@ -165,6 +173,15 @@ async function toggleCommandInDb(id: string): Promise<CustomCommand | null> {
     const newEnabled = !existing.enabled;
     await query('UPDATE custom_commands SET enabled = $2 WHERE id = $1', [id, newEnabled]);
     return { ...existing, enabled: newEnabled };
+}
+
+async function toggleCommandRotationInDb(id: string): Promise<CustomCommand | null> {
+    const existing = await getCommandByIdFromDb(id);
+    if (!existing) return null;
+
+    const newInRotation = !existing.inRotation;
+    await query('UPDATE custom_commands SET in_rotation = $2 WHERE id = $1', [id, newInRotation]);
+    return { ...existing, inRotation: newInRotation };
 }
 
 // === Работа со счётчиками через БД ===
@@ -283,19 +300,26 @@ async function incrementCounterInDb(id: string): Promise<Counter | null> {
 
 async function getLinksFromDb(): Promise<LinksConfig> {
     try {
-        const row = await queryOne<{ all_links_text: string }>('SELECT all_links_text FROM links_config WHERE id = 1');
-        return { allLinksText: row?.all_links_text ?? '' };
+        const row = await queryOne<{ all_links_text: string; rotation_interval_minutes: number }>(
+            'SELECT all_links_text, rotation_interval_minutes FROM links_config WHERE id = 1'
+        );
+        return {
+            allLinksText: row?.all_links_text ?? '',
+            rotationIntervalMinutes: row?.rotation_interval_minutes ?? 13,
+        };
     } catch (error) {
         console.error('⚠️ Ошибка загрузки links_config из БД:', error);
-        return { allLinksText: '' };
+        return { allLinksText: '', rotationIntervalMinutes: 13 };
     }
 }
 
 async function saveLinksToDb(config: LinksConfig): Promise<boolean> {
     try {
+        const interval = config.rotationIntervalMinutes ?? 13;
         await query(
-            'INSERT INTO links_config (id, all_links_text) VALUES (1, $1) ON CONFLICT (id) DO UPDATE SET all_links_text = EXCLUDED.all_links_text',
-            [config.allLinksText]
+            `INSERT INTO links_config (id, all_links_text, rotation_interval_minutes) VALUES (1, $1, $2)
+             ON CONFLICT (id) DO UPDATE SET all_links_text = EXCLUDED.all_links_text, rotation_interval_minutes = EXCLUDED.rotation_interval_minutes`,
+            [config.allLinksText, interval]
         );
         return true;
     } catch (error) {
@@ -330,17 +354,36 @@ app.get('/api/links', async (req: Request, res: Response) => {
 
 app.put('/api/links', async (req: Request, res: Response) => {
     try {
-        const { allLinksText } = req.body as Partial<LinksConfig>;
+        const { allLinksText, rotationIntervalMinutes } = req.body as Partial<LinksConfig>;
 
         if (typeof allLinksText !== 'string') {
             return res.status(400).json({ error: 'Поле allLinksText обязательно' });
         }
 
-        const config: LinksConfig = { allLinksText };
+        // Если минут нет в теле запроса — не трогаем интервал, берём текущее значение из БД
+        let effectiveInterval: number;
+        if (typeof rotationIntervalMinutes === 'number') {
+            effectiveInterval = rotationIntervalMinutes;
+        } else {
+            const current = await getLinksFromDb();
+            effectiveInterval = current.rotationIntervalMinutes ?? 13;
+        }
+
+        const config: LinksConfig = {
+            allLinksText,
+            rotationIntervalMinutes: effectiveInterval,
+        };
 
         if (await saveLinksToDb(config)) {
             console.log('✅ Конфиг ссылок обновлён (БД)');
             notifyCommandsChanged();
+            if (onLinksConfigUpdatedCallback) {
+                try {
+                    onLinksConfigUpdatedCallback(config);
+                } catch (cbError) {
+                    console.error('⚠️ Ошибка в onLinksConfigUpdatedCallback:', cbError);
+                }
+            }
             res.json(config);
         } else {
             res.status(500).json({ error: 'Ошибка сохранения ссылок' });
@@ -498,6 +541,29 @@ app.patch('/api/commands/:id/toggle', async (req: Request, res: Response) => {
     } catch (error) {
         console.error('❌ Ошибка переключения команды:', error);
         res.status(500).json({ error: 'Ошибка переключения команды' });
+    }
+});
+
+// Переключить участие команды в ротации ссылок (in_rotation)
+app.patch('/api/commands/:id/rotation-toggle', async (req: Request, res: Response) => {
+    try {
+        const id = req.params.id;
+        if (!id) {
+            return res.status(400).json({ error: 'ID команды не указан' });
+        }
+        const updated = await toggleCommandRotationInDb(id);
+
+        if (!updated) {
+            return res.status(404).json({ error: 'Команда не найдена' });
+        }
+
+        console.log(`✅ Команда "${id}" ${updated.inRotation ? 'добавлена в ротацию' : 'убрана из ротации'}`);
+        notifyCommandsChanged();
+        res.json(updated);
+    } catch (error: any) {
+        const message = error?.message || 'Ошибка переключения ротации команды';
+        console.error('❌ Ошибка переключения ротации команды:', error);
+        res.status(500).json({ error: message });
     }
 });
 
@@ -1170,8 +1236,22 @@ app.get('/', (req: Request, res: Response) => {
 });
 
 // SPA — все маршруты отдают index.html (роутинг на клиенте)
+// В dev папки public нет (UI собирает Vite) — показываем подсказку вместо ENOENT
 app.get(['/public', '/public/duel', '/public/links', '/admin'], (req: Request, res: Response) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+    const indexPath = path.join(__dirname, 'public', 'index.html');
+    if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
+    } else if (process.env.NODE_ENV !== 'production') {
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        res.send(
+            '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Dev</title></head><body style="font-family:sans-serif;padding:2rem;">' +
+            '<p>В режиме разработки интерфейс отдаёт Vite.</p>' +
+            '<p>Запустите <code>npm run dev:all</code> и откройте <a href="http://localhost:5173/public">http://localhost:5173/public</a> или <a href="http://localhost:5173/admin">http://localhost:5173/admin</a>.</p>' +
+            '</body></html>'
+        );
+    } else {
+        res.status(404).send('Not found');
+    }
 });
 
 // Колбэки для связи с Twitch-сервисом
@@ -1188,6 +1268,7 @@ let getDuelCooldownSkipCallback: (() => boolean) | null = null;
 let setDuelCooldownSkipCallback: ((skip: boolean) => void) | null = null;
 let onDuelConfigUpdatedCallback: ((config: { timeoutMinutes: number; winPoints: number; lossPoints: number; missPenalty: number }) => void) | null = null;
 let onDuelDailyConfigUpdatedCallback: ((config: { dailyGamesCount: number; dailyRewardPoints: number; streakWinsCount: number; streakRewardPoints: number }) => void) | null = null;
+let onLinksConfigUpdatedCallback: ((config: LinksConfig) => void) | null = null;
 
 export function setOnCommandsChangedCallback(callback: () => void) {
     onCommandsChangedCallback = callback;
@@ -1199,6 +1280,10 @@ export function setOnCommandExecuteCallback(callback: (id: string) => void | Pro
 
 export function setOnLinksSendCallback(callback: () => void | Promise<void>) {
     onLinksSendCallback = callback;
+}
+
+export function setOnLinksConfigUpdatedCallback(callback: (config: LinksConfig) => void) {
+    onLinksConfigUpdatedCallback = callback;
 }
 
 export function setOnEnableDuelsCallback(callback: () => void | Promise<void>) {

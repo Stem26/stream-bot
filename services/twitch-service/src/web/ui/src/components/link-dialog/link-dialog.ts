@@ -60,10 +60,10 @@ export class LinkDialogElement extends HTMLElement {
     textarea?.addEventListener('change', updateCounter);
   }
 
-  open(initialText: string): void {
+  open(config: { allLinksText: string }): void {
     this.ensureInit();
     const textarea = this.querySelector<HTMLTextAreaElement>('#all-links-text');
-    if (textarea) textarea.value = initialText ?? '';
+    if (textarea) textarea.value = config.allLinksText ?? '';
     this.updateLinksCounter();
     this.modal.show();
   }

@@ -73,15 +73,10 @@ const STREAM_WELCOME_MESSAGE =
     '🔮Telegram (тайная жизнь): http://t.me/+rSBrR1FyQqBhZmU1 ───────────────── ' +
     '🎁Fetta (исполни желание): https://fetta.app/u/kunilika666';
 
-const LINK_ANNOUNCEMENTS = [
-    { message: '💖Donation (шанс, что приду): https://donatex.gg/donate/kunilika666', color: 'orange' as const },
-    { message: '📸Boosty (запретные фото): https://boosty.to/kunilika911', color: 'purple' as const },
-    { message: '🔮Telegram (тайная жизнь): http://t.me/+rSBrR1FyQqBhZmU1', color: 'blue' as const },
-    { message: '🎁Fetta (исполни желание): https://fetta.app/u/kunilika666', color: 'green' as const }
-];
-
 const ANNOUNCEMENT_REPEAT_INTERVAL_MS = 60 * 60 * 1000;
-const LINK_ROTATION_INTERVAL_MS = 13 * 60 * 1000;
+const DEFAULT_LINK_ROTATION_INTERVAL_MS = 13 * 60 * 1000;
+
+export type LinkRotationItem = { message: string; color: string };
 
 interface StreamStats {
     startTime: Date;
@@ -118,6 +113,9 @@ export class TwitchEventSubNative {
 
     private onStreamOfflineCallback: (() => void) | null = null;
     private onStreamOnlineCallback: (() => void) | null = null;
+
+    private getLinkRotationItems: (() => Promise<LinkRotationItem[]>) | null = null;
+    private getRotationIntervalMinutes: (() => Promise<number>) | null = null;
 
     private keepAliveInterval: NodeJS.Timeout | null = null;
     private reconnectAttempts: number = 0;
@@ -940,22 +938,48 @@ export class TwitchEventSubNative {
     }
 
     private startLinkRotation(force: boolean = false): void {
-        this.stopLinkRotation();
+        // При обычном запуске / переподключении не сбрасываем индекс — он хранится в файле
+        // При полном рестарте (например, новый процесс) индекс уже восстановлен из состояния
+        this.stopLinkRotation(false);
+        if (!this.getLinkRotationItems || !this.getRotationIntervalMinutes) {
+            console.log('🔄 Ротация ссылок: провайдер не задан, пропускаем');
+            return;
+        }
 
-        const mins = LINK_ROTATION_INTERVAL_MS / 60000;
-        const initialDelay = LINK_ROTATION_INTERVAL_MS;
+        void (async () => {
+            try {
+                const [items, intervalMinutes] = await Promise.all([
+                    this.getLinkRotationItems!(),
+                    this.getRotationIntervalMinutes!(),
+                ]);
+                if (items.length === 0) {
+                    console.log('🔄 Ротация ссылок: нет команд с флагом «в ротации», не запускаем');
+                    return;
+                }
+                const intervalMs = Math.max(1, intervalMinutes) * 60 * 1000;
+                console.log(`🔄 Ротация ссылок: ${items.length} шт., первая через ${intervalMinutes} мин, затем каждые ${intervalMinutes} мин`);
 
-        console.log(`🔄 Ротация ссылок: первая через ${mins} мин, затем каждые ${mins} мин`);
-
-        this.linkRotationTimeout = setTimeout(() => {
-            this.sendNextLinkAnnouncement();
-            this.linkRotationInterval = setInterval(() => {
-                this.sendNextLinkAnnouncement();
-            }, LINK_ROTATION_INTERVAL_MS);
-        }, initialDelay);
+                this.linkRotationTimeout = setTimeout(() => {
+                    void this.sendNextLinkAnnouncement();
+                    this.linkRotationInterval = setInterval(() => {
+                        void this.sendNextLinkAnnouncement();
+                    }, intervalMs);
+                }, intervalMs);
+            } catch (e) {
+                console.error('❌ Ошибка запуска ротации ссылок:', e);
+            }
+        })();
     }
 
-    private stopLinkRotation(): void {
+    setLinkRotationProvider(
+        getItems: () => Promise<LinkRotationItem[]>,
+        getIntervalMinutes: () => Promise<number>
+    ): void {
+        this.getLinkRotationItems = getItems;
+        this.getRotationIntervalMinutes = getIntervalMinutes;
+    }
+
+    private stopLinkRotation(resetIndex: boolean = true): void {
         if (this.linkRotationTimeout) {
             clearTimeout(this.linkRotationTimeout);
             this.linkRotationTimeout = null;
@@ -964,10 +988,25 @@ export class TwitchEventSubNative {
         if (this.linkRotationInterval) {
             clearInterval(this.linkRotationInterval);
             this.linkRotationInterval = null;
-            this.currentLinkIndex = 0;
-            this.announcementState.currentLinkIndex = 0;
-            saveAnnouncementState(this.announcementState);
+            if (resetIndex) {
+                this.currentLinkIndex = 0;
+                this.announcementState.currentLinkIndex = 0;
+                saveAnnouncementState(this.announcementState);
+            }
         }
+    }
+
+    /**
+     * Мягкий перезапуск ротации ссылок при изменении интервала во время стрима.
+     * Останавливает таймеры, но не сбрасывает текущий индекс — ротация продолжается с текущего места.
+     */
+    public reloadLinkRotation(): void {
+        if (!this.isStreamOnline) {
+            // Если стрим оффлайн — ничего не делаем, ротация стартует при следующем онлайне
+            return;
+        }
+        this.stopLinkRotation(false);
+        this.startLinkRotation(false);
     }
 
     private async sendNextLinkAnnouncement(): Promise<void> {
@@ -978,11 +1017,16 @@ export class TwitchEventSubNative {
         if (IS_LOCAL && !ALLOW_LOCAL_COMMANDS) return;
 
         if (!this.accessToken || !this.clientId || !this.broadcasterId || !this.moderatorId) return;
+        if (!this.getLinkRotationItems) return;
 
-        const currentLink = LINK_ANNOUNCEMENTS[this.currentLinkIndex];
+        const items = await this.getLinkRotationItems();
+        if (items.length === 0) return;
+
+        this.currentLinkIndex = this.currentLinkIndex % items.length;
+        const currentLink = items[this.currentLinkIndex];
 
         try {
-            console.log(`📣 Ротация ссылок [${this.currentLinkIndex + 1}/${LINK_ANNOUNCEMENTS.length}]: ${currentLink.message.split(':')[0]}`);
+            console.log(`📣 Ротация ссылок [${this.currentLinkIndex + 1}/${items.length}]: ${currentLink.message.split(':')[0]}`);
 
             const response = await fetch(
                 `https://api.twitch.tv/helix/chat/announcements?broadcaster_id=${this.broadcasterId}&moderator_id=${this.moderatorId}`,
@@ -1007,7 +1051,7 @@ export class TwitchEventSubNative {
 
             console.log(`✅ Link announcement отправлен (цвет: ${currentLink.color})`);
 
-            this.currentLinkIndex = (this.currentLinkIndex + 1) % LINK_ANNOUNCEMENTS.length;
+            this.currentLinkIndex = (this.currentLinkIndex + 1) % items.length;
             this.announcementState.lastLinkAnnouncementAt = Date.now();
             this.announcementState.currentLinkIndex = this.currentLinkIndex;
             saveAnnouncementState(this.announcementState);
@@ -1037,7 +1081,9 @@ export class TwitchEventSubNative {
         try {
             this.isStreamOnline = false;
             this.stopWelcomeMessageInterval();
-            this.stopLinkRotation();
+            // При явном отключении (рестарт бота) не сбрасываем индекс ротации,
+            // чтобы при быстром перезапуске во время стрима продолжить с того же места
+            this.stopLinkRotation(false);
 
             if (this.keepAliveInterval) {
                 clearInterval(this.keepAliveInterval);

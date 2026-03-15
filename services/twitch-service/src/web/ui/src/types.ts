@@ -12,6 +12,7 @@ export interface CustomCommand {
   messageType: MessageType;
   color: CommandColor;
   description: string;
+  inRotation: boolean;
 }
 
 export interface CommandsData {
@@ -20,6 +21,7 @@ export interface CommandsData {
 
 export interface LinksConfig {
   allLinksText: string;
+  rotationIntervalMinutes: number;
 }
 
 export interface Counter {

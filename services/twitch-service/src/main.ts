@@ -6,8 +6,8 @@ import { loadConfig } from './config/env';
 import { clearDuelQueue, resetDuelsOnStreamEnd, clearDuelChallenges, setOnDuelBannedListChanged, setDuelConfig, setDailyQuestConfig } from "./commands/twitch-duel";
 import { clearActiveUsers } from "./commands/twitch-rat";
 import { log } from './utils/event-logger';
-import { initDatabase, closeDatabase, queryOne } from './database/database';
-import { startWebServer, getBroadcastDuelBannedChanged, setOnCommandsChangedCallback, setOnCommandExecuteCallback, setOnLinksSendCallback, setOnEnableDuelsCallback, setOnDisableDuelsCallback, setOnPardonAllCallback, setGetDuelBannedListCallback, setPardonDuelUserCallback, setGetDuelsStatusCallback, setGetDuelCooldownSkipCallback, setSetDuelCooldownSkipCallback, setOnDuelConfigUpdatedCallback, setOnDuelDailyConfigUpdatedCallback } from './web/server';
+import { initDatabase, closeDatabase, query, queryOne } from './database/database';
+import { startWebServer, getBroadcastDuelBannedChanged, setOnCommandsChangedCallback, setOnCommandExecuteCallback, setOnLinksSendCallback, setOnEnableDuelsCallback, setOnDisableDuelsCallback, setOnPardonAllCallback, setGetDuelBannedListCallback, setPardonDuelUserCallback, setGetDuelsStatusCallback, setGetDuelCooldownSkipCallback, setSetDuelCooldownSkipCallback, setOnDuelConfigUpdatedCallback, setOnDuelDailyConfigUpdatedCallback, setOnLinksConfigUpdatedCallback } from './web/server';
 
 async function main() {
     const config = loadConfig();
@@ -78,6 +78,26 @@ async function main() {
         config.telegram.channelId,
         config.telegram.chatId
     );
+
+    streamMonitor.setLinkRotationProvider(
+        async () => {
+            const rows = await query<{ response: string; color: string }>(
+                'SELECT response, color FROM custom_commands WHERE in_rotation = true ORDER BY id'
+            );
+            return rows.map((r) => ({ message: r.response, color: r.color || 'primary' }));
+        },
+        async () => {
+            const row = await queryOne<{ rotation_interval_minutes: number }>(
+                'SELECT rotation_interval_minutes FROM links_config WHERE id = 1'
+            );
+            return row?.rotation_interval_minutes ?? 13;
+        }
+    );
+
+    // При изменении интервала ротации ссылок в админке — мягко перезапускаем таймеры, сохраняя текущий индекс
+    setOnLinksConfigUpdatedCallback(() => {
+        streamMonitor.reloadLinkRotation();
+    });
 
     // Chat monitor / commands / moderation
     const nightBotMonitor = new NightBotMonitor();

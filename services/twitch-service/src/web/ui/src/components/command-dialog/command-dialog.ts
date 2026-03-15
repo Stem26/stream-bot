@@ -176,6 +176,8 @@ export class CommandDialogElement extends HTMLElement {
     if (messageTypeSelect) messageTypeSelect.value = command.messageType ?? 'announcement';
     if (colorSelect) colorSelect.value = command.color ?? 'primary';
     if (cooldownInput) cooldownInput.value = String(command.cooldown ?? 10);
+    const inRotationCheckbox = this.querySelector<HTMLInputElement>('#command-in-rotation');
+    if (inRotationCheckbox) inRotationCheckbox.checked = command.inRotation ?? false;
     ['#command-id', '#command-trigger', '#command-response'].forEach((sel) => {
       this.querySelector<HTMLInputElement | HTMLTextAreaElement>(sel)?.classList.remove('is-invalid');
     });
@@ -290,6 +292,7 @@ export class CommandDialogElement extends HTMLElement {
       color: colorSelect.value as CommandColor,
       cooldown,
       enabled: true,
+      inRotation: false,
     };
 
     return {
