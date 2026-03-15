@@ -289,15 +289,19 @@ body.modal-open {
 .color-badge.primary {
   background: #007bff;
 }
+
 .color-badge.blue {
   background: #0dcaf0;
 }
+
 .color-badge.green {
   background: #198754;
 }
+
 .color-badge.orange {
   background: #fd7e14;
 }
+
 .color-badge.purple {
   background: #6f42c1;
 }
@@ -607,6 +611,143 @@ body.modal-open {
   }
 }
 
+// Таблица элементов партии
+.party-table-wrap {
+  margin-top: 20px;
+}
+
+.party-table-header {
+  margin-bottom: 12px;
+}
+
+.party-items-table-container {
+  &.loading-state {
+    padding: 20px 24px;
+    color: #6c757d;
+  }
+}
+
+.party-items-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0 10px;
+  background: #fff;
+  box-sizing: border-box;
+  padding: 0 10px;
+
+  thead th {
+    text-align: left;
+    padding: 14px 16px;
+    font-weight: 600;
+    color: #333;
+    font-size: 0.9em;
+    border-bottom: 2px solid #e0e8f0;
+    background: #fff;
+
+    &:first-child {
+      padding-left: 16px;
+    }
+
+    &:last-child {
+      padding-right: 16px;
+    }
+  }
+
+  tbody tr.party-table-row {
+    cursor: pointer;
+    background: #fafbfc;
+    transition: border-left-color 0.3s ease, background-color 0.3s ease;
+
+    &:hover {
+      background: #e8f0fa;
+    }
+
+    td {
+      padding: 14px 16px;
+      vertical-align: middle;
+      border-color: transparent;
+      border-top-color: #28619a;
+      border-bottom-color: #28619a;
+      border-width: 1px 1px 1px 0;
+      border-style: solid;
+      background: inherit;
+      box-sizing: border-box;
+
+      &:first-child {
+        padding-left: 16px;
+        border-left: 0.5rem solid hsl(210, 59%, 38%);
+        border-radius: 0.5rem 0 0 0.5rem;
+      }
+
+      &:last-child {
+        padding-right: 16px;
+        border-color: transparent;
+        border-right: 1px solid #28619a;
+        border-top-color: #28619a;
+        border-bottom-color: #28619a;
+        border-radius: 0 0.5rem 0.5rem 0;
+      }
+    }
+  }
+
+  .col-num {
+    width: 56px;
+    min-width: 56px;
+    color: #6c757d;
+    font-size: 0.9em;
+    white-space: nowrap;
+  }
+
+  .col-name {
+    min-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .col-actions {
+    width: 110px;
+    min-width: 110px;
+    text-align: right;
+    white-space: nowrap;
+
+    .btn-icon {
+      margin-left: 6px;
+
+      &:first-child {
+        margin-left: 0;
+      }
+    }
+  }
+}
+
+.btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  margin-left: 4px;
+  border: 1px solid #b8d4ed;
+  border-radius: 50%;
+  background: #fff;
+  color: #2c5282;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+
+  &:hover {
+    background: #e8f0fa;
+    color: #1a365d;
+  }
+
+  &.btn-icon-danger:hover {
+    border-color: #e2a7a7;
+    background: #fde8e8;
+    color: #c53030;
+  }
+}
+
 // Модальное окно авторизации
 .auth-modal {
   display: none;
@@ -677,7 +818,7 @@ body.modal-open {
 .leaderboard-table {
   width: 100%;
   border-collapse: collapse;
-  
+
   thead {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     color: white;
@@ -811,11 +952,11 @@ body.modal-open {
 
   .header {
     padding: 40px 0 10px;
-    
+
     h1 {
       font-size: 1.5em;
     }
-    
+
     p {
       font-size: 0.9em;
     }
@@ -924,12 +1065,12 @@ body.modal-open {
   // Кнопки управления
   .controls {
     padding: 15px 10px;
-    
+
     h2 {
       font-size: 1.1em;
       margin-bottom: 4px;
     }
-    
+
     p {
       font-size: 0.8em;
     }
@@ -1060,6 +1201,75 @@ body.modal-open {
 
   .party-config-section .party-config-header .party-config-toggle {
     margin-left: 0;
+  }
+
+  // Таблица партии на мобилке
+  .party-table-wrap {
+    margin-top: 16px;
+  }
+
+  .party-items-table-container {
+    padding-left: 12px;
+    padding-right: 12px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+
+    &.loading-state {
+      padding: 16px 12px;
+    }
+  }
+
+  .party-items-table {
+    border-spacing: 0 8px;
+    min-width: 280px;
+
+    thead th {
+      padding: 10px 12px;
+      font-size: 0.85em;
+
+      &:first-child {
+        padding-left: 12px;
+      }
+      &:last-child {
+        padding-right: 12px;
+      }
+    }
+
+    tbody tr.party-table-row td {
+      padding: 12px;
+
+      &:first-child {
+        padding-left: 12px;
+        border-radius: 0.4rem 0 0 0.4rem;
+      }
+      &:last-child {
+        padding-right: 12px;
+        border-right: 1px solid #28619a;
+        border-radius: 0 0.4rem 0.4rem 0;
+      }
+    }
+
+    .col-num {
+      width: 40px;
+      min-width: 40px;
+      font-size: 0.85em;
+    }
+
+    .col-name {
+      min-width: 0;
+      font-size: 0.9em;
+    }
+
+    .col-actions {
+      width: 88px;
+      min-width: 88px;
+
+      .btn-icon {
+        width: 32px;
+        height: 32px;
+        margin-left: 4px;
+      }
+    }
   }
 
   .admin-actions {

@@ -6,6 +6,7 @@ import './components/public-links/public-links';
 import './components/command-dialog/command-dialog';
 import './components/link-dialog/link-dialog';
 import './components/counter-dialog/counter-dialog';
+import './components/party-dialog/party-dialog';
 import './components/admin-panel/admin-panel';
 
 const TITLES: Record<string, string> = {
@@ -44,7 +45,7 @@ function render(): void {
     back.className = 'btn btn-back-fixed';
     back.textContent = 'На главную';
     document.body.prepend(back);
-    app.innerHTML = '<admin-panel></admin-panel><command-dialog></command-dialog><link-dialog></link-dialog><counter-dialog></counter-dialog>';
+    app.innerHTML = '<admin-panel></admin-panel><command-dialog></command-dialog><link-dialog></link-dialog><counter-dialog></counter-dialog><party-dialog></party-dialog>';
   } else if (route === 'public/duel') {
     app.innerHTML = '<public-duel></public-duel>';
   } else if (route === 'public/links') {

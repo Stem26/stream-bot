@@ -28,6 +28,15 @@ import type { CommandDialogElement, CommandDialogSaveDetail } from '../command-d
 import type { LinkDialogSaveDetail } from '../../interfaces/link-dialog';
 import type { LinkDialogElement } from '../link-dialog/link-dialog';
 import type { CounterDialogElement, CounterDialogSaveDetail } from '../counter-dialog/counter-dialog';
+import type { PartyDialogElement, PartyDialogSaveDetail } from '../party-dialog/party-dialog';
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
 
 export class AdminPanelElement extends HTMLElement {
   private initialized = false;
@@ -220,24 +229,43 @@ export class AdminPanelElement extends HTMLElement {
     const container = this.querySelector<HTMLElement>('#party-items-container');
     if (!container) return;
 
-    container.style.display = 'grid';
     container.innerHTML = '';
+    container.classList.remove('loading-state');
 
-    const addTpl = this.getTemplate('template-add-party-card');
-    const itemTpl = this.getTemplate('template-party-item');
-    if (addTpl) container.appendChild(addTpl.content.cloneNode(true));
-    if (!itemTpl) return;
+    const table = document.createElement('table');
+    table.className = 'party-items-table';
+    table.innerHTML = `
+      <thead>
+        <tr>
+          <th class="col-num">№</th>
+          <th class="col-name">Название</th>
+          <th class="col-actions">Действия</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    `;
+    const tbody = table.querySelector('tbody')!;
 
-    for (const item of data.items) {
-      const card = itemTpl.content.cloneNode(true) as DocumentFragment;
-      const root = card.firstElementChild as HTMLElement;
-      if (!root) continue;
-      root.dataset.id = String(item.id);
-      const response = root.querySelector('.command-response') as HTMLElement;
-      response.textContent = item.text;
-      response.title = item.text;
-      container.appendChild(card);
-    }
+    data.items.forEach((item, index) => {
+      const tr = document.createElement('tr');
+      tr.className = 'party-table-row';
+      tr.dataset.id = String(item.id);
+      tr.innerHTML = `
+        <td class="col-num">${index + 1}</td>
+        <td class="col-name" title="${escapeHtml(item.text)}">${escapeHtml(item.text)}</td>
+        <td class="col-actions">
+          <button type="button" 
+          class="btn-icon btn-icon-danger" 
+          data-action="delete" 
+          title="Удалить">
+          🗑️
+          </button>
+        </td>
+      `;
+      tbody.appendChild(tr);
+    });
+
+    container.appendChild(table);
   }
 
   private async loadPartyItems(): Promise<void> {
@@ -312,8 +340,9 @@ export class AdminPanelElement extends HTMLElement {
     const commandDialog = document.querySelector<CommandDialogElement>('command-dialog');
     const linkDialog = document.querySelector<LinkDialogElement>('link-dialog');
     const counterDialog = document.querySelector<CounterDialogElement>('counter-dialog');
+    const partyDialog = document.querySelector<PartyDialogElement>('party-dialog');
 
-    if (!allLinksBtn || !commandsContainer || !commandDialog || !linkDialog || !counterDialog) {
+    if (!allLinksBtn || !commandsContainer || !commandDialog || !linkDialog || !counterDialog || !partyDialog) {
       return;
     }
 
@@ -331,18 +360,8 @@ export class AdminPanelElement extends HTMLElement {
         commandDialog.openForCreate();
       } else if (target.closest('#add-counter-card-trigger')) {
         counterDialog.openForCreate();
-      } else if (target.closest('#add-party-item-card-trigger')) {
-        (async () => {
-          const text = prompt('Элемент (например: хомяко‑адвоката):');
-          if (!text?.trim()) return;
-          try {
-            await createPartyItem(text.trim());
-            showAlert('Элемент добавлен');
-            await this.loadPartyItems();
-          } catch (error) {
-            if (error instanceof Error) showAlert(`Ошибка: ${error.message}`, 'error');
-          }
-        })();
+      } else if (target.closest('#add-party-item-btn')) {
+        partyDialog.openForCreate();
       }
     });
 
@@ -379,28 +398,45 @@ export class AdminPanelElement extends HTMLElement {
       }
     });
 
+    partyDialog.addEventListener('save', async (event: Event) => {
+      const customEvent = event as CustomEvent<PartyDialogSaveDetail>;
+      const { editId, text } = customEvent.detail;
+      try {
+        if (editId != null) {
+          await updatePartyItem(editId, text);
+          showAlert('Элемент обновлён');
+        } else {
+          await createPartyItem(text);
+          showAlert('Элемент добавлен');
+        }
+        partyDialog.close();
+        await this.loadPartyItems();
+      } catch (error) {
+        if (error instanceof Error) showAlert(`Ошибка: ${error.message}`, 'error');
+      }
+    });
+
     const partyItemsContainer = this.querySelector('#party-items-container');
     partyItemsContainer?.addEventListener('click', async (event) => {
       const target = event.target as HTMLElement;
-      const card = target.closest<HTMLElement>('.party-item-card');
-      if (!card) return;
-      const id = parseInt(card.getAttribute('data-id') ?? '', 10);
-      if (isNaN(id)) return;
+      const row = target.closest<HTMLElement>('.party-table-row');
+      if (!row) return;
+      const id = parseInt(row.dataset.id ?? '', 10);
+      if (Number.isNaN(id)) return;
 
-      const action = target.closest<HTMLElement>('[data-action]')?.getAttribute('data-action');
-      if (action === 'edit') {
-        const data = await fetchPartyItems();
-        const item = data.items.find((i) => i.id === id);
-        if (!item) return;
-        const text = prompt('Элемент:', item.text);
-        if (text === null || !text.trim()) return;
+      const actionBtn = target.closest<HTMLElement>('[data-action]');
+      const action = actionBtn?.getAttribute('data-action');
+
+      if (action === 'copy') {
+        const nameCell = row.querySelector('.col-name');
+        const textToCopy = nameCell?.textContent ?? '';
         try {
-          await updatePartyItem(id, text.trim());
-          showAlert('Элемент обновлён');
-          await this.loadPartyItems();
-        } catch (error) {
-          if (error instanceof Error) showAlert(`Ошибка: ${error.message}`, 'error');
+          await navigator.clipboard.writeText(textToCopy);
+          showAlert('Скопировано');
+        } catch {
+          showAlert('Не удалось скопировать', 'error');
         }
+        return;
       }
       if (action === 'delete') {
         if (!confirm('Удалить элемент?')) return;
@@ -411,6 +447,13 @@ export class AdminPanelElement extends HTMLElement {
         } catch (error) {
           if (error instanceof Error) showAlert(`Ошибка: ${error.message}`, 'error');
         }
+        return;
+      }
+      // Клик по строке (не по кнопке) — открыть диалог редактирования
+      if (!actionBtn) {
+        const data = await fetchPartyItems();
+        const item = data.items.find((i) => i.id === id);
+        if (item) partyDialog.openForEdit(item);
       }
     });
 

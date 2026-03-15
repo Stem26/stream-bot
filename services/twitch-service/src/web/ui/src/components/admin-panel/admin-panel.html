@@ -106,9 +106,13 @@
       </div>
       <p class="admin-description">Пример: 2 элемента, макс 5 → «Партия выдала 3 дракоша‑сосед и 2 хомяко‑адвоката для @user». Раз в сутки на пользователя.</p>
     </div>
-    <div id="party-items-container"
-         class="commands-grid">
-      <div class="loading">Загрузка...</div>
+    <div class="party-table-wrap">
+      <div class="party-table-header">
+        <button type="button" class="btn btn-small" id="add-party-item-btn">Создать</button>
+      </div>
+      <div id="party-items-container" class="party-items-table-container loading-state">
+        <div class="loading">Загрузка...</div>
+      </div>
     </div>
   </div>
 </div>
@@ -174,23 +178,6 @@
     <div class="command-actions">
       <button type="button" class="btn btn-small" data-action="edit-value">✏️ Изменить значение</button>
       <button type="button" class="btn btn-small" data-action="edit">⚙️ Настройки</button>
-      <button type="button" class="btn btn-small btn-danger" data-action="delete">🗑️ Удалить</button>
-    </div>
-  </div>
-</template>
-<template id="template-add-party-card">
-  <div class="command-card add-command-card" id="add-party-item-card-trigger">
-    <div class="add-command-content">
-      <div class="add-command-icon">+</div>
-      <div class="add-command-text">Добавить элемент</div>
-    </div>
-  </div>
-</template>
-<template id="template-party-item">
-  <div class="command-card party-item-card" data-id="">
-    <div class="command-response"></div>
-    <div class="command-actions">
-      <button type="button" class="btn btn-small" data-action="edit">✏️ Изменить</button>
       <button type="button" class="btn btn-small btn-danger" data-action="delete">🗑️ Удалить</button>
     </div>
   </div>

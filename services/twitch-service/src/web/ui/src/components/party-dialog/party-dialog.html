@@ -1,0 +1,23 @@
+<div class="modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2 id="modal-title">Добавить элемент</h2>
+      <button type="button" class="modal-close-btn" data-close>×</button>
+    </div>
+    <form id="party-item-form">
+      <input type="hidden" id="edit-party-item-id" />
+
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="party-item-text">Название *</label>
+          <input type="text" id="party-item-text" required placeholder="например: хомяко‑адвоката" />
+          <small>Текст элемента для команды !партия</small>
+        </div>
+      </div>
+
+      <div class="form-actions">
+        <button type="submit" class="btn btn-success">Сохранить</button>
+      </div>
+    </form>
+  </div>
+</div>
