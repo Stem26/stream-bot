@@ -83,19 +83,37 @@ export class AdminPanelElement extends HTMLElement {
     const passwordInput = this.querySelector<HTMLInputElement>('#admin-auth-password');
     const submitBtn = this.querySelector('#admin-auth-submit');
     const errorEl = this.querySelector('#admin-auth-error');
-    if (getAdminPassword()) {
-      if (overlay) (overlay as HTMLElement).classList.remove('active');
-      if (container) (container as HTMLElement).style.display = '';
-      this.bootstrap().catch((err) => console.error(err));
-      return;
-    }
-    if (container) (container as HTMLElement).style.display = 'none';
-    const tryBootstrap = (): void => {
+    const runPanel = (): void => {
       if (overlay) (overlay as HTMLElement).classList.remove('active');
       if (container) (container as HTMLElement).style.display = '';
       this.bootstrap().catch((err) => console.error(err));
     };
-    submitBtn?.addEventListener('click', async () => {
+    if (getAdminPassword()) {
+      runPanel();
+      return;
+    }
+    // Сначала проверяем: может, уже залогинены через nginx (Basic Auth) — тогда ничего не рисуем и не грузим до ответа
+    const probeAuth = async (): Promise<void> => {
+      try {
+        const res = await fetch('/api/admin/duels/status', { credentials: 'same-origin' });
+        if (res.ok) {
+          runPanel();
+          return;
+        }
+      } catch {
+        // ignore
+      }
+      showLoginModal();
+    };
+    const showLoginModal = (): void => {
+      if (container) (container as HTMLElement).style.display = 'none';
+      if (overlay) (overlay as HTMLElement).classList.add('active');
+      submitBtn?.addEventListener('click', onSubmit);
+      passwordInput?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') (submitBtn as HTMLElement)?.click();
+      });
+    };
+    const onSubmit = async (): Promise<void> => {
       const password = passwordInput?.value?.trim();
       if (!password) {
         if (errorEl) {
@@ -114,7 +132,7 @@ export class AdminPanelElement extends HTMLElement {
         const data = (await res.json()) as { success?: boolean };
         if (res.ok && data.success) {
           setAdminPassword(password);
-          tryBootstrap();
+          runPanel();
         } else {
           if (errorEl) {
             errorEl.textContent = 'Неверный пароль';
@@ -127,10 +145,9 @@ export class AdminPanelElement extends HTMLElement {
           (errorEl as HTMLElement).style.display = 'block';
         }
       }
-    });
-    passwordInput?.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') (submitBtn as HTMLElement)?.click();
-    });
+    };
+    if (container) (container as HTMLElement).style.display = 'none';
+    void probeAuth();
   }
 
   disconnectedCallback(): void {
