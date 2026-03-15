@@ -219,6 +219,7 @@ export class NightBotMonitor {
         '!donation', '!донат',
         '!fetta', '!фетта',
         '!fp', '!фп',
+        '!команда', '!команды', '!commands',
         '!ссылки', '!links',
         '!партия', '!party',
         '!персонажи', '!персонаж',
