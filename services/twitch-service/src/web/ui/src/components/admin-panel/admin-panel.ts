@@ -38,8 +38,23 @@ function escapeHtml(s: string): string {
     .replace(/"/g, '&quot;');
 }
 
+const WS_PATH = '/ws';
+const WS_RECONNECT_MS = 3000;
+
+function formatDuelRemaining(timeoutUntil: number): string {
+  const remaining = Math.max(0, timeoutUntil - Date.now());
+  if (remaining <= 0) return '0:00';
+  const totalSec = Math.ceil(remaining / 1000);
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return `${m} мин ${s} сек`;
+}
+
 export class AdminPanelElement extends HTMLElement {
   private initialized = false;
+  private duelBannedWs: WebSocket | null = null;
+  private duelBannedWsReconnect: number | null = null;
+  private duelBannedTickId: number | null = null;
 
   connectedCallback(): void {
     if (this.initialized) return;
@@ -49,6 +64,53 @@ export class AdminPanelElement extends HTMLElement {
       // eslint-disable-next-line no-console
       console.error(error);
     });
+  }
+
+  disconnectedCallback(): void {
+    if (this.duelBannedWsReconnect) {
+      clearTimeout(this.duelBannedWsReconnect);
+      this.duelBannedWsReconnect = null;
+    }
+    if (this.duelBannedWs) {
+      this.duelBannedWs.close();
+      this.duelBannedWs = null;
+    }
+    if (this.duelBannedTickId !== null) {
+      clearInterval(this.duelBannedTickId);
+      this.duelBannedTickId = null;
+    }
+  }
+
+  private connectDuelBannedWs(): void {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const url = `${protocol}//${window.location.host}${WS_PATH}`;
+    try {
+      const ws = new WebSocket(url);
+      this.duelBannedWs = ws;
+      ws.onmessage = (event: MessageEvent) => {
+        try {
+          const data = JSON.parse(event.data) as { type?: string };
+          if (data.type === 'duel-banned-changed') {
+            void this.loadDuelBannedList();
+          }
+        } catch {
+          // ignore
+        }
+      };
+      ws.onclose = () => {
+        this.duelBannedWs = null;
+        if (!this.isConnected) return;
+        this.duelBannedWsReconnect = window.setTimeout(() => {
+          this.duelBannedWsReconnect = null;
+          this.connectDuelBannedWs();
+        }, WS_RECONNECT_MS);
+      };
+      ws.onerror = () => {
+        ws.close();
+      };
+    } catch {
+      // ignore
+    }
   }
 
   private setupTabs(): void {
@@ -290,7 +352,7 @@ export class AdminPanelElement extends HTMLElement {
   private async loadDuelsStatus(): Promise<boolean> {
     try {
       const response = await fetch('/api/admin/duels/status');
-      const data = (await response.json()) as { enabled?: boolean };
+      const data = (await response.json()) as { enabled?: boolean; skipCooldown?: boolean };
       const toggle = this.querySelector('#duels-toggle');
       if (toggle) {
         const enabled = Boolean(data.enabled);
@@ -300,10 +362,108 @@ export class AdminPanelElement extends HTMLElement {
         const textEl = toggle.querySelector('.status-toggle-text');
         if (textEl) textEl.textContent = enabled ? 'ВКЛ' : 'ВЫКЛ';
       }
+      const cooldownToggle = this.querySelector('#duels-cooldown-toggle');
+      if (cooldownToggle) {
+        const skipCooldown = Boolean(data.skipCooldown);
+        // ВКЛ = КД активен (skipCooldown false), ВЫКЛ = без КД для тестов (skipCooldown true)
+        const cooldownOn = !skipCooldown;
+        cooldownToggle.classList.toggle('on', cooldownOn);
+        cooldownToggle.classList.toggle('off', !cooldownOn);
+        cooldownToggle.setAttribute('data-skip-cooldown', String(skipCooldown));
+        const cooldownText = cooldownToggle.querySelector('.status-toggle-text');
+        if (cooldownText) cooldownText.textContent = cooldownOn ? 'ВКЛ' : 'ВЫКЛ';
+      }
       return Boolean(data?.enabled);
     } catch (error) {
       console.error('Ошибка загрузки статуса дуэлей:', error);
       return false;
+    }
+  }
+
+  private async loadDuelBannedList(): Promise<void> {
+    try {
+      const res = await fetch('/api/admin/duels/banned');
+      const data = (await res.json()) as { list?: { username: string; timeoutUntil: number }[] };
+      this.renderDuelBannedTable(data.list ?? []);
+    } catch (error) {
+      console.error('Ошибка загрузки списка забаненных:', error);
+      this.renderDuelBannedTable([]);
+    }
+  }
+
+  private renderDuelBannedTable(list: { username: string; timeoutUntil: number }[]): void {
+    const tbody = this.querySelector('#duels-banned-tbody');
+    const table = this.querySelector<HTMLTableElement>('#duels-banned-table');
+    const emptyEl = this.querySelector<HTMLElement>('#duels-banned-empty');
+    const rowTpl = this.getTemplate('template-duel-banned-row');
+    if (!tbody || !table || !emptyEl || !rowTpl) return;
+
+    if (this.duelBannedTickId !== null) {
+      clearInterval(this.duelBannedTickId);
+      this.duelBannedTickId = null;
+    }
+
+    tbody.innerHTML = '';
+    list.forEach((item, index) => {
+      const tr = (rowTpl.content.cloneNode(true) as DocumentFragment).firstElementChild as HTMLTableRowElement;
+      tr.setAttribute('data-username', item.username);
+      tr.setAttribute('data-timeout-until', String(item.timeoutUntil));
+      const numCell = tr.querySelector('.col-num');
+      const usernameCell = tr.querySelector('.col-username');
+      const untilCell = tr.querySelector('.col-until');
+      if (numCell) numCell.textContent = String(index + 1);
+      if (usernameCell) usernameCell.textContent = item.username;
+      if (untilCell) untilCell.textContent = formatDuelRemaining(item.timeoutUntil);
+      tbody.appendChild(tr);
+    });
+
+    const hasRows = list.length > 0;
+    table.style.display = hasRows ? 'table' : 'none';
+    emptyEl.style.display = hasRows ? 'none' : 'block';
+
+    if (hasRows) {
+      this.duelBannedTickId = window.setInterval(() => this.updateDuelBannedCountdown(), 1000);
+    }
+  }
+
+  private updateDuelBannedCountdown(): void {
+    const tbody = this.querySelector('#duels-banned-tbody');
+    const table = this.querySelector<HTMLTableElement>('#duels-banned-table');
+    const emptyEl = this.querySelector<HTMLElement>('#duels-banned-empty');
+    if (!tbody || !table || !emptyEl) return;
+
+    const rows = Array.from(tbody.querySelectorAll<HTMLTableRowElement>('.duel-banned-row'));
+    const now = Date.now();
+    let removed = 0;
+    for (const tr of rows) {
+      const raw = tr.getAttribute('data-timeout-until');
+      const timeoutUntil = raw ? Number(raw) : 0;
+      const remaining = timeoutUntil - now;
+      const untilCell = tr.querySelector('.col-until');
+      if (untilCell) untilCell.textContent = formatDuelRemaining(timeoutUntil);
+      if (remaining <= 0) {
+        tr.remove();
+        removed++;
+      }
+    }
+
+    if (removed > 0) {
+      // Перенумеровать оставшиеся строки
+      const left = tbody.querySelectorAll('.duel-banned-row');
+      left.forEach((tr, index) => {
+        const numCell = tr.querySelector('.col-num');
+        if (numCell) numCell.textContent = String(index + 1);
+      });
+    }
+
+    const hasRows = tbody.querySelectorAll('.duel-banned-row').length > 0;
+    if (!hasRows) {
+      table.style.display = 'none';
+      emptyEl.style.display = 'block';
+      if (this.duelBannedTickId !== null) {
+        clearInterval(this.duelBannedTickId);
+        this.duelBannedTickId = null;
+      }
     }
   }
 
@@ -336,8 +496,10 @@ export class AdminPanelElement extends HTMLElement {
     await this.loadCommands();
     await this.loadCounters();
     await this.loadDuelsStatus();
+    await this.loadDuelBannedList();
     await this.loadPartyItems();
     await this.loadPartyConfig();
+    this.connectDuelBannedWs();
 
     document.addEventListener('click', (event) => {
       const target = event.target as HTMLElement;
@@ -657,6 +819,26 @@ export class AdminPanelElement extends HTMLElement {
       }
     });
 
+    const duelsCooldownToggle = this.querySelector('#duels-cooldown-toggle');
+    duelsCooldownToggle?.addEventListener('click', async () => {
+      const skipCooldown = (duelsCooldownToggle as HTMLElement).getAttribute('data-skip-cooldown') === 'true';
+      const newSkip = !skipCooldown;
+      try {
+        const res = await fetch('/api/admin/duels/set-cooldown-skip', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ skip: newSkip }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error((err as { error?: string }).error || `HTTP ${res.status}`);
+        }
+        await this.loadDuelsStatus();
+      } catch (error) {
+        if (error instanceof Error) showAlert(`Ошибка: ${error.message}`, 'error');
+      }
+    });
+
     pardonAllBtn?.addEventListener('click', async () => {
       if (!confirm('Простить всех игроков (снять таймауты дуэлей)?')) return;
       try {
@@ -665,6 +847,27 @@ export class AdminPanelElement extends HTMLElement {
           const err = await res.json().catch(() => ({}));
           throw new Error((err as { error?: string }).error || `HTTP ${res.status}`);
         }
+        await this.loadDuelBannedList();
+      } catch (error) {
+        if (error instanceof Error) showAlert(`Ошибка: ${error.message}`, 'error');
+      }
+    });
+
+    const duelsBannedContainer = this.querySelector('#duels-banned-container');
+    duelsBannedContainer?.addEventListener('click', async (event: Event) => {
+      const target = event.target as HTMLElement;
+      const btn = target.closest<HTMLElement>('[data-action="pardon-one"]');
+      if (!btn) return;
+      const row = btn.closest<HTMLElement>('.duel-banned-row');
+      const username = row?.getAttribute('data-username');
+      if (!username) return;
+      try {
+        const res = await fetch(`/api/admin/duels/pardon/${encodeURIComponent(username)}`, { method: 'POST' });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error((err as { error?: string }).error || `HTTP ${res.status}`);
+        }
+        await this.loadDuelBannedList();
       } catch (error) {
         if (error instanceof Error) showAlert(`Ошибка: ${error.message}`, 'error');
       }

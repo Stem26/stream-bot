@@ -3,11 +3,11 @@ import { NightBotMonitor } from './services/nightbot-monitor';
 import { TwitchEventSubNative } from './services/twitch-eventsub-native';
 import { Telegraf } from 'telegraf';
 import { loadConfig } from './config/env';
-import { clearDuelQueue, resetDuelsOnStreamEnd, clearDuelChallenges } from "./commands/twitch-duel";
+import { clearDuelQueue, resetDuelsOnStreamEnd, clearDuelChallenges, setOnDuelBannedListChanged } from "./commands/twitch-duel";
 import { clearActiveUsers } from "./commands/twitch-rat";
 import { log } from './utils/event-logger';
 import { initDatabase, closeDatabase } from './database/database';
-import { startWebServer, setOnCommandsChangedCallback, setOnCommandExecuteCallback, setOnLinksSendCallback, setOnEnableDuelsCallback, setOnDisableDuelsCallback, setOnPardonAllCallback, setGetDuelsStatusCallback } from './web/server';
+import { startWebServer, getBroadcastDuelBannedChanged, setOnCommandsChangedCallback, setOnCommandExecuteCallback, setOnLinksSendCallback, setOnEnableDuelsCallback, setOnDisableDuelsCallback, setOnPardonAllCallback, setGetDuelBannedListCallback, setPardonDuelUserCallback, setGetDuelsStatusCallback, setGetDuelCooldownSkipCallback, setSetDuelCooldownSkipCallback } from './web/server';
 
 async function main() {
     const config = loadConfig();
@@ -89,6 +89,12 @@ async function main() {
     setGetDuelsStatusCallback(() => {
         return nightBotMonitor.getDuelsStatus();
     });
+    setGetDuelCooldownSkipCallback(() => nightBotMonitor.getDuelCooldownSkip());
+    setSetDuelCooldownSkipCallback((skip: boolean) => nightBotMonitor.setDuelCooldownSkip(skip));
+    setGetDuelBannedListCallback(() => nightBotMonitor.getDuelBannedList());
+    setPardonDuelUserCallback((username: string) => nightBotMonitor.pardonDuelUser(username));
+    const broadcastDuelBanned = getBroadcastDuelBannedChanged();
+    if (broadcastDuelBanned) setOnDuelBannedListChanged(broadcastDuelBanned);
 
     // Связываем проверку статуса стрима: команды работают только когда стрим онлайн
     nightBotMonitor.setStreamStatusCheck(() => streamMonitor.getStreamStatus());

@@ -81,6 +81,17 @@
           <span class="status-toggle-text">Загрузка...</span>
         </div>
       </div>
+      <div class="admin-duels-toggle-row">
+        <span class="admin-duels-label">КД 1 мин</span>
+        <div class="status-toggle off"
+             id="duels-cooldown-toggle"
+             data-skip-cooldown="false"
+             title="Включить/выключить кулдаун 1 мин (выкл — для тестов, можно спамить)">
+          <div class="status-toggle-circle"></div>
+          <span class="status-toggle-text">Загрузка...</span>
+        </div>
+      </div>
+      <p class="admin-description">Выключи «КД 1 мин» для тестов — дуэли можно вызывать без паузы</p>
     </div>
     <div class="admin-section">
       <h3>Амнистия</h3>
@@ -91,6 +102,37 @@
         </button>
       </div>
       <p class="admin-description">Снимает тайм-ауты дуэлей со всех игроков</p>
+    </div>
+    <div class="admin-section duels-banned-section">
+      <h3>Забаненные (тайм-аут дуэли)</h3>
+      <div class="duels-banned-table-wrap">
+        <div class="duels-banned-table-container" id="duels-banned-container">
+          <table class="duels-banned-table" id="duels-banned-table">
+            <thead>
+              <tr>
+                <th class="col-num">№</th>
+                <th class="col-username">Пользователь</th>
+                <th class="col-until">До конца таймаута</th>
+                <th class="col-actions">Действия</th>
+              </tr>
+            </thead>
+            <tbody id="duels-banned-tbody"></tbody>
+          </table>
+        </div>
+        <template id="template-duel-banned-row">
+          <tr class="duel-banned-row" data-username="">
+            <td class="col-num"></td>
+            <td class="col-username"></td>
+            <td class="col-until"></td>
+            <td class="col-actions">
+              <button type="button" class="btn btn-sm btn-primary" data-action="pardon-one" title="Снять тайм-аут">🕊️ Амнистия</button>
+            </td>
+          </tr>
+        </template>
+        <div class="empty-state duels-banned-empty" id="duels-banned-empty" style="display: none;">
+          <p>Нет игроков с активным тайм-аутом</p>
+        </div>
+      </div>
     </div>
   </div>
   <div class="tab-content"

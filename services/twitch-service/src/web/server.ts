@@ -1,10 +1,17 @@
 import express, { Request, Response } from 'express';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as http from 'http';
+import WebSocket from 'ws';
 import { query, queryOne } from '../database/database';
 
 const app = express();
 const PORT = process.env.WEB_PORT || 3000;
+
+// WebSocket для реал-тайм обновлений (например, список забаненных по дуэлям) — только по событиям (дуэль/амнистия)
+const WS_PATH = '/ws';
+let wss: WebSocket.Server | null = null;
+let broadcastDuelBannedChanged: (() => void) | null = null;
 
 // Пути к файлам/данным
 // Команды теперь хранятся в БД (таблица custom_commands),
@@ -897,11 +904,12 @@ app.post('/api/auth/login', (req: Request, res: Response) => {
 
 // === API для админ-панели ===
 
-// Получить статус дуэлей
+// Получить статус дуэлей (включены + режим КД)
 app.get('/api/admin/duels/status', (req: Request, res: Response) => {
     try {
         const enabled = getDuelsStatus();
-        res.json({ enabled });
+        const skipCooldown = getDuelCooldownSkipCallback ? getDuelCooldownSkipCallback() : false;
+        res.json({ enabled, skipCooldown });
     } catch (error) {
         console.error('❌ Ошибка получения статуса дуэлей:', error);
         res.status(500).json({ error: 'Ошибка получения статуса' });
@@ -930,6 +938,18 @@ app.post('/api/admin/duels/disable', async (req: Request, res: Response) => {
     }
 });
 
+// Вкл/выкл КД 1 мин (для тестов — без КД можно спамить дуэли)
+app.post('/api/admin/duels/set-cooldown-skip', (req: Request, res: Response) => {
+    try {
+        const skip = Boolean(req.body?.skip);
+        if (setDuelCooldownSkipCallback) setDuelCooldownSkipCallback(skip);
+        res.json({ success: true, skipCooldown: skip });
+    } catch (error) {
+        console.error('❌ Ошибка установки режима КД:', error);
+        res.status(500).json({ error: 'Ошибка установки режима КД' });
+    }
+});
+
 // Амнистия - снять все таймауты
 app.post('/api/admin/pardon-all', async (req: Request, res: Response) => {
     try {
@@ -938,6 +958,33 @@ app.post('/api/admin/pardon-all', async (req: Request, res: Response) => {
     } catch (error) {
         console.error('❌ Ошибка амнистии:', error);
         res.status(500).json({ error: 'Ошибка выполнения амнистии' });
+    }
+});
+
+// Список игроков с таймаутом дуэли
+app.get('/api/admin/duels/banned', async (req: Request, res: Response) => {
+    try {
+        const list = await getDuelBannedList();
+        res.json({ list });
+    } catch (error) {
+        console.error('❌ Ошибка получения списка забаненных:', error);
+        res.status(500).json({ error: 'Ошибка получения списка' });
+    }
+});
+
+// Амнистия для одного игрока
+app.post('/api/admin/duels/pardon/:username', async (req: Request, res: Response) => {
+    const username = req.params.username;
+    if (!username) {
+        res.status(400).json({ error: 'Не указан пользователь' });
+        return;
+    }
+    try {
+        await executePardonDuelUser(decodeURIComponent(username));
+        res.json({ success: true });
+    } catch (error) {
+        console.error('❌ Ошибка амнистии для пользователя:', error);
+        res.status(500).json({ error: 'Ошибка амнистии' });
     }
 });
 
@@ -960,7 +1007,11 @@ let onLinksSendCallback: (() => void | Promise<void>) | null = null;
 let onEnableDuelsCallback: (() => void | Promise<void>) | null = null;
 let onDisableDuelsCallback: (() => void | Promise<void>) | null = null;
 let onPardonAllCallback: (() => void | Promise<void>) | null = null;
+let getDuelBannedListCallback: (() => Promise<{ username: string; timeoutUntil: number }[]>) | null = null;
+let pardonDuelUserCallback: ((username: string) => Promise<void>) | null = null;
 let getDuelsStatusCallback: (() => boolean) | null = null;
+let getDuelCooldownSkipCallback: (() => boolean) | null = null;
+let setDuelCooldownSkipCallback: ((skip: boolean) => void) | null = null;
 
 export function setOnCommandsChangedCallback(callback: () => void) {
     onCommandsChangedCallback = callback;
@@ -986,8 +1037,24 @@ export function setOnPardonAllCallback(callback: () => void | Promise<void>) {
     onPardonAllCallback = callback;
 }
 
+export function setGetDuelBannedListCallback(callback: () => Promise<{ username: string; timeoutUntil: number }[]>) {
+    getDuelBannedListCallback = callback;
+}
+
+export function setPardonDuelUserCallback(callback: (username: string) => Promise<void>) {
+    pardonDuelUserCallback = callback;
+}
+
 export function setGetDuelsStatusCallback(callback: () => boolean) {
     getDuelsStatusCallback = callback;
+}
+
+export function setGetDuelCooldownSkipCallback(callback: () => boolean) {
+    getDuelCooldownSkipCallback = callback;
+}
+
+export function setSetDuelCooldownSkipCallback(callback: (skip: boolean) => void) {
+    setDuelCooldownSkipCallback = callback;
 }
 
 function notifyCommandsChanged() {
@@ -1032,6 +1099,20 @@ async function executePardonAll(): Promise<void> {
     await onPardonAllCallback();
 }
 
+async function getDuelBannedList(): Promise<{ username: string; timeoutUntil: number }[]> {
+    if (!getDuelBannedListCallback) {
+        return [];
+    }
+    return getDuelBannedListCallback();
+}
+
+async function executePardonDuelUser(username: string): Promise<void> {
+    if (!pardonDuelUserCallback) {
+        throw new Error('pardonDuelUserCallback is not set');
+    }
+    await pardonDuelUserCallback(username);
+}
+
 function getDuelsStatus(): boolean {
     if (!getDuelsStatusCallback) {
         return false;
@@ -1039,11 +1120,40 @@ function getDuelsStatus(): boolean {
     return getDuelsStatusCallback();
 }
 
-// Запуск сервера
+/**
+ * Вызвать при изменении списка забаненных по дуэлям (добавление/снятие).
+ * Подписчики (админка) обновят таблицу.
+ */
+export function getBroadcastDuelBannedChanged(): (() => void) | null {
+    return broadcastDuelBannedChanged;
+}
+
+// Запуск сервера (HTTP + WebSocket на том же порту)
 export function startWebServer(): Promise<void> {
     return new Promise((resolve) => {
-        app.listen(PORT, () => {
+        const server = http.createServer(app);
+
+        wss = new WebSocket.Server({ server, path: WS_PATH });
+        const clients = new Set<WebSocket>();
+
+        wss.on('connection', (ws: WebSocket) => {
+            clients.add(ws);
+            ws.on('close', () => { clients.delete(ws); });
+            ws.on('error', () => { clients.delete(ws); });
+        });
+
+        const payload = JSON.stringify({ type: 'duel-banned-changed' });
+        broadcastDuelBannedChanged = () => {
+            clients.forEach((client) => {
+                if (client.readyState === WebSocket.OPEN) {
+                    client.send(payload);
+                }
+            });
+        };
+
+        server.listen(PORT, () => {
             console.log(`🌐 Веб-интерфейс доступен: http://localhost:${PORT}`);
+            console.log(`🔌 WebSocket для админки: ws://localhost:${PORT}${WS_PATH}`);
             resolve();
         });
     });

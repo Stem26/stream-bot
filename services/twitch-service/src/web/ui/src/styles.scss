@@ -711,6 +711,112 @@ body.modal-open {
   }
 }
 
+// Таблица забаненных по дуэлям
+.duels-banned-section {
+  margin-top: 24px;
+}
+
+.duels-banned-table-wrap {
+  margin-top: 12px;
+}
+
+.duels-banned-table-container {
+  padding: 0 10px;
+  overflow-x: auto;
+}
+
+.duels-banned-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0 10px;
+  background: #fff;
+  box-sizing: border-box;
+  border-radius: 15px;
+
+  thead th {
+    text-align: left;
+    padding: 14px 16px;
+    font-weight: 600;
+    color: #333;
+    font-size: 0.9em;
+    border-bottom: 2px solid #e0e8f0;
+    background: #fff;
+
+    &:first-child {
+      padding-left: 16px;
+    }
+    &:last-child {
+      padding-right: 16px;
+    }
+  }
+
+  tbody tr.duel-banned-row {
+    background: #fafbfc;
+    transition: border-left-color 0.3s ease, background-color 0.3s ease;
+
+    &:hover {
+      background: #e8f0fa;
+    }
+
+    td {
+      padding: 14px 16px;
+      vertical-align: middle;
+      border-color: transparent;
+      border-top-color: #28619a;
+      border-bottom-color: #28619a;
+      border-width: 1px 1px 1px 0;
+      border-style: solid;
+      background: inherit;
+      box-sizing: border-box;
+
+      &:first-child {
+        padding-left: 16px;
+        border-left: 0.5rem solid hsl(210, 59%, 38%);
+        border-radius: 0.5rem 0 0 0.5rem;
+      }
+      &:last-child {
+        padding-right: 16px;
+        border-color: transparent;
+        border-right: 1px solid #28619a;
+        border-top-color: #28619a;
+        border-bottom-color: #28619a;
+        border-radius: 0 0.5rem 0.5rem 0;
+      }
+    }
+  }
+
+  .col-num {
+    width: 56px;
+    min-width: 56px;
+    color: #6c757d;
+    font-size: 0.9em;
+    white-space: nowrap;
+  }
+
+  .col-username {
+    min-width: 120px;
+  }
+
+  .col-until {
+    min-width: 140px;
+    color: #6c757d;
+  }
+
+  .col-actions {
+    width: 120px;
+    min-width: 120px;
+  }
+}
+
+.duels-banned-empty {
+  padding: 16px;
+  text-align: center;
+  color: #6c757d;
+  background: #f8f9fa;
+  border-radius: 8px;
+  margin-top: 12px;
+}
+
 .commands-table-wrap {
   margin-top: 20px;
 }
@@ -813,7 +919,6 @@ body.modal-open {
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
-        cursor: copy;
       }
     }
 

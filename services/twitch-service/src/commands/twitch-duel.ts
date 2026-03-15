@@ -78,6 +78,21 @@ export function setDuelAdminsFromModerators(usernames: string[]): void {
 // Флаг состояния дуэлей (включены/выключены)
 let duelsEnabled = true;
 
+/** Отключить КД 1 мин (канал + игрок) — для тестов, можно спамить дуэли */
+let duelCooldownSkipped = false;
+export function getDuelCooldownSkipped(): boolean {
+  return duelCooldownSkipped;
+}
+export function setDuelCooldownSkipped(skip: boolean): void {
+  duelCooldownSkipped = skip;
+}
+
+/** Вызывается при изменении списка забаненных (дуэль/амнистия) — для реал-тайм обновления админки по WebSocket */
+let onDuelBannedListChanged: (() => void) | null = null;
+export function setOnDuelBannedListChanged(fn: (() => void) | null): void {
+  onDuelBannedListChanged = fn;
+}
+
 function ensurePlayer(players: Map<string, TwitchPlayerData>, twitchUsername: string): TwitchPlayerData {
   const normalized = twitchUsername.toLowerCase();
   let player = players.get(normalized);
@@ -270,8 +285,8 @@ async function handlePersonalChallenge(
   // Проверяем exempt от cooldown для вызывающего
   const challengerIsExempt = DUEL_EXEMPT_USERS.has(challengerNormalized);
 
-  // Проверяем общий cooldown канала (если вызывающий не exempt)
-  if (!challengerIsExempt) {
+  // Проверяем общий cooldown канала (если вызывающий не exempt), если не отключён для тестов
+  if (!duelCooldownSkipped && !challengerIsExempt) {
     const lastDuelAt = duelCooldownByChannel.get(channel);
     if (lastDuelAt && now - lastDuelAt < DUEL_COOLDOWN_MS) {
       const secondsLeft = Math.ceil((DUEL_COOLDOWN_MS - (now - lastDuelAt)) / 1000);
@@ -289,8 +304,8 @@ async function handlePersonalChallenge(
     };
   }
 
-  // Проверяем личный cooldown вызывающего (если не exempt)
-  if (!challengerIsExempt && challengerPlayer.duelCooldownUntil && now < challengerPlayer.duelCooldownUntil) {
+  // Проверяем личный cooldown вызывающего (если не exempt), если не отключён для тестов
+  if (!duelCooldownSkipped && !challengerIsExempt && challengerPlayer.duelCooldownUntil && now < challengerPlayer.duelCooldownUntil) {
     const secondsLeft = Math.ceil((challengerPlayer.duelCooldownUntil - now) / 1000);
     return {
       response: `@${challengerUsername}, ты недавно участвовал в дуэли, жди ${secondsLeft} сек.`
@@ -465,12 +480,13 @@ async function executeDuel(
     player1.duelLosses = (player1.duelLosses ?? 0) + 1;
     player2.duelLosses = (player2.duelLosses ?? 0) + 1;
 
-    duelCooldownByChannel.set(channel, now);
+    if (!duelCooldownSkipped) duelCooldownByChannel.set(channel, now);
     
     // КРИТИЧНО: Очищаем ВСЕ вызовы в канале, т.к. включился cooldown на 1 минуту
     clearAllChallengesInChannel(channel, 'Оба убили друг друга, cooldown 1 мин');
     
     await storage.saveTwitchPlayers(players);
+    onDuelBannedListChanged?.();
 
     void sendOverlayDuel(player1Username, player2Username, 'all-lose');
 
@@ -491,18 +507,15 @@ async function executeDuel(
     player1.points = Math.max(0, (player1.points ?? DEFAULT_POINTS) - DUEL_MISS_PENALTY);
     player2.points = Math.max(0, (player2.points ?? DEFAULT_POINTS) - DUEL_MISS_PENALTY);
 
-    // Оба промахнулись - ничья, даём обоим КД на 1 минуту
-    if (!player1IsExempt) {
-      player1.duelCooldownUntil = now + DUEL_PLAYER_COOLDOWN_MS;
+    // Оба промахнулись - ничья, даём обоим КД на 1 минуту (если не отключён для тестов)
+    if (!duelCooldownSkipped) {
+      if (!player1IsExempt) player1.duelCooldownUntil = now + DUEL_PLAYER_COOLDOWN_MS;
+      if (!player2IsExempt) player2.duelCooldownUntil = now + DUEL_PLAYER_COOLDOWN_MS;
     }
-    if (!player2IsExempt) {
-      player2.duelCooldownUntil = now + DUEL_PLAYER_COOLDOWN_MS;
-    }
-
     player1.duelDraws = (player1.duelDraws ?? 0) + 1;
     player2.duelDraws = (player2.duelDraws ?? 0) + 1;
 
-    duelCooldownByChannel.set(channel, now);
+    if (!duelCooldownSkipped) duelCooldownByChannel.set(channel, now);
     
     // КРИТИЧНО: Очищаем ВСЕ вызовы в канале, т.к. включился cooldown на 1 минуту
     clearAllChallengesInChannel(channel, 'Оба промахнулись, cooldown 1 мин');
@@ -544,8 +557,8 @@ async function executeDuel(
     if (!player2IsExempt) {
       player2.duelTimeoutUntil = now + DUEL_TIMEOUT_MS;
     }
-    // Победитель: 1 минута КД
-    if (!player1IsExempt) {
+    // Победитель: 1 минута КД (если не отключён для тестов)
+    if (!duelCooldownSkipped && !player1IsExempt) {
       player1.duelCooldownUntil = now + DUEL_PLAYER_COOLDOWN_MS;
     }
     player1.duelWins = (player1.duelWins ?? 0) + 1;
@@ -568,8 +581,8 @@ async function executeDuel(
     if (!player1IsExempt) {
       player1.duelTimeoutUntil = now + DUEL_TIMEOUT_MS;
     }
-    // Победитель: 1 минута КД
-    if (!player2IsExempt) {
+    // Победитель: 1 минута КД (если не отключён для тестов)
+    if (!duelCooldownSkipped && !player2IsExempt) {
       player2.duelCooldownUntil = now + DUEL_PLAYER_COOLDOWN_MS;
     }
     player2.duelWins = (player2.duelWins ?? 0) + 1;
@@ -583,12 +596,13 @@ async function executeDuel(
     }
   }
 
-  duelCooldownByChannel.set(channel, now);
+  if (!duelCooldownSkipped) duelCooldownByChannel.set(channel, now);
   
   // КРИТИЧНО: Очищаем ВСЕ вызовы в канале, т.к. включился cooldown на 1 минуту
   clearAllChallengesInChannel(channel, `Дуэль ${winner} vs ${loser}, cooldown 1 мин`);
   
   await storage.saveTwitchPlayers(players);
+  onDuelBannedListChanged?.();
 
   // Сообщаем о результате дуэли в Overlay
   const mode: DuelMode = winner === player1Username ? 'a-win' : 'b-win';
@@ -632,11 +646,10 @@ export async function processTwitchDuelCommand(
   const waiting = duelQueueByChannel.get(channel);
   const waitingIsExempt = waiting ? DUEL_EXEMPT_USERS.has(waiting.username) : false;
 
-  // Проверяем глобальный cooldown дуэлей (если пользователь не exempt)
+  // Проверяем глобальный cooldown дуэлей (если не отключён для тестов и пользователь не exempt)
   // ИСКЛЮЧЕНИЕ: если в очереди стоит exempt пользователь (стример), пропускаем cooldown
-  if (!isExempt && !waitingIsExempt) {
+  if (!duelCooldownSkipped && !isExempt && !waitingIsExempt) {
     const lastDuelAt = duelCooldownByChannel.get(channel);
-
     if (lastDuelAt && now - lastDuelAt < DUEL_COOLDOWN_MS) {
       const secondsLeft = Math.ceil((DUEL_COOLDOWN_MS - (now - lastDuelAt)) / 1000);
       return {
@@ -654,9 +667,9 @@ export async function processTwitchDuelCommand(
     };
   }
 
-  // Проверяем личный cooldown игрока (если пользователь не exempt)
+  // Проверяем личный cooldown игрока (если не отключён для тестов и пользователь не exempt)
   // ИСКЛЮЧЕНИЕ: если в очереди стоит exempt пользователь (стример), пропускаем cooldown
-  if (!isExempt && !waitingIsExempt && player.duelCooldownUntil && now < player.duelCooldownUntil) {
+  if (!duelCooldownSkipped && !isExempt && !waitingIsExempt && player.duelCooldownUntil && now < player.duelCooldownUntil) {
     const secondsLeft = Math.ceil((player.duelCooldownUntil - now) / 1000);
     return {
       response: `@${twitchUsername}, ты недавно участвовал в дуэли, жди ${secondsLeft} сек.`
@@ -845,6 +858,7 @@ async function pardonAllDuelTimeoutsInternal(): Promise<{ success: boolean; coun
 
   if (pardoned > 0) {
     await storage.saveTwitchPlayers(players);
+    onDuelBannedListChanged?.();
     console.log(`🕊️ Амнистия: снято ${pardoned} таймаутов дуэлей`);
     console.log(`📋 Игроки для разбана: ${usernamesWithTimeout.join(', ')}`);
   } else {
@@ -852,6 +866,40 @@ async function pardonAllDuelTimeoutsInternal(): Promise<{ success: boolean; coun
   }
 
   return { success: true, count: pardoned, usernames: usernamesWithTimeout };
+}
+
+/**
+ * Список игроков с активным таймаутом дуэли (для веб-админки)
+ */
+export async function getDuelBannedPlayersFromWeb(): Promise<{ username: string; timeoutUntil: number }[]> {
+  const players = await storage.loadTwitchPlayers();
+  const now = Date.now();
+  const list: { username: string; timeoutUntil: number }[] = [];
+  for (const [, player] of players.entries()) {
+    if (player.duelTimeoutUntil && player.duelTimeoutUntil > now) {
+      list.push({ username: player.twitchUsername, timeoutUntil: player.duelTimeoutUntil });
+    }
+  }
+  list.sort((a, b) => a.timeoutUntil - b.timeoutUntil);
+  return list;
+}
+
+/**
+ * Амнистия для одного игрока (для веб-админки)
+ */
+export async function pardonDuelUserFromWeb(username: string): Promise<{ success: boolean }> {
+  if (!username || !username.trim()) return { success: false };
+  const players = await storage.loadTwitchPlayers();
+  const normalized = username.trim().toLowerCase();
+  const player = players.get(normalized);
+  if (!player || !player.duelTimeoutUntil || player.duelTimeoutUntil <= Date.now()) {
+    return { success: false };
+  }
+  delete player.duelTimeoutUntil;
+  await storage.saveTwitchPlayers(players);
+  onDuelBannedListChanged?.();
+  console.log(`🕊️ Амнистия для одного: снят таймаут дуэли с ${player.twitchUsername}`);
+  return { success: true };
 }
 
 /**
@@ -903,9 +951,9 @@ export async function acceptDuelChallenge(
     };
   }
 
-  // Проверяем личный cooldown принимающего (если не exempt)
+  // Проверяем личный cooldown принимающего (если не отключён для тестов и не exempt)
   // ИСКЛЮЧЕНИЕ: если вызвал exempt пользователь (стример), пропускаем cooldown
-  if (!challengedIsExempt && !challengerIsExempt && challengedPlayer.duelCooldownUntil && now < challengedPlayer.duelCooldownUntil) {
+  if (!duelCooldownSkipped && !challengedIsExempt && !challengerIsExempt && challengedPlayer.duelCooldownUntil && now < challengedPlayer.duelCooldownUntil) {
     const secondsLeft = Math.ceil((challengedPlayer.duelCooldownUntil - now) / 1000);
     clearUserChallenges(channel, normalized);
     return {

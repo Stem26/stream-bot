@@ -3,7 +3,7 @@ import { StaticAuthProvider } from '@twurple/auth';
 import { processTwitchDickCommand } from '../commands/twitch-dick';
 import { processTwitchTopDickCommand } from '../commands/twitch-topDick';
 import { processTwitchBottomDickCommand } from '../commands/twitch-bottomDick';
-import { processTwitchDuelCommand, enableDuels, disableDuels, pardonAllDuelTimeouts, enableDuelsFromWeb as enableDuelsFromWebApi, disableDuelsFromWeb as disableDuelsFromWebApi, pardonAllDuelTimeoutsFromWeb, acceptDuelChallenge, declineDuelChallenge, clearDuelChallenges, setDuelAdminsFromModerators, areDuelsEnabled } from '../commands/twitch-duel';
+import { processTwitchDuelCommand, enableDuels, disableDuels, pardonAllDuelTimeouts, enableDuelsFromWeb as enableDuelsFromWebApi, disableDuelsFromWeb as disableDuelsFromWebApi, pardonAllDuelTimeoutsFromWeb, getDuelBannedPlayersFromWeb, pardonDuelUserFromWeb, getDuelCooldownSkipped, setDuelCooldownSkipped, acceptDuelChallenge, declineDuelChallenge, clearDuelChallenges, setDuelAdminsFromModerators, areDuelsEnabled } from '../commands/twitch-duel';
 import { processTwitchRatCommand, processTwitchCutieCommand, addActiveUser, setChattersAPIFunction } from '../commands/twitch-rat';
 import { processTwitchPointsCommand, processTwitchTopPointsCommand } from '../commands/twitch-points';
 import { ENABLE_BOT_FEATURES, ALLOW_LOCAL_COMMANDS } from '../config/features';
@@ -2799,10 +2799,40 @@ export class NightBotMonitor {
     }
 
     /**
+     * Список игроков с таймаутом дуэли (для веб-интерфейса)
+     */
+    async getDuelBannedList(): Promise<{ username: string; timeoutUntil: number }[]> {
+        return getDuelBannedPlayersFromWeb();
+    }
+
+    /**
+     * Амнистия для одного игрока (снять таймаут в БД, в Twitch и оверлее)
+     */
+    async pardonDuelUser(username: string): Promise<void> {
+        const result = await pardonDuelUserFromWeb(username);
+        if (!result.success) return;
+        await this.untimeoutUser(username);
+        amnestyOverlayPlayer(username).catch((err: unknown) => {
+            console.error('⚠️ Ошибка вызова Overlay amnesty для игрока:', username, err);
+        });
+    }
+
+    /**
      * Получить статус дуэлей (для веб-интерфейса)
      */
     getDuelsStatus(): boolean {
         return areDuelsEnabled();
+    }
+
+    /**
+     * Получить/установить режим «без КД» для дуэлей (для тестов)
+     */
+    getDuelCooldownSkip(): boolean {
+        return getDuelCooldownSkipped();
+    }
+
+    setDuelCooldownSkip(skip: boolean): void {
+        setDuelCooldownSkipped(skip);
     }
 
     /**
