@@ -70,7 +70,7 @@
   <div class="tab-content"
        id="tab-duels">
     <div class="admin-section">
-      <h3>Управление дуэлями</h3>
+      <h3>Настройки дуэлей</h3>
       <div class="admin-duels-toggle-row">
         <span class="admin-duels-label">Дуэли</span>
         <div class="status-toggle off"
@@ -92,19 +92,71 @@
         </div>
       </div>
       <p class="admin-description">Выключи «КД 1 мин» для тестов — дуэли можно вызывать без паузы</p>
-    </div>
-    <div class="admin-section">
-      <h3>Амнистия</h3>
-      <div class="admin-actions">
-        <button class="btn"
-                id="pardon-all-btn">
-          🕊️ Простить всех (снять тайм-ауты)
-        </button>
+      <div class="admin-duels-config-fields">
+        <div class="admin-duels-config-row">
+          <label for="duel-timeout-min">Таймаут (мин)</label>
+          <input type="number" id="duel-timeout-min" min="0" step="1" value="5">
+        </div>
+        <div class="admin-duels-config-row">
+          <label for="duel-win-points">Очки за победу</label>
+          <input type="number" id="duel-win-points" min="0" step="1" value="25">
+        </div>
+        <div class="admin-duels-config-row">
+          <label for="duel-loss-points">Очки за проигрыш</label>
+          <input type="number" id="duel-loss-points" min="0" step="1" value="25">
+        </div>
+        <div class="admin-duels-config-row">
+          <label for="duel-miss-penalty">Минус за промах</label>
+          <input type="number" id="duel-miss-penalty" min="0" step="1" value="5" />
+        </div>
+        <button type="button" class="btn btn-success" id="duel-config-save-btn" disabled>Сохранить настройки</button>
       </div>
-      <p class="admin-description">Снимает тайм-ауты дуэлей со всех игроков</p>
+    </div>
+    <div class="admin-section duels-daily-section">
+      <h3>Дейлики</h3>
+      <div class="duels-daily-blocks">
+        <div class="duels-daily-block duels-daily-block--reward">
+          <h4 class="duels-daily-block-title">Награда за день</h4>
+          <p class="duels-daily-block-desc">За N побед за день — бонус очками</p>
+          <div class="admin-duels-config-fields">
+            <div class="admin-duels-config-row">
+              <label for="daily-games-count">Побед в день</label>
+              <input type="number" id="daily-games-count" min="0" step="1" value="5" />
+            </div>
+            <div class="admin-duels-config-row">
+              <label for="daily-reward-points">Очков за дейлик</label>
+              <input type="number" id="daily-reward-points" min="0" step="1" value="50" />
+            </div>
+          </div>
+        </div>
+        <div class="duels-daily-block duels-daily-block--streak">
+          <h4 class="duels-daily-block-title">Серия побед</h4>
+          <p class="duels-daily-block-desc">N побед подряд — бонус очками</p>
+          <div class="admin-duels-config-fields">
+            <div class="admin-duels-config-row">
+              <label for="streak-wins-count">Побед подряд</label>
+              <input type="number" id="streak-wins-count" min="0" step="1" value="3" />
+            </div>
+            <div class="admin-duels-config-row">
+              <label for="streak-reward-points">Очков за серию</label>
+              <input type="number" id="streak-reward-points" min="0" step="1" value="100" />
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="duels-daily-actions">
+        <button type="button" class="btn btn-success" id="duel-daily-save-btn" disabled>Сохранить настройки</button>
+        <div id="duels-dev-actions" class="duels-dev-actions" style="display: none;">
+          <button type="button" class="btn" id="duel-reset-reward-flags-btn" title="Сбросить у всех игроков флаги и счётчики: победы за день, серия побед, полученные награды — для теста">Сбросить флаги и счётчики наград (тест)</button>
+          <button type="button" class="btn" id="duel-reset-points-btn" title="Назначить всем игрокам по 1000 очков">Сбросить очки (всем по 1000)</button>
+        </div>
+      </div>
     </div>
     <div class="admin-section duels-banned-section">
-      <h3>Забаненные (тайм-аут дуэли)</h3>
+      <div class="duels-banned-header">
+        <h3>Забаненные (тайм-аут дуэли)</h3>
+        <button type="button" class="btn" id="pardon-all-btn">🕊️ Амнистия для всех</button>
+      </div>
       <div class="duels-banned-table-wrap">
         <div class="duels-banned-table-container" id="duels-banned-container">
           <table class="duels-banned-table" id="duels-banned-table">

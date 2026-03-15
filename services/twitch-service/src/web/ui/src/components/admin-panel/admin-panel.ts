@@ -50,11 +50,16 @@ function formatDuelRemaining(timeoutUntil: number): string {
   return `${m} мин ${s} сек`;
 }
 
+type DuelConfigValues = { timeoutMinutes: number; winPoints: number; lossPoints: number; missPenalty: number };
+type DailyConfigValues = { dailyGamesCount: number; dailyRewardPoints: number; streakWinsCount: number; streakRewardPoints: number };
+
 export class AdminPanelElement extends HTMLElement {
   private initialized = false;
   private duelBannedWs: WebSocket | null = null;
   private duelBannedWsReconnect: number | null = null;
   private duelBannedTickId: number | null = null;
+  private lastDuelConfig: DuelConfigValues | null = null;
+  private lastDailyConfig: DailyConfigValues | null = null;
 
   connectedCallback(): void {
     if (this.initialized) return;
@@ -391,6 +396,131 @@ export class AdminPanelElement extends HTMLElement {
     }
   }
 
+  private async loadDuelConfig(): Promise<void> {
+    try {
+      const res = await fetch('/api/admin/duels/config');
+      const data = (await res.json()) as { timeoutMinutes?: number; winPoints?: number; lossPoints?: number; missPenalty?: number };
+      const timeoutMinutes = data.timeoutMinutes ?? 5;
+      const winPoints = data.winPoints ?? 25;
+      const lossPoints = data.lossPoints ?? 25;
+      const missPenalty = data.missPenalty ?? 5;
+      const timeoutInput = this.querySelector<HTMLInputElement>('#duel-timeout-min');
+      const winInput = this.querySelector<HTMLInputElement>('#duel-win-points');
+      const lossInput = this.querySelector<HTMLInputElement>('#duel-loss-points');
+      const missPenaltyInput = this.querySelector<HTMLInputElement>('#duel-miss-penalty');
+      if (timeoutInput) timeoutInput.value = String(timeoutMinutes);
+      if (winInput) winInput.value = String(winPoints);
+      if (lossInput) lossInput.value = String(lossPoints);
+      if (missPenaltyInput) missPenaltyInput.value = String(missPenalty);
+      this.lastDuelConfig = { timeoutMinutes, winPoints, lossPoints, missPenalty };
+      this.updateDuelConfigSaveButton();
+    } catch (error) {
+      console.error('Ошибка загрузки конфига дуэлей:', error);
+    }
+  }
+
+  private getDuelConfigFromInputs(): DuelConfigValues {
+    const timeoutInput = this.querySelector<HTMLInputElement>('#duel-timeout-min');
+    const winInput = this.querySelector<HTMLInputElement>('#duel-win-points');
+    const lossInput = this.querySelector<HTMLInputElement>('#duel-loss-points');
+    const missPenaltyInput = this.querySelector<HTMLInputElement>('#duel-miss-penalty');
+    return {
+      timeoutMinutes: timeoutInput ? parseInt(timeoutInput.value, 10) || 0 : 0,
+      winPoints: winInput ? parseInt(winInput.value, 10) || 0 : 0,
+      lossPoints: lossInput ? parseInt(lossInput.value, 10) || 0 : 0,
+      missPenalty: missPenaltyInput ? parseInt(missPenaltyInput.value, 10) || 0 : 0,
+    };
+  }
+
+  private updateDuelConfigSaveButton(): void {
+    const btn = this.querySelector<HTMLButtonElement>('#duel-config-save-btn');
+    if (!btn) return;
+    const current = this.getDuelConfigFromInputs();
+    const same =
+      this.lastDuelConfig !== null &&
+      this.lastDuelConfig.timeoutMinutes === current.timeoutMinutes &&
+      this.lastDuelConfig.winPoints === current.winPoints &&
+      this.lastDuelConfig.lossPoints === current.lossPoints &&
+      this.lastDuelConfig.missPenalty === current.missPenalty;
+    btn.disabled = same;
+  }
+
+  private async applyDevModeVisibility(): Promise<void> {
+    try {
+      const res = await fetch('/api/admin/dev-mode');
+      const data = (await res.json()) as { devMode?: boolean };
+      const devActions = this.querySelector<HTMLElement>('#duels-dev-actions');
+      if (devActions) {
+        devActions.style.display = data.devMode ? 'flex' : 'none';
+      }
+    } catch {
+      // в случае ошибки кнопки сброса не показываем
+    }
+  }
+
+  private async loadDuelDailyConfig(): Promise<void> {
+    try {
+      const res = await fetch('/api/admin/duels/daily-config');
+      const data = (await res.json()) as {
+        dailyGamesCount?: number;
+        dailyRewardPoints?: number;
+        streakWinsCount?: number;
+        streakRewardPoints?: number;
+      };
+      const dailyGamesCount = data.dailyGamesCount ?? 5;
+      const dailyRewardPoints = data.dailyRewardPoints ?? 50;
+      const streakWinsCount = data.streakWinsCount ?? 3;
+      const streakRewardPoints = data.streakRewardPoints ?? 100;
+      const dailyInput = this.querySelector<HTMLInputElement>('#daily-games-count');
+      const rewardInput = this.querySelector<HTMLInputElement>('#daily-reward-points');
+      const streakWinsInput = this.querySelector<HTMLInputElement>('#streak-wins-count');
+      const streakRewardInput = this.querySelector<HTMLInputElement>('#streak-reward-points');
+      if (dailyInput) dailyInput.value = String(dailyGamesCount);
+      if (rewardInput) rewardInput.value = String(dailyRewardPoints);
+      if (streakWinsInput) streakWinsInput.value = String(streakWinsCount);
+      if (streakRewardInput) streakRewardInput.value = String(streakRewardPoints);
+      this.lastDailyConfig = { dailyGamesCount, dailyRewardPoints, streakWinsCount, streakRewardPoints };
+      this.updateDuelDailySaveButton();
+      this.updateDuelDailyBlockDescriptions();
+    } catch (error) {
+      console.error('Ошибка загрузки конфига дейликов:', error);
+    }
+  }
+
+  private getDuelDailyFromInputs(): DailyConfigValues {
+    const dailyInput = this.querySelector<HTMLInputElement>('#daily-games-count');
+    const rewardInput = this.querySelector<HTMLInputElement>('#daily-reward-points');
+    const streakWinsInput = this.querySelector<HTMLInputElement>('#streak-wins-count');
+    const streakRewardInput = this.querySelector<HTMLInputElement>('#streak-reward-points');
+    return {
+      dailyGamesCount: dailyInput ? parseInt(dailyInput.value, 10) || 0 : 0,
+      dailyRewardPoints: rewardInput ? parseInt(rewardInput.value, 10) || 0 : 0,
+      streakWinsCount: streakWinsInput ? parseInt(streakWinsInput.value, 10) || 0 : 0,
+      streakRewardPoints: streakRewardInput ? parseInt(streakRewardInput.value, 10) || 0 : 0,
+    };
+  }
+
+  private updateDuelDailySaveButton(): void {
+    const btn = this.querySelector<HTMLButtonElement>('#duel-daily-save-btn');
+    if (!btn) return;
+    const current = this.getDuelDailyFromInputs();
+    const same =
+      this.lastDailyConfig !== null &&
+      this.lastDailyConfig.dailyGamesCount === current.dailyGamesCount &&
+      this.lastDailyConfig.dailyRewardPoints === current.dailyRewardPoints &&
+      this.lastDailyConfig.streakWinsCount === current.streakWinsCount &&
+      this.lastDailyConfig.streakRewardPoints === current.streakRewardPoints;
+    btn.disabled = same;
+  }
+
+  private updateDuelDailyBlockDescriptions(): void {
+    const { dailyGamesCount, streakWinsCount } = this.getDuelDailyFromInputs();
+    const rewardDesc = this.querySelector<HTMLParagraphElement>('.duels-daily-block--reward .duels-daily-block-desc');
+    const streakDesc = this.querySelector<HTMLParagraphElement>('.duels-daily-block--streak .duels-daily-block-desc');
+    if (rewardDesc) rewardDesc.textContent = `За ${dailyGamesCount} побед за день — бонус очками`;
+    if (streakDesc) streakDesc.textContent = `${streakWinsCount} побед подряд — бонус очками`;
+  }
+
   private renderDuelBannedTable(list: { username: string; timeoutUntil: number }[]): void {
     const tbody = this.querySelector('#duels-banned-tbody');
     const table = this.querySelector<HTMLTableElement>('#duels-banned-table');
@@ -497,6 +627,9 @@ export class AdminPanelElement extends HTMLElement {
     await this.loadCounters();
     await this.loadDuelsStatus();
     await this.loadDuelBannedList();
+    await this.loadDuelConfig();
+    await this.loadDuelDailyConfig();
+    await this.applyDevModeVisibility();
     await this.loadPartyItems();
     await this.loadPartyConfig();
     this.connectDuelBannedWs();
@@ -834,6 +967,102 @@ export class AdminPanelElement extends HTMLElement {
           throw new Error((err as { error?: string }).error || `HTTP ${res.status}`);
         }
         await this.loadDuelsStatus();
+      } catch (error) {
+        if (error instanceof Error) showAlert(`Ошибка: ${error.message}`, 'error');
+      }
+    });
+
+    const duelConfigSaveBtn = this.querySelector('#duel-config-save-btn');
+    const duelTimeoutInput = this.querySelector('#duel-timeout-min');
+    const duelWinInput = this.querySelector('#duel-win-points');
+    const duelLossInput = this.querySelector('#duel-loss-points');
+    const duelMissPenaltyInput = this.querySelector('#duel-miss-penalty');
+    [duelTimeoutInput, duelWinInput, duelLossInput, duelMissPenaltyInput].forEach((el) => {
+      el?.addEventListener('input', () => this.updateDuelConfigSaveButton());
+      el?.addEventListener('change', () => this.updateDuelConfigSaveButton());
+    });
+    const dailyGamesInput = this.querySelector('#daily-games-count');
+    const dailyRewardInput = this.querySelector('#daily-reward-points');
+    const streakWinsInput = this.querySelector('#streak-wins-count');
+    const streakRewardInput = this.querySelector('#streak-reward-points');
+    [dailyGamesInput, dailyRewardInput, streakWinsInput, streakRewardInput].forEach((el) => {
+      el?.addEventListener('input', () => {
+        this.updateDuelDailySaveButton();
+        this.updateDuelDailyBlockDescriptions();
+      });
+      el?.addEventListener('change', () => {
+        this.updateDuelDailySaveButton();
+        this.updateDuelDailyBlockDescriptions();
+      });
+    });
+    duelConfigSaveBtn?.addEventListener('click', async () => {
+      const { timeoutMinutes, winPoints, lossPoints, missPenalty } = this.getDuelConfigFromInputs();
+      if (timeoutMinutes < 0 || winPoints < 0 || lossPoints < 0 || missPenalty < 0) {
+        showAlert('Введите неотрицательные числа', 'error');
+        return;
+      }
+      try {
+        const res = await fetch('/api/admin/duels/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ timeoutMinutes, winPoints, lossPoints, missPenalty }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error((err as { error?: string }).error || `HTTP ${res.status}`);
+        }
+        await this.loadDuelConfig();
+      } catch (error) {
+        if (error instanceof Error) showAlert(`Ошибка: ${error.message}`, 'error');
+      }
+    });
+
+    const duelDailySaveBtn = this.querySelector('#duel-daily-save-btn');
+    duelDailySaveBtn?.addEventListener('click', async () => {
+      const { dailyGamesCount, dailyRewardPoints, streakWinsCount, streakRewardPoints } = this.getDuelDailyFromInputs();
+      if (dailyGamesCount < 0 || dailyRewardPoints < 0 || streakWinsCount < 0 || streakRewardPoints < 0) {
+        showAlert('Введите неотрицательные числа', 'error');
+        return;
+      }
+      try {
+        const res = await fetch('/api/admin/duels/daily-config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ dailyGamesCount, dailyRewardPoints, streakWinsCount, streakRewardPoints }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error((err as { error?: string }).error || `HTTP ${res.status}`);
+        }
+        await this.loadDuelDailyConfig();
+      } catch (error) {
+        if (error instanceof Error) showAlert(`Ошибка: ${error.message}`, 'error');
+      }
+    });
+
+    const duelResetRewardFlagsBtn = this.querySelector('#duel-reset-reward-flags-btn');
+    duelResetRewardFlagsBtn?.addEventListener('click', async () => {
+      if (!confirm('Сбросить у всех игроков флаги и счётчики наград (победы за день, серия побед)? Нужно для теста.')) return;
+      try {
+        const res = await fetch('/api/admin/duels/reset-reward-flags', { method: 'POST' });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error((err as { error?: string }).error || `HTTP ${res.status}`);
+        }
+      } catch (error) {
+        if (error instanceof Error) showAlert(`Ошибка: ${error.message}`, 'error');
+      }
+    });
+
+    const duelResetPointsBtn = this.querySelector('#duel-reset-points-btn');
+    duelResetPointsBtn?.addEventListener('click', async () => {
+      if (!confirm('Назначить всем игрокам по 1000 очков? Это нельзя отменить.')) return;
+      try {
+        const res = await fetch('/api/admin/duels/reset-points', { method: 'POST' });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error((err as { error?: string }).error || `HTTP ${res.status}`);
+        }
       } catch (error) {
         if (error instanceof Error) showAlert(`Ошибка: ${error.message}`, 'error');
       }

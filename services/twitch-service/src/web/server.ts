@@ -950,6 +950,193 @@ app.post('/api/admin/duels/set-cooldown-skip', (req: Request, res: Response) => 
     }
 });
 
+// Настройки дуэлей (таймаут, очки, штраф за промах)
+type DuelConfigRow = { timeout_minutes: number; win_points: number; loss_points: number; miss_penalty: number };
+
+app.get('/api/admin/duels/config', async (req: Request, res: Response) => {
+    try {
+        const row = await queryOne<DuelConfigRow>('SELECT timeout_minutes, win_points, loss_points, miss_penalty FROM duel_config WHERE id = 1');
+        if (!row) {
+            res.json({ timeoutMinutes: 5, winPoints: 25, lossPoints: 25, missPenalty: 5 });
+            return;
+        }
+        res.json({
+            timeoutMinutes: row.timeout_minutes,
+            winPoints: row.win_points,
+            lossPoints: row.loss_points,
+            missPenalty: row.miss_penalty ?? 5,
+        });
+    } catch (error) {
+        console.error('❌ Ошибка получения конфига дуэлей:', error);
+        res.status(500).json({ error: 'Ошибка получения конфига' });
+    }
+});
+
+app.post('/api/admin/duels/config', async (req: Request, res: Response) => {
+    try {
+        const timeoutMinutes = req.body?.timeoutMinutes != null ? Number(req.body.timeoutMinutes) : undefined;
+        const winPoints = req.body?.winPoints != null ? Number(req.body.winPoints) : undefined;
+        const lossPoints = req.body?.lossPoints != null ? Number(req.body.lossPoints) : undefined;
+        const missPenalty = req.body?.missPenalty != null ? Number(req.body.missPenalty) : undefined;
+        if (
+            (timeoutMinutes != null && (Number.isNaN(timeoutMinutes) || timeoutMinutes < 0)) ||
+            (winPoints != null && (Number.isNaN(winPoints) || winPoints < 0)) ||
+            (lossPoints != null && (Number.isNaN(lossPoints) || lossPoints < 0)) ||
+            (missPenalty != null && (Number.isNaN(missPenalty) || missPenalty < 0))
+        ) {
+            res.status(400).json({ error: 'Значения должны быть неотрицательными числами' });
+            return;
+        }
+        const updates: string[] = [];
+        const params: number[] = [];
+        let i = 1;
+        if (timeoutMinutes != null) {
+            updates.push(`timeout_minutes = $${i++}`);
+            params.push(timeoutMinutes);
+        }
+        if (winPoints != null) {
+            updates.push(`win_points = $${i++}`);
+            params.push(winPoints);
+        }
+        if (lossPoints != null) {
+            updates.push(`loss_points = $${i++}`);
+            params.push(lossPoints);
+        }
+        if (missPenalty != null) {
+            updates.push(`miss_penalty = $${i++}`);
+            params.push(missPenalty);
+        }
+        if (updates.length === 0) {
+            const row = await queryOne<DuelConfigRow>('SELECT timeout_minutes, win_points, loss_points, miss_penalty FROM duel_config WHERE id = 1');
+            const out = row
+                ? { timeoutMinutes: row.timeout_minutes, winPoints: row.win_points, lossPoints: row.loss_points, missPenalty: row.miss_penalty ?? 5 }
+                : { timeoutMinutes: 5, winPoints: 25, lossPoints: 25, missPenalty: 5 };
+            res.json(out);
+            return;
+        }
+        await query(
+            `UPDATE duel_config SET ${updates.join(', ')} WHERE id = 1`,
+            params
+        );
+        const row = await queryOne<DuelConfigRow>('SELECT timeout_minutes, win_points, loss_points, miss_penalty FROM duel_config WHERE id = 1');
+        const config = row
+            ? { timeoutMinutes: row.timeout_minutes, winPoints: row.win_points, lossPoints: row.loss_points, missPenalty: row.miss_penalty ?? 5 }
+            : { timeoutMinutes: 5, winPoints: 25, lossPoints: 25, missPenalty: 5 };
+        if (onDuelConfigUpdatedCallback) onDuelConfigUpdatedCallback(config);
+        res.json(config);
+    } catch (error) {
+        console.error('❌ Ошибка сохранения конфига дуэлей:', error);
+        res.status(500).json({ error: 'Ошибка сохранения конфига' });
+    }
+});
+
+// Дейлики: ежедневная награда и серия побед
+type DailyConfigRow = { daily_games_count: number; daily_reward_points: number; streak_wins_count: number; streak_reward_points: number };
+
+app.get('/api/admin/duels/daily-config', async (req: Request, res: Response) => {
+    try {
+        const row = await queryOne<DailyConfigRow>('SELECT daily_games_count, daily_reward_points, streak_wins_count, streak_reward_points FROM duel_daily_config WHERE id = 1');
+        if (!row) {
+            res.json({ dailyGamesCount: 5, dailyRewardPoints: 50, streakWinsCount: 3, streakRewardPoints: 100 });
+            return;
+        }
+        res.json({
+            dailyGamesCount: row.daily_games_count,
+            dailyRewardPoints: row.daily_reward_points,
+            streakWinsCount: row.streak_wins_count,
+            streakRewardPoints: row.streak_reward_points,
+        });
+    } catch (error) {
+        console.error('❌ Ошибка получения конфига дейликов:', error);
+        res.status(500).json({ error: 'Ошибка получения конфига' });
+    }
+});
+
+app.post('/api/admin/duels/daily-config', async (req: Request, res: Response) => {
+    try {
+        const dailyGamesCount = req.body?.dailyGamesCount != null ? Number(req.body.dailyGamesCount) : undefined;
+        const dailyRewardPoints = req.body?.dailyRewardPoints != null ? Number(req.body.dailyRewardPoints) : undefined;
+        const streakWinsCount = req.body?.streakWinsCount != null ? Number(req.body.streakWinsCount) : undefined;
+        const streakRewardPoints = req.body?.streakRewardPoints != null ? Number(req.body.streakRewardPoints) : undefined;
+        if (
+            (dailyGamesCount != null && (Number.isNaN(dailyGamesCount) || dailyGamesCount < 0)) ||
+            (dailyRewardPoints != null && (Number.isNaN(dailyRewardPoints) || dailyRewardPoints < 0)) ||
+            (streakWinsCount != null && (Number.isNaN(streakWinsCount) || streakWinsCount < 0)) ||
+            (streakRewardPoints != null && (Number.isNaN(streakRewardPoints) || streakRewardPoints < 0))
+        ) {
+            res.status(400).json({ error: 'Значения должны быть неотрицательными числами' });
+            return;
+        }
+        const updates: string[] = [];
+        const params: number[] = [];
+        let i = 1;
+        if (dailyGamesCount != null) { updates.push(`daily_games_count = $${i++}`); params.push(dailyGamesCount); }
+        if (dailyRewardPoints != null) { updates.push(`daily_reward_points = $${i++}`); params.push(dailyRewardPoints); }
+        if (streakWinsCount != null) { updates.push(`streak_wins_count = $${i++}`); params.push(streakWinsCount); }
+        if (streakRewardPoints != null) { updates.push(`streak_reward_points = $${i++}`); params.push(streakRewardPoints); }
+        if (updates.length === 0) {
+            const row = await queryOne<DailyConfigRow>('SELECT daily_games_count, daily_reward_points, streak_wins_count, streak_reward_points FROM duel_daily_config WHERE id = 1');
+            const out = row
+                ? { dailyGamesCount: row.daily_games_count, dailyRewardPoints: row.daily_reward_points, streakWinsCount: row.streak_wins_count, streakRewardPoints: row.streak_reward_points }
+                : { dailyGamesCount: 5, dailyRewardPoints: 50, streakWinsCount: 3, streakRewardPoints: 100 };
+            res.json(out);
+            return;
+        }
+        await query(`UPDATE duel_daily_config SET ${updates.join(', ')} WHERE id = 1`, params);
+        const row = await queryOne<DailyConfigRow>('SELECT daily_games_count, daily_reward_points, streak_wins_count, streak_reward_points FROM duel_daily_config WHERE id = 1');
+        const config = row
+            ? { dailyGamesCount: row.daily_games_count, dailyRewardPoints: row.daily_reward_points, streakWinsCount: row.streak_wins_count, streakRewardPoints: row.streak_reward_points }
+            : { dailyGamesCount: 5, dailyRewardPoints: 50, streakWinsCount: 3, streakRewardPoints: 100 };
+        if (onDuelDailyConfigUpdatedCallback) onDuelDailyConfigUpdatedCallback(config);
+        res.json(config);
+    } catch (error) {
+        console.error('❌ Ошибка сохранения конфига дейликов:', error);
+        res.status(500).json({ error: 'Ошибка сохранения конфига' });
+    }
+});
+
+// Признак режима разработки (кнопки сброса только в dev)
+const isDevMode = process.env.NODE_ENV !== 'production';
+app.get('/api/admin/dev-mode', (_req: Request, res: Response) => {
+    res.json({ devMode: isDevMode });
+});
+
+// Сброс флагов и счётчиков наград дейлика и серии (для теста) — только в dev
+app.post('/api/admin/duels/reset-reward-flags', async (req: Request, res: Response) => {
+    if (!isDevMode) {
+        res.status(403).json({ error: 'Доступно только в режиме разработки' });
+        return;
+    }
+    try {
+        await query(`
+            UPDATE twitch_player_stats
+            SET last_daily_quest_reward_date = NULL,
+                streak_reward_active = false,
+                duels_today = 0,
+                duel_win_streak = 0
+        `);
+        res.json({ success: true });
+    } catch (error) {
+        console.error('❌ Ошибка сброса флагов наград:', error);
+        res.status(500).json({ error: 'Ошибка сброса флагов' });
+    }
+});
+
+// Сброс очков у всех игроков — по 1000 (для теста), только в dev
+app.post('/api/admin/duels/reset-points', async (req: Request, res: Response) => {
+    if (!isDevMode) {
+        res.status(403).json({ error: 'Доступно только в режиме разработки' });
+        return;
+    }
+    try {
+        await query(`UPDATE twitch_player_stats SET points = 1000`);
+        res.json({ success: true });
+    } catch (error) {
+        console.error('❌ Ошибка сброса очков:', error);
+        res.status(500).json({ error: 'Ошибка сброса очков' });
+    }
+});
+
 // Амнистия - снять все таймауты
 app.post('/api/admin/pardon-all', async (req: Request, res: Response) => {
     try {
@@ -1012,6 +1199,8 @@ let pardonDuelUserCallback: ((username: string) => Promise<void>) | null = null;
 let getDuelsStatusCallback: (() => boolean) | null = null;
 let getDuelCooldownSkipCallback: (() => boolean) | null = null;
 let setDuelCooldownSkipCallback: ((skip: boolean) => void) | null = null;
+let onDuelConfigUpdatedCallback: ((config: { timeoutMinutes: number; winPoints: number; lossPoints: number; missPenalty: number }) => void) | null = null;
+let onDuelDailyConfigUpdatedCallback: ((config: { dailyGamesCount: number; dailyRewardPoints: number; streakWinsCount: number; streakRewardPoints: number }) => void) | null = null;
 
 export function setOnCommandsChangedCallback(callback: () => void) {
     onCommandsChangedCallback = callback;
@@ -1055,6 +1244,14 @@ export function setGetDuelCooldownSkipCallback(callback: () => boolean) {
 
 export function setSetDuelCooldownSkipCallback(callback: (skip: boolean) => void) {
     setDuelCooldownSkipCallback = callback;
+}
+
+export function setOnDuelConfigUpdatedCallback(callback: (config: { timeoutMinutes: number; winPoints: number; lossPoints: number; missPenalty: number }) => void) {
+    onDuelConfigUpdatedCallback = callback;
+}
+
+export function setOnDuelDailyConfigUpdatedCallback(callback: (config: { dailyGamesCount: number; dailyRewardPoints: number; streakWinsCount: number; streakRewardPoints: number }) => void) {
+    onDuelDailyConfigUpdatedCallback = callback;
 }
 
 function notifyCommandsChanged() {

@@ -46,18 +46,60 @@ const duelQueueByChannel = new Map<string, DuelQueueEntry>();
 const duelCooldownByChannel = new Map<string, number>();
 const duelChallengesByChannel = new Map<string, Map<string, DuelChallengeEntry>>();
 const DEFAULT_POINTS = 1000;
-const DUEL_WIN_POINTS = 25;
-const DUEL_MISS_PENALTY = 5;
-const DUEL_TIMEOUT_MS = 5 * 60 * 1000; // 5 минут таймаут для проигравшего
+export type DuelConfig = { timeoutMinutes: number; winPoints: number; lossPoints: number; missPenalty: number };
+
+let duelConfig: DuelConfig = { timeoutMinutes: 5, winPoints: 25, lossPoints: 25, missPenalty: 5 };
+
+export function getDuelConfig(): DuelConfig {
+  return { ...duelConfig };
+}
+
+export function setDuelConfig(c: Partial<DuelConfig>): void {
+  if (c.timeoutMinutes != null && c.timeoutMinutes >= 0) duelConfig.timeoutMinutes = c.timeoutMinutes;
+  if (c.winPoints != null && c.winPoints >= 0) duelConfig.winPoints = c.winPoints;
+  if (c.lossPoints != null && c.lossPoints >= 0) duelConfig.lossPoints = c.lossPoints;
+  if (c.missPenalty != null && c.missPenalty >= 0) duelConfig.missPenalty = c.missPenalty;
+}
+
+function getDuelTimeoutMs(): number {
+  return duelConfig.timeoutMinutes * 60 * 1000;
+}
+
+/** Длительность таймаута в секундах для Twitch API (бан в чате) */
+export function getDuelTimeoutSeconds(): number {
+  return Math.max(1, Math.ceil(getDuelTimeoutMs() / 1000));
+}
+
 const DUEL_COOLDOWN_MS = 60 * 1000; // 1 минута общий КД канала
 const DUEL_PLAYER_COOLDOWN_MS = 60 * 1000; // 1 минута личный КД игрока (победитель)
 const CHALLENGE_TIMEOUT_MS = 2 * 60 * 1000; // 2 минуты на принятие вызова
 const QUEUE_TIMEOUT_MS = 2 * 60 * 1000; // 2 минуты ожидания в общей очереди
 const STREAMER_WIN_CHANCE = 0.9; // 90% шанс победы для стримера
-const DAILY_QUEST_GAMES_COUNT = 5;
-const DAILY_QUEST_REWARD_POINTS = 50;
-const STREAK_WINS_COUNT = 3;
-const STREAK_REWARD_POINTS = 100;
+
+export type DailyQuestConfig = {
+  dailyGamesCount: number;
+  dailyRewardPoints: number;
+  streakWinsCount: number;
+  streakRewardPoints: number;
+};
+
+let dailyQuestConfig: DailyQuestConfig = {
+  dailyGamesCount: 5,
+  dailyRewardPoints: 50,
+  streakWinsCount: 3,
+  streakRewardPoints: 100,
+};
+
+export function getDailyQuestConfig(): DailyQuestConfig {
+  return { ...dailyQuestConfig };
+}
+
+export function setDailyQuestConfig(c: Partial<DailyQuestConfig>): void {
+  if (c.dailyGamesCount != null && c.dailyGamesCount >= 0) dailyQuestConfig.dailyGamesCount = c.dailyGamesCount;
+  if (c.dailyRewardPoints != null && c.dailyRewardPoints >= 0) dailyQuestConfig.dailyRewardPoints = c.dailyRewardPoints;
+  if (c.streakWinsCount != null && c.streakWinsCount >= 0) dailyQuestConfig.streakWinsCount = c.streakWinsCount;
+  if (c.streakRewardPoints != null && c.streakRewardPoints >= 0) dailyQuestConfig.streakRewardPoints = c.streakRewardPoints;
+}
 
 // Пользователи без cooldown и timeout (стример)
 const DUEL_EXEMPT_USERS = new Set([STREAMER_USERNAME?.toLowerCase()].filter(Boolean));
@@ -386,28 +428,29 @@ async function executeDuel(
   channel: string,
   players: Map<string, TwitchPlayerData>,
   now: number
-): Promise<{ response: string; loser?: string; loser2?: string; bothLost?: boolean }> {
+): Promise<{ response: string; loser?: string; loser2?: string; bothLost?: boolean; extraMessages?: string[] }> {
   const player1 = ensurePlayer(players, player1Username);
   const player2 = ensurePlayer(players, player2Username);
 
   const todayStr = new Date().toISOString().slice(0, 10);
 
-  function handleDailyProgress(player: TwitchPlayerData): number {
-    if (player.lastDuelDate !== todayStr) {
-      player.lastDuelDate = todayStr;
-      player.duelsToday = 0;
-      player.lastDailyQuestRewardDate = undefined;
+  /** Учитывает только победы за день для дейлика (не подряд). */
+  function handleDailyProgress(winner: TwitchPlayerData): number {
+    if (winner.lastDuelDate !== todayStr) {
+      winner.lastDuelDate = todayStr;
+      winner.duelsToday = 0;
+      winner.lastDailyQuestRewardDate = undefined;
     }
 
-    player.duelsToday = (player.duelsToday ?? 0) + 1;
+    winner.duelsToday = (winner.duelsToday ?? 0) + 1;
 
     if (
-      player.duelsToday >= DAILY_QUEST_GAMES_COUNT &&
-      player.lastDailyQuestRewardDate !== todayStr
+      winner.duelsToday >= dailyQuestConfig.dailyGamesCount &&
+      winner.lastDailyQuestRewardDate !== todayStr
     ) {
-      player.lastDailyQuestRewardDate = todayStr;
-      player.points = (player.points ?? DEFAULT_POINTS) + DAILY_QUEST_REWARD_POINTS;
-      return DAILY_QUEST_REWARD_POINTS;
+      winner.lastDailyQuestRewardDate = todayStr;
+      winner.points = (winner.points ?? DEFAULT_POINTS) + dailyQuestConfig.dailyRewardPoints;
+      return dailyQuestConfig.dailyRewardPoints;
     }
 
     return 0;
@@ -434,12 +477,12 @@ async function executeDuel(
       winner.duelWinStreak = (winner.duelWinStreak ?? 0) + 1;
       let added = 0;
       if (
-        winner.duelWinStreak >= STREAK_WINS_COUNT &&
+        winner.duelWinStreak >= dailyQuestConfig.streakWinsCount &&
         !winner.streakRewardActive
       ) {
         winner.streakRewardActive = true;
-        winner.points = (winner.points ?? DEFAULT_POINTS) + STREAK_REWARD_POINTS;
-        added = STREAK_REWARD_POINTS;
+        winner.points = (winner.points ?? DEFAULT_POINTS) + dailyQuestConfig.streakRewardPoints;
+        added = dailyQuestConfig.streakRewardPoints;
       }
 
       if (loser) {
@@ -466,16 +509,13 @@ async function executeDuel(
   const bothMiss = !player1IsExempt && !player2IsExempt && randomValue >= 0.05 && randomValue < 0.1;
 
   if (bothHit) {
-    // ежедневный прогресс: факт игры
-    handleDailyProgress(player1);
-    handleDailyProgress(player2);
-    // серия прерывается у обоих
+    // ничья — победы нет, дейлик не считаем
     handleStreakOnOutcome(player1, player2, true);
 
-    player1.points = Math.max(0, (player1.points ?? DEFAULT_POINTS) - DUEL_WIN_POINTS);
-    player2.points = Math.max(0, (player2.points ?? DEFAULT_POINTS) - DUEL_WIN_POINTS);
-    player1.duelTimeoutUntil = now + DUEL_TIMEOUT_MS;
-    player2.duelTimeoutUntil = now + DUEL_TIMEOUT_MS;
+    player1.points = Math.max(0, (player1.points ?? DEFAULT_POINTS) - duelConfig.lossPoints);
+    player2.points = Math.max(0, (player2.points ?? DEFAULT_POINTS) - duelConfig.lossPoints);
+    player1.duelTimeoutUntil = now + getDuelTimeoutMs();
+    player2.duelTimeoutUntil = now + getDuelTimeoutMs();
 
     player1.duelLosses = (player1.duelLosses ?? 0) + 1;
     player2.duelLosses = (player2.duelLosses ?? 0) + 1;
@@ -491,7 +531,7 @@ async function executeDuel(
     void sendOverlayDuel(player1Username, player2Username, 'all-lose');
 
     return {
-      response: `@${player1Username} и @${player2Username} сошлись в дуэли! Оба попали и убили друг друга! 💀💀 Оба получают (-${DUEL_WIN_POINTS}) очков и таймаут на 5 минут.`,
+      response: `@${player1Username} и @${player2Username} сошлись в дуэли! Оба попали и убили друг друга! 💀💀 Оба получают (-${duelConfig.lossPoints}) очков и таймаут на ${duelConfig.timeoutMinutes} мин.`,
       loser: player1Username,
       loser2: player2Username,
       bothLost: true
@@ -499,13 +539,10 @@ async function executeDuel(
   }
 
   if (bothMiss) {
-    // ежедневный прогресс: факт игры
-    handleDailyProgress(player1);
-    handleDailyProgress(player2);
-    // серия прерывается у обоих
+    // ничья — победы нет, дейлик не считаем
     handleStreakOnOutcome(player1, player2, true);
-    player1.points = Math.max(0, (player1.points ?? DEFAULT_POINTS) - DUEL_MISS_PENALTY);
-    player2.points = Math.max(0, (player2.points ?? DEFAULT_POINTS) - DUEL_MISS_PENALTY);
+    player1.points = Math.max(0, (player1.points ?? DEFAULT_POINTS) - duelConfig.missPenalty);
+    player2.points = Math.max(0, (player2.points ?? DEFAULT_POINTS) - duelConfig.missPenalty);
 
     // Оба промахнулись - ничья, даём обоим КД на 1 минуту (если не отключён для тестов)
     if (!duelCooldownSkipped) {
@@ -526,7 +563,7 @@ async function executeDuel(
     void sendOverlayDuel(player1Username, player2Username, 'all-win');
 
     return {
-      response: `@${player1Username} и @${player2Username} сошлись в дуэли! Оба промахнулись! 😅 Живы оба, но позор на всю деревню! (-${DUEL_MISS_PENALTY}) очков каждому.`,
+      response: `@${player1Username} и @${player2Username} сошлись в дуэли! Оба промахнулись! 😅 Живы оба, но позор на всю деревню! (-${duelConfig.missPenalty}) очков каждому.`,
       loser: undefined,
       loser2: undefined,
       bothLost: false
@@ -545,17 +582,21 @@ async function executeDuel(
   
   const winner = player1Wins ? player1Username : player2Username;
   const loser = player1Wins ? player2Username : player1Username;
+  let winnerDailyBonus = 0;
+  let winnerStreakBonus = 0;
 
   if (player1Wins) {
-    const dailyBonus1 = handleDailyProgress(player1);
-    const dailyBonus2 = handleDailyProgress(player2);
+    const dailyBonus1 = handleDailyProgress(player1); // только победитель — победы за день
+    const dailyBonus2 = 0;
     const { winnerBonus } = handleStreakOnOutcome(player1, player2, false);
+    winnerDailyBonus = dailyBonus1;
+    winnerStreakBonus = winnerBonus;
 
-    player1.points = (player1.points ?? DEFAULT_POINTS) + DUEL_WIN_POINTS;
-    player2.points = Math.max(0, (player2.points ?? DEFAULT_POINTS) - DUEL_WIN_POINTS);
-    // Проигравший: 5 минут таймаут
+    player1.points = (player1.points ?? DEFAULT_POINTS) + duelConfig.winPoints;
+    player2.points = Math.max(0, (player2.points ?? DEFAULT_POINTS) - duelConfig.lossPoints);
+    // Проигравший: таймаут из конфига
     if (!player2IsExempt) {
-      player2.duelTimeoutUntil = now + DUEL_TIMEOUT_MS;
+      player2.duelTimeoutUntil = now + getDuelTimeoutMs();
     }
     // Победитель: 1 минута КД (если не отключён для тестов)
     if (!duelCooldownSkipped && !player1IsExempt) {
@@ -566,20 +607,22 @@ async function executeDuel(
 
     if (dailyBonus1 || dailyBonus2 || winnerBonus) {
       console.log(
-        `🎁 Награды дуэли: ${player1Username} +${DUEL_WIN_POINTS + dailyBonus1 + winnerBonus}, ` +
-        `${player2Username} -${DUEL_WIN_POINTS} (+${dailyBonus2})`
+        `🎁 Награды дуэли: ${player1Username} +${duelConfig.winPoints + dailyBonus1 + winnerBonus}, ` +
+        `${player2Username} -${duelConfig.lossPoints} (+${dailyBonus2})`
       );
     }
   } else {
-    const dailyBonus1 = handleDailyProgress(player1);
-    const dailyBonus2 = handleDailyProgress(player2);
+    const dailyBonus1 = 0;
+    const dailyBonus2 = handleDailyProgress(player2); // только победитель — победы за день
     const { winnerBonus } = handleStreakOnOutcome(player2, player1, false);
+    winnerDailyBonus = dailyBonus2;
+    winnerStreakBonus = winnerBonus;
 
-    player2.points = (player2.points ?? DEFAULT_POINTS) + DUEL_WIN_POINTS;
-    player1.points = Math.max(0, (player1.points ?? DEFAULT_POINTS) - DUEL_WIN_POINTS);
-    // Проигравший: 5 минут таймаут
+    player2.points = (player2.points ?? DEFAULT_POINTS) + duelConfig.winPoints;
+    player1.points = Math.max(0, (player1.points ?? DEFAULT_POINTS) - duelConfig.lossPoints);
+    // Проигравший: таймаут из конфига
     if (!player1IsExempt) {
-      player1.duelTimeoutUntil = now + DUEL_TIMEOUT_MS;
+      player1.duelTimeoutUntil = now + getDuelTimeoutMs();
     }
     // Победитель: 1 минута КД (если не отключён для тестов)
     if (!duelCooldownSkipped && !player2IsExempt) {
@@ -590,8 +633,8 @@ async function executeDuel(
 
     if (dailyBonus1 || dailyBonus2 || winnerBonus) {
       console.log(
-        `🎁 Награды дуэли: ${player2Username} +${DUEL_WIN_POINTS + dailyBonus2 + winnerBonus}, ` +
-        `${player1Username} -${DUEL_WIN_POINTS} (+${dailyBonus1})`
+        `🎁 Награды дуэли: ${player2Username} +${duelConfig.winPoints + dailyBonus2 + winnerBonus}, ` +
+        `${player1Username} -${duelConfig.lossPoints} (+${dailyBonus1})`
       );
     }
   }
@@ -608,9 +651,22 @@ async function executeDuel(
   const mode: DuelMode = winner === player1Username ? 'a-win' : 'b-win';
   void sendOverlayDuel(player1Username, player2Username, mode);
 
+  const extraMessages: string[] = [];
+  if (winnerDailyBonus > 0) {
+    extraMessages.push(
+      `@${winner} получил ежедневную награду за ${dailyQuestConfig.dailyGamesCount} побед: +${dailyQuestConfig.dailyRewardPoints} очков! 🎁`
+    );
+  }
+  if (winnerStreakBonus > 0) {
+    extraMessages.push(
+      `@${winner} получил награду за серию из ${dailyQuestConfig.streakWinsCount} побед подряд: +${dailyQuestConfig.streakRewardPoints} очков! 🔥`
+    );
+  }
+
   return {
-    response: `@${player1Username} и @${player2Username} сошлись в дуэли! Победитель @${winner} (+${DUEL_WIN_POINTS}), проигравший @${loser} (-${DUEL_WIN_POINTS}) и в таймаут на 5 минут.`,
-    loser
+    response: `@${player1Username} и @${player2Username} сошлись в дуэли! Победитель @${winner} (+${duelConfig.winPoints}), проигравший @${loser} (-${duelConfig.lossPoints}) и в таймаут на ${duelConfig.timeoutMinutes} мин.`,
+    loser,
+    ...(extraMessages.length > 0 && { extraMessages })
   };
 }
 
@@ -618,7 +674,7 @@ export async function processTwitchDuelCommand(
     twitchUsername: string,
     channel: string,
     targetUsername?: string
-): Promise<{ response: string; loser?: string; loser2?: string; bothLost?: boolean }> {
+): Promise<{ response: string; loser?: string; loser2?: string; bothLost?: boolean; extraMessages?: string[] }> {
   // Проверяем, включены ли дуэли
   if (!duelsEnabled) {
     return {
@@ -908,7 +964,7 @@ export async function pardonDuelUserFromWeb(username: string): Promise<{ success
 export async function acceptDuelChallenge(
   twitchUsername: string,
   channel: string
-): Promise<{ response: string; loser?: string; loser2?: string; bothLost?: boolean }> {
+): Promise<{ response: string; loser?: string; loser2?: string; bothLost?: boolean; extraMessages?: string[] }> {
   if (!duelsEnabled) {
     return {
       response: ''

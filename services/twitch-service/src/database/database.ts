@@ -190,6 +190,40 @@ export async function initDatabase(): Promise<void> {
         ON CONFLICT (id) DO NOTHING
       `);
 
+      // Настройки дуэлей: таймаут, очки, штраф за промах (одна строка)
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS duel_config (
+          id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+          timeout_minutes INTEGER NOT NULL DEFAULT 5,
+          win_points INTEGER NOT NULL DEFAULT 25,
+          loss_points INTEGER NOT NULL DEFAULT 25,
+          miss_penalty INTEGER NOT NULL DEFAULT 5
+        )
+      `);
+      await client.query(`
+        ALTER TABLE duel_config ADD COLUMN IF NOT EXISTS miss_penalty INTEGER NOT NULL DEFAULT 5
+      `).catch(() => {});
+      await client.query(`
+        INSERT INTO duel_config (id, timeout_minutes, win_points, loss_points, miss_penalty) VALUES (1, 5, 25, 25, 5)
+        ON CONFLICT (id) DO NOTHING
+      `);
+
+      // Дейлики дуэлей: ежедневная награда и серия побед (одна строка)
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS duel_daily_config (
+          id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+          daily_games_count INTEGER NOT NULL DEFAULT 5,
+          daily_reward_points INTEGER NOT NULL DEFAULT 50,
+          streak_wins_count INTEGER NOT NULL DEFAULT 3,
+          streak_reward_points INTEGER NOT NULL DEFAULT 100
+        )
+      `);
+      await client.query(`
+        INSERT INTO duel_daily_config (id, daily_games_count, daily_reward_points, streak_wins_count, streak_reward_points)
+        VALUES (1, 5, 50, 3, 100)
+        ON CONFLICT (id) DO NOTHING
+      `);
+
       // Кулдаун партии: пользователь — раз в сутки
       await client.query(`
         CREATE TABLE IF NOT EXISTS party_cooldown (

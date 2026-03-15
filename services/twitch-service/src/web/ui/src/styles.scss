@@ -89,6 +89,7 @@ body.modal-open {
 }
 
 .btn:disabled {
+  cursor: default;
 }
 
 .btn-secondary {
@@ -524,6 +525,99 @@ body.modal-open {
   }
 }
 
+.admin-duels-config-fields {
+  margin-top: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 16px;
+
+  .admin-duels-config-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+
+    label {
+      font-weight: 500;
+      color: #333;
+      font-size: 0.9em;
+    }
+
+    input {
+      width: 80px;
+      padding: 8px 10px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      font-size: 1em;
+    }
+  }
+}
+
+// Дейлики — два блока: ежедневная награда и серия побед
+.duels-daily-section {
+  margin-top: 24px;
+
+  > h3 {
+    margin-bottom: 4px;
+  }
+}
+
+.duels-daily-blocks {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  margin-top: 16px;
+
+  @media (max-width: 768px) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.duels-daily-block {
+  background: #fff;
+  border: 1px solid #e0e8f0;
+  border-left: 4px solid #28619a;
+  border-radius: 8px;
+  padding: 16px;
+  box-sizing: border-box;
+
+  &.duels-daily-block--streak {
+    border-left-color: #6f42c1;
+  }
+
+  .duels-daily-block-title {
+    margin: 0 0 4px 0;
+    font-size: 1em;
+    font-weight: 600;
+    color: #333;
+  }
+
+  .duels-daily-block-desc {
+    margin: 0 0 12px 0;
+    font-size: 0.85em;
+    color: #6c757d;
+  }
+
+  .admin-duels-config-fields {
+    margin-top: 0;
+    gap: 12px;
+  }
+}
+
+.duels-daily-actions {
+  margin-top: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.duels-dev-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 .admin-info {
   padding: 15px;
   background: #f8f9fa;
@@ -716,8 +810,21 @@ body.modal-open {
   margin-top: 24px;
 }
 
+.duels-banned-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 12px;
+
+  h3 {
+    margin: 0;
+  }
+}
+
 .duels-banned-table-wrap {
-  margin-top: 12px;
+  margin-top: 0;
 }
 
 .duels-banned-table-container {
@@ -826,6 +933,10 @@ body.modal-open {
 }
 
 .commands-table-container {
+  padding: 0 10px;
+  box-sizing: border-box;
+  overflow-x: auto;
+  min-width: 0;
 
   &.loading-state {
     padding: 20px 24px;
@@ -857,6 +968,29 @@ body.modal-open {
     }
     &:last-child {
       padding-right: 16px;
+    }
+
+    &.col-num {
+      width: 2.25em;
+      min-width: 2.25em;
+      max-width: 2.25em;
+    }
+    &.col-trigger {
+      width: 120px;
+      min-width: 100px;
+    }
+    &.col-response {
+      min-width: 180px;
+    }
+    &.col-status {
+      width: 70px;
+      min-width: 70px;
+    }
+    &.col-actions {
+      width: 88px;
+      min-width: 88px;
+      padding-left: 8px;
+      padding-right: 12px;
     }
   }
 
@@ -899,14 +1033,16 @@ body.modal-open {
     }
 
     .col-num {
-      width: 56px;
-      min-width: 56px;
+      width: 2.25em;
+      min-width: 2.25em;
+      max-width: 2.25em;
       color: #6c757d;
       font-size: 0.9em;
       white-space: nowrap;
     }
 
     .col-trigger {
+      width: 120px;
       min-width: 100px;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -923,8 +1059,7 @@ body.modal-open {
     }
 
     .col-response {
-      min-width: 120px;
-      max-width: 280px;
+      min-width: 180px;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
@@ -936,9 +1071,8 @@ body.modal-open {
     }
 
     .col-actions {
-      width: 1%;
-      max-width: 52px;
-      min-width: 52px;
+      width: 88px;
+      min-width: 88px;
       padding-left: 8px;
       padding-right: 8px;
       text-align: right;

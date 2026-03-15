@@ -3,11 +3,11 @@ import { NightBotMonitor } from './services/nightbot-monitor';
 import { TwitchEventSubNative } from './services/twitch-eventsub-native';
 import { Telegraf } from 'telegraf';
 import { loadConfig } from './config/env';
-import { clearDuelQueue, resetDuelsOnStreamEnd, clearDuelChallenges, setOnDuelBannedListChanged } from "./commands/twitch-duel";
+import { clearDuelQueue, resetDuelsOnStreamEnd, clearDuelChallenges, setOnDuelBannedListChanged, setDuelConfig, setDailyQuestConfig } from "./commands/twitch-duel";
 import { clearActiveUsers } from "./commands/twitch-rat";
 import { log } from './utils/event-logger';
-import { initDatabase, closeDatabase } from './database/database';
-import { startWebServer, getBroadcastDuelBannedChanged, setOnCommandsChangedCallback, setOnCommandExecuteCallback, setOnLinksSendCallback, setOnEnableDuelsCallback, setOnDisableDuelsCallback, setOnPardonAllCallback, setGetDuelBannedListCallback, setPardonDuelUserCallback, setGetDuelsStatusCallback, setGetDuelCooldownSkipCallback, setSetDuelCooldownSkipCallback } from './web/server';
+import { initDatabase, closeDatabase, queryOne } from './database/database';
+import { startWebServer, getBroadcastDuelBannedChanged, setOnCommandsChangedCallback, setOnCommandExecuteCallback, setOnLinksSendCallback, setOnEnableDuelsCallback, setOnDisableDuelsCallback, setOnPardonAllCallback, setGetDuelBannedListCallback, setPardonDuelUserCallback, setGetDuelsStatusCallback, setGetDuelCooldownSkipCallback, setSetDuelCooldownSkipCallback, setOnDuelConfigUpdatedCallback, setOnDuelDailyConfigUpdatedCallback } from './web/server';
 
 async function main() {
     const config = loadConfig();
@@ -24,6 +24,32 @@ async function main() {
     try {
         await initDatabase();
         console.log('✅ База данных готова');
+        try {
+            const duelConfigRow = await queryOne<{ timeout_minutes: number; win_points: number; loss_points: number; miss_penalty: number }>(
+                'SELECT timeout_minutes, win_points, loss_points, miss_penalty FROM duel_config WHERE id = 1'
+            );
+            if (duelConfigRow) {
+                setDuelConfig({
+                    timeoutMinutes: duelConfigRow.timeout_minutes,
+                    winPoints: duelConfigRow.win_points,
+                    lossPoints: duelConfigRow.loss_points,
+                    missPenalty: duelConfigRow.miss_penalty ?? 5,
+                });
+            }
+            const dailyRow = await queryOne<{ daily_games_count: number; daily_reward_points: number; streak_wins_count: number; streak_reward_points: number }>(
+                'SELECT daily_games_count, daily_reward_points, streak_wins_count, streak_reward_points FROM duel_daily_config WHERE id = 1'
+            );
+            if (dailyRow) {
+                setDailyQuestConfig({
+                    dailyGamesCount: dailyRow.daily_games_count,
+                    dailyRewardPoints: dailyRow.daily_reward_points,
+                    streakWinsCount: dailyRow.streak_wins_count,
+                    streakRewardPoints: dailyRow.streak_reward_points,
+                });
+            }
+        } catch (_) {
+            // таблицы могут отсутствовать в dev без БД
+        }
     } catch (error) {
         console.error('❌ Ошибка инициализации БД:', error);
         throw error;
@@ -95,6 +121,8 @@ async function main() {
     setPardonDuelUserCallback((username: string) => nightBotMonitor.pardonDuelUser(username));
     const broadcastDuelBanned = getBroadcastDuelBannedChanged();
     if (broadcastDuelBanned) setOnDuelBannedListChanged(broadcastDuelBanned);
+    setOnDuelConfigUpdatedCallback((c) => setDuelConfig(c));
+    setOnDuelDailyConfigUpdatedCallback((c) => setDailyQuestConfig(c));
 
     // Связываем проверку статуса стрима: команды работают только когда стрим онлайн
     nightBotMonitor.setStreamStatusCheck(() => streamMonitor.getStreamStatus());

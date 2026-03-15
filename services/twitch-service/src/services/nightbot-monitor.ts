@@ -3,7 +3,7 @@ import { StaticAuthProvider } from '@twurple/auth';
 import { processTwitchDickCommand } from '../commands/twitch-dick';
 import { processTwitchTopDickCommand } from '../commands/twitch-topDick';
 import { processTwitchBottomDickCommand } from '../commands/twitch-bottomDick';
-import { processTwitchDuelCommand, enableDuels, disableDuels, pardonAllDuelTimeouts, enableDuelsFromWeb as enableDuelsFromWebApi, disableDuelsFromWeb as disableDuelsFromWebApi, pardonAllDuelTimeoutsFromWeb, getDuelBannedPlayersFromWeb, pardonDuelUserFromWeb, getDuelCooldownSkipped, setDuelCooldownSkipped, acceptDuelChallenge, declineDuelChallenge, clearDuelChallenges, setDuelAdminsFromModerators, areDuelsEnabled } from '../commands/twitch-duel';
+import { processTwitchDuelCommand, enableDuels, disableDuels, pardonAllDuelTimeouts, enableDuelsFromWeb as enableDuelsFromWebApi, disableDuelsFromWeb as disableDuelsFromWebApi, pardonAllDuelTimeoutsFromWeb, getDuelBannedPlayersFromWeb, pardonDuelUserFromWeb, getDuelCooldownSkipped, setDuelCooldownSkipped, getDuelTimeoutSeconds, acceptDuelChallenge, declineDuelChallenge, clearDuelChallenges, setDuelAdminsFromModerators, areDuelsEnabled } from '../commands/twitch-duel';
 import { processTwitchRatCommand, processTwitchCutieCommand, addActiveUser, setChattersAPIFunction } from '../commands/twitch-rat';
 import { processTwitchPointsCommand, processTwitchTopPointsCommand } from '../commands/twitch-points';
 import { ENABLE_BOT_FEATURES, ALLOW_LOCAL_COMMANDS } from '../config/features';
@@ -1587,6 +1587,13 @@ export class NightBotMonitor {
                 await this.sendMessage(channel, result.response);
                 console.log(`✅ Отправлен ответ в чат: ${result.response}`);
             }
+            const duelBonusMessages = (result as { extraMessages?: string[] }).extraMessages;
+            if (duelBonusMessages?.length) {
+                for (const msg of duelBonusMessages) {
+                    await this.sendMessage(channel, msg);
+                    console.log(`✅ Отправлено в чат: ${msg}`);
+                }
+            }
 
             // Логируем результат дуэли если она состоялась
             if (result.loser || result.bothLost) {
@@ -1600,13 +1607,13 @@ export class NightBotMonitor {
                 });
             }
 
-            // Если оба проиграли - даём таймаут обоим
+            // Если оба проиграли - даём таймаут обоим (длительность из конфига дуэлей)
+            const duelTimeoutSec = getDuelTimeoutSeconds();
             if (result.bothLost && result.loser && result.loser2) {
-                await this.timeoutUser(result.loser, 300, 'Duel - Both Lost');
-                await this.timeoutUser(result.loser2, 300, 'Duel - Both Lost');
+                await this.timeoutUser(result.loser, duelTimeoutSec, 'Duel - Both Lost');
+                await this.timeoutUser(result.loser2, duelTimeoutSec, 'Duel - Both Lost');
             } else if (result.loser) {
-                // Обычная дуэль - таймаут только проигравшему
-                await this.timeoutUser(result.loser, 300, 'Duel');
+                await this.timeoutUser(result.loser, duelTimeoutSec, 'Duel');
             }
         } catch (error) {
             console.error('❌ Ошибка при обработке команды !дуэль:', error);
@@ -1627,6 +1634,13 @@ export class NightBotMonitor {
                 await this.sendMessage(channel, result.response);
                 console.log(`✅ Отправлен ответ в чат: ${result.response}`);
             }
+            const bonusMessages = (result as { extraMessages?: string[] }).extraMessages;
+            if (bonusMessages?.length) {
+                for (const msg of bonusMessages) {
+                    await this.sendMessage(channel, msg);
+                    console.log(`✅ Отправлено в чат: ${msg}`);
+                }
+            }
 
             // Логируем результат дуэли если она состоялась
             if (result.loser || result.bothLost) {
@@ -1641,13 +1655,13 @@ export class NightBotMonitor {
                 });
             }
 
-            // Если оба проиграли - даём таймаут обоим
+            // Если оба проиграли - даём таймаут обоим (длительность из конфига дуэлей)
+            const duelTimeoutSec = getDuelTimeoutSeconds();
             if (result.bothLost && result.loser && result.loser2) {
-                await this.timeoutUser(result.loser, 300, 'Duel - Both Lost');
-                await this.timeoutUser(result.loser2, 300, 'Duel - Both Lost');
+                await this.timeoutUser(result.loser, duelTimeoutSec, 'Duel - Both Lost');
+                await this.timeoutUser(result.loser2, duelTimeoutSec, 'Duel - Both Lost');
             } else if (result.loser) {
-                // Обычная дуэль - таймаут только проигравшему
-                await this.timeoutUser(result.loser, 300, 'Duel');
+                await this.timeoutUser(result.loser, duelTimeoutSec, 'Duel');
             }
         } catch (error) {
             console.error('❌ Ошибка при обработке команды !принять:', error);
