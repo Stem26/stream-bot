@@ -3,12 +3,6 @@ import './styles.scss';
 import './components/public-home/public-home';
 import './components/public-duel/public-duel';
 import './components/public-links/public-links';
-import './components/command-dialog/command-dialog';
-import './components/link-dialog/link-dialog';
-import './components/counter-dialog/counter-dialog';
-import './components/party-dialog/party-dialog';
-import './components/moderation-rules-dialog/moderation-rules-dialog';
-import './components/admin-panel/admin-panel';
 
 const TITLES: Record<string, string> = {
   public: 'kunilika666 - Twitch стример',
@@ -46,7 +40,10 @@ function render(): void {
     back.className = 'btn btn-back-fixed';
     back.textContent = 'На главную';
     document.body.prepend(back);
-    app.innerHTML = '<admin-panel></admin-panel><command-dialog></command-dialog><link-dialog></link-dialog><counter-dialog></counter-dialog><party-dialog></party-dialog><moderation-rules-dialog></moderation-rules-dialog>';
+    app.innerHTML = '<div class="admin-loading">Загрузка…</div>';
+    import('./admin-route').then(() => {
+      app.innerHTML = '<admin-panel></admin-panel><command-dialog></command-dialog><link-dialog></link-dialog><counter-dialog></counter-dialog><party-dialog></party-dialog><moderation-rules-dialog></moderation-rules-dialog>';
+    });
   } else if (route === 'public/duel') {
     app.innerHTML = '<public-duel></public-duel>';
   } else if (route === 'public/links') {

@@ -1,7 +1,6 @@
 // @ts-ignore
 import template from './admin-panel.html?raw';
 import './admin-panel.scss';
-import { getAdminHeaders, getAdminPassword, setAdminPassword } from '../../admin-auth';
 import { showAlert } from '../../alerts';
 import {
   createCommand,
@@ -78,76 +77,7 @@ export class AdminPanelElement extends HTMLElement {
     if (this.initialized) return;
     this.initialized = true;
     this.innerHTML = template;
-    const overlay = this.querySelector('#admin-auth-overlay');
-    const container = this.querySelector('#admin-panel-container');
-    const passwordInput = this.querySelector<HTMLInputElement>('#admin-auth-password');
-    const submitBtn = this.querySelector('#admin-auth-submit');
-    const errorEl = this.querySelector('#admin-auth-error');
-    const runPanel = (): void => {
-      if (overlay) (overlay as HTMLElement).classList.remove('active');
-      if (container) (container as HTMLElement).style.display = '';
-      this.bootstrap().catch((err) => console.error(err));
-    };
-    if (getAdminPassword()) {
-      runPanel();
-      return;
-    }
-    // Сначала проверяем: может, уже залогинены через nginx (Basic Auth) — тогда ничего не рисуем и не грузим до ответа
-    const probeAuth = async (): Promise<void> => {
-      try {
-        const res = await fetch('/api/admin/duels/status', { credentials: 'same-origin' });
-        if (res.ok) {
-          runPanel();
-          return;
-        }
-      } catch {
-        // ignore
-      }
-      showLoginModal();
-    };
-    const showLoginModal = (): void => {
-      if (container) (container as HTMLElement).style.display = 'none';
-      if (overlay) (overlay as HTMLElement).classList.add('active');
-      submitBtn?.addEventListener('click', onSubmit);
-      passwordInput?.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') (submitBtn as HTMLElement)?.click();
-      });
-    };
-    const onSubmit = async (): Promise<void> => {
-      const password = passwordInput?.value?.trim();
-      if (!password) {
-        if (errorEl) {
-          errorEl.textContent = 'Введите пароль';
-          (errorEl as HTMLElement).style.display = 'block';
-        }
-        return;
-      }
-      if (errorEl) (errorEl as HTMLElement).style.display = 'none';
-      try {
-        const res = await fetch('/api/auth/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ password }),
-        });
-        const data = (await res.json()) as { success?: boolean };
-        if (res.ok && data.success) {
-          setAdminPassword(password);
-          runPanel();
-        } else {
-          if (errorEl) {
-            errorEl.textContent = 'Неверный пароль';
-            (errorEl as HTMLElement).style.display = 'block';
-          }
-        }
-      } catch {
-        if (errorEl) {
-          errorEl.textContent = 'Ошибка соединения';
-          (errorEl as HTMLElement).style.display = 'block';
-        }
-      }
-    };
-    if (container) (container as HTMLElement).style.display = 'none';
-    void probeAuth();
+    this.bootstrap().catch((err) => console.error(err));
   }
 
   disconnectedCallback(): void {
@@ -452,7 +382,7 @@ export class AdminPanelElement extends HTMLElement {
 
   private async loadDuelsStatus(): Promise<boolean> {
     try {
-      const response = await fetch('/api/admin/duels/status', { headers: getAdminHeaders() });
+      const response = await fetch('/api/admin/duels/status');
       const data = (await response.json()) as { enabled?: boolean; skipCooldown?: boolean };
       const toggle = this.querySelector('#duels-toggle');
       if (toggle) {
@@ -483,7 +413,7 @@ export class AdminPanelElement extends HTMLElement {
 
   private async loadDuelBannedList(): Promise<void> {
     try {
-      const res = await fetch('/api/admin/duels/banned', { headers: getAdminHeaders() });
+      const res = await fetch('/api/admin/duels/banned');
       const data = (await res.json()) as { list?: { username: string; timeoutUntil: number }[] };
       this.renderDuelBannedTable(data.list ?? []);
     } catch (error) {
@@ -494,7 +424,7 @@ export class AdminPanelElement extends HTMLElement {
 
   private async loadDuelConfig(): Promise<void> {
     try {
-      const res = await fetch('/api/admin/duels/config', { headers: getAdminHeaders() });
+      const res = await fetch('/api/admin/duels/config');
       const data = (await res.json()) as { timeoutMinutes?: number; winPoints?: number; lossPoints?: number; missPenalty?: number };
       const timeoutMinutes = data.timeoutMinutes ?? 5;
       const winPoints = data.winPoints ?? 25;
@@ -543,7 +473,7 @@ export class AdminPanelElement extends HTMLElement {
 
   private async applyDevModeVisibility(): Promise<void> {
     try {
-      const res = await fetch('/api/admin/dev-mode', { headers: getAdminHeaders() });
+      const res = await fetch('/api/admin/dev-mode');
       const data = (await res.json()) as { devMode?: boolean };
       const devActions = this.querySelector<HTMLElement>('#duels-dev-actions');
       if (devActions) {
@@ -556,7 +486,7 @@ export class AdminPanelElement extends HTMLElement {
 
   private async loadDuelDailyConfig(): Promise<void> {
     try {
-      const res = await fetch('/api/admin/duels/daily-config', { headers: getAdminHeaders() });
+      const res = await fetch('/api/admin/duels/daily-config');
       const data = (await res.json()) as {
         dailyGamesCount?: number;
         dailyRewardPoints?: number;
@@ -1011,7 +941,7 @@ export class AdminPanelElement extends HTMLElement {
           return;
         }
         try {
-          const res = await fetch(`/api/commands/${encodeURIComponent(id)}/send`, { method: 'POST', headers: getAdminHeaders() });
+          const res = await fetch(`/api/commands/${encodeURIComponent(id)}/send`, { method: 'POST' });
           if (!res.ok) {
             const err = await res.json().catch(() => ({}));
             throw new Error((err as { error?: string }).error || `HTTP ${res.status}`);
@@ -1093,7 +1023,7 @@ export class AdminPanelElement extends HTMLElement {
 
     linkDialog.addEventListener('send', async () => {
       try {
-        await fetch('/api/links/send', { method: 'POST', headers: getAdminHeaders() });
+        await fetch('/api/links/send', { method: 'POST' });
       } catch (error) {
         if (error instanceof Error) showAlert(`Ошибка отправки ссылок: ${error.message}`, 'error');
       }
@@ -1106,7 +1036,7 @@ export class AdminPanelElement extends HTMLElement {
       const enabled = (duelsToggle as HTMLElement).getAttribute('data-enabled') === 'true';
       const endpoint = enabled ? '/api/admin/duels/disable' : '/api/admin/duels/enable';
       try {
-        const res = await fetch(endpoint, { method: 'POST', headers: getAdminHeaders() });
+        const res = await fetch(endpoint, { method: 'POST' });
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
           throw new Error((err as { error?: string }).error || `HTTP ${res.status}`);
@@ -1124,7 +1054,7 @@ export class AdminPanelElement extends HTMLElement {
       try {
         const res = await fetch('/api/admin/duels/set-cooldown-skip', {
           method: 'POST',
-          headers: { ...getAdminHeaders(), 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ skip: newSkip }),
         });
         if (!res.ok) {
@@ -1169,7 +1099,7 @@ export class AdminPanelElement extends HTMLElement {
       try {
         const res = await fetch('/api/admin/duels/config', {
           method: 'POST',
-          headers: { ...getAdminHeaders(), 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ timeoutMinutes, winPoints, lossPoints, missPenalty }),
         });
         if (!res.ok) {
@@ -1192,7 +1122,7 @@ export class AdminPanelElement extends HTMLElement {
       try {
         const res = await fetch('/api/admin/duels/daily-config', {
           method: 'POST',
-          headers: { ...getAdminHeaders(), 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ dailyGamesCount, dailyRewardPoints, streakWinsCount, streakRewardPoints }),
         });
         if (!res.ok) {
@@ -1209,7 +1139,7 @@ export class AdminPanelElement extends HTMLElement {
     duelResetRewardFlagsBtn?.addEventListener('click', async () => {
       if (!confirm('Сбросить у всех игроков флаги и счётчики наград (победы за день, серия побед)? Нужно для теста.')) return;
       try {
-        const res = await fetch('/api/admin/duels/reset-reward-flags', { method: 'POST', headers: getAdminHeaders() });
+        const res = await fetch('/api/admin/duels/reset-reward-flags', { method: 'POST' });
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
           throw new Error((err as { error?: string }).error || `HTTP ${res.status}`);
@@ -1223,7 +1153,7 @@ export class AdminPanelElement extends HTMLElement {
     duelResetPointsBtn?.addEventListener('click', async () => {
       if (!confirm('Назначить всем игрокам по 1000 очков? Это нельзя отменить.')) return;
       try {
-        const res = await fetch('/api/admin/duels/reset-points', { method: 'POST', headers: getAdminHeaders() });
+        const res = await fetch('/api/admin/duels/reset-points', { method: 'POST' });
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
           throw new Error((err as { error?: string }).error || `HTTP ${res.status}`);
@@ -1236,7 +1166,7 @@ export class AdminPanelElement extends HTMLElement {
     pardonAllBtn?.addEventListener('click', async () => {
       if (!confirm('Простить всех игроков (снять таймауты дуэлей)?')) return;
       try {
-        const res = await fetch('/api/admin/pardon-all', { method: 'POST', headers: getAdminHeaders() });
+        const res = await fetch('/api/admin/pardon-all', { method: 'POST' });
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
           throw new Error((err as { error?: string }).error || `HTTP ${res.status}`);
@@ -1289,7 +1219,7 @@ export class AdminPanelElement extends HTMLElement {
       const username = row?.getAttribute('data-username');
       if (!username) return;
       try {
-        const res = await fetch(`/api/admin/duels/pardon/${encodeURIComponent(username)}`, { method: 'POST', headers: getAdminHeaders() });
+        const res = await fetch(`/api/admin/duels/pardon/${encodeURIComponent(username)}`, { method: 'POST' });
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
           throw new Error((err as { error?: string }).error || `HTTP ${res.status}`);

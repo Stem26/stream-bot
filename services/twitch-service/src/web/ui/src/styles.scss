@@ -19,6 +19,15 @@ body.modal-open {
   }
 }
 
+.admin-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40vh;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 18px;
+}
+
 .container {
   max-width: 1200px;
   margin: 0 auto;

@@ -17,40 +17,7 @@ let broadcastDuelBannedChanged: (() => void) | null = null;
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Проверка авторизации для админских API (Bearer — после ввода в модалке или прямой доступ; Basic — от nginx auth_basic)
-function isAdminApiPath(p: string): boolean {
-  return (
-    p.startsWith('/api/admin') ||
-    p.startsWith('/api/commands') ||
-    p === '/api/links' ||
-    p.startsWith('/api/counters') ||
-    p.startsWith('/api/party')
-  );
-}
-function isAdminAuthenticated(req: Request): boolean {
-  const expected = process.env.ADMIN_PASSWORD || 'admin123';
-  const authHeader = req.headers.authorization;
-  if (!authHeader) return false;
-  if (authHeader.startsWith('Bearer ')) {
-    const token = authHeader.slice(7);
-    return token === expected;
-  }
-  if (authHeader.startsWith('Basic ')) {
-    try {
-      const decoded = Buffer.from(authHeader.slice(6), 'base64').toString('utf8');
-      const password = decoded.includes(':') ? decoded.split(':')[1] : decoded;
-      return password === expected;
-    } catch {
-      return false;
-    }
-  }
-  return false;
-}
-app.use((req: Request, res: Response, next: () => void) => {
-  if (!isAdminApiPath(req.path)) return next();
-  if (isAdminAuthenticated(req)) return next();
-  res.status(401).json({ error: 'Требуется авторизация' });
-});
+// Авторизация админки пока только через nginx (auth_basic). Middleware в приложении не используется.
 
 // Интерфейс команды
 interface CustomCommand {

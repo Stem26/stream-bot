@@ -46,6 +46,50 @@ pm2 save
 
 ---
 
+## Nginx: защита админки (без пароля — ничего не грузится)
+
+Чтобы без ввода пароля **ни страница админки, ни данные** не подгружались, nginx должен возвращать **401 до** отдачи HTML и до проксирования админских API.
+
+**1. Создать файл паролей** (пароль должен совпадать с `ADMIN_PASSWORD` в .env):
+```bash
+sudo htpasswd -c /etc/nginx/.htpasswd_admin admin
+# ввести пароль (тот же, что ADMIN_PASSWORD)
+```
+
+**2. В конфиге nginx** — отдельные `location` для админки и админских API с `auth_basic`:
+
+```nginx
+# Страница админки — без пароля отдаём 401, HTML не отдаётся
+location = /admin {
+    auth_basic "Admin Area";
+    auth_basic_user_file /etc/nginx/.htpasswd_admin;
+    proxy_pass http://127.0.0.1:3000;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header Authorization $http_authorization;  # передать Basic в приложение
+}
+
+# Админские API — без пароля 401, данные не подтягиваются
+location ~ ^/api/(admin|commands|links|counters|party) {
+    auth_basic "Admin Area";
+    auth_basic_user_file /etc/nginx/.htpasswd_admin;
+    proxy_pass http://127.0.0.1:3000;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header Authorization $http_authorization;
+}
+```
+
+**Итог:** при переходе на `/admin` без пароля nginx сразу отдаёт 401 и диалог входа; HTML и JS не отдаются, запросы к API не уходят — ничего не грузится и не отрисовывается. После ввода пароля браузер подставляет Basic в запросы, приложение принимает его и отдаёт данные.
+
+---
+
 ## Управление ботами на сервере
 
 ### Статус и логи
