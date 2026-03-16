@@ -26,6 +26,47 @@ admin-panel .moderation-rules-block {
   margin-top: 1.5rem;
 }
 
+.moderation-setting {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.5);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.moderation-setting-header {
+  display: flex;
+  align-items: center;
+  justify-content: start;
+  gap: 12px;
+}
+
+.moderation-setting-title {
+  font-weight: 500;
+  color: #333;
+}
+
+.moderation-setting-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  label {
+    font-size: 0.9em;
+    color: #555;
+  }
+
+  input {
+    width: 80px;
+    padding: 8px 10px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    font-size: 14px;
+  }
+}
+
 .party-input-text {
   width: 100%;
   padding: 10px 12px;

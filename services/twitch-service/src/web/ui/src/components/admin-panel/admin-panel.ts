@@ -62,6 +62,7 @@ function formatDuelRemaining(timeoutUntil: number): string {
 
 type DuelConfigValues = { timeoutMinutes: number; winPoints: number; lossPoints: number; missPenalty: number };
 type DailyConfigValues = { dailyGamesCount: number; dailyRewardPoints: number; streakWinsCount: number; streakRewardPoints: number };
+type PartyConfigValues = { trigger: string; responseText: string; elementsCount: number; quantityMax: number };
 
 export class AdminPanelElement extends HTMLElement {
   private initialized = false;
@@ -72,6 +73,7 @@ export class AdminPanelElement extends HTMLElement {
   private lastDailyConfig: DailyConfigValues | null = null;
   private lastLinksRotationMinutes: number | null = null;
   private lastChatModerationConfig: ChatModerationConfig | null = null;
+  private lastPartyConfig: PartyConfigValues | null = null;
 
   connectedCallback(): void {
     if (this.initialized) return;
@@ -352,10 +354,17 @@ export class AdminPanelElement extends HTMLElement {
       const ec = this.querySelector('#party-elements-count') as HTMLInputElement;
       const qm = this.querySelector('#party-quantity-max') as HTMLInputElement;
       const toggle = this.querySelector('#party-skip-cooldown-toggle');
-      if (triggerInput) triggerInput.value = config.trigger ?? '!партия';
-      if (responseTextInput) responseTextInput.value = config.responseText ?? 'Партия выдала';
-      if (ec) ec.value = String(config.elementsCount);
-      if (qm) qm.value = String(config.quantityMax);
+      const normalized: PartyConfigValues = {
+        trigger: ((config.trigger ?? '!партия').trim() || '!партия').startsWith('!') ? (config.trigger ?? '!партия').trim() || '!партия' : `!${(config.trigger ?? '!партия').trim() || '!партия'}`,
+        responseText: (config.responseText ?? 'Партия выдала').trim() || 'Партия выдала',
+        elementsCount: Math.min(10, Math.max(1, config.elementsCount || 2)),
+        quantityMax: Math.min(99, Math.max(1, config.quantityMax || 4)),
+      };
+      this.lastPartyConfig = normalized;
+      if (triggerInput) triggerInput.value = normalized.trigger;
+      if (responseTextInput) responseTextInput.value = normalized.responseText;
+      if (ec) ec.value = String(normalized.elementsCount);
+      if (qm) qm.value = String(normalized.quantityMax);
       const enabledToggle = this.querySelector('#party-enabled-toggle');
       if (enabledToggle) {
         const on = config.enabled !== false;
@@ -373,6 +382,8 @@ export class AdminPanelElement extends HTMLElement {
         const textEl = toggle.querySelector('.status-toggle-text');
         if (textEl) textEl.textContent = on ? 'ВЫКЛ' : 'ВКЛ';
       }
+      const partyConfigSaveBtn = this.querySelector('#party-config-save-btn') as HTMLButtonElement | null;
+      if (partyConfigSaveBtn) partyConfigSaveBtn.disabled = true;
     } catch (error) {
       if (error instanceof Error) {
         showAlert(`Ошибка загрузки настроек партии: ${error.message}`, 'error');
@@ -735,6 +746,35 @@ export class AdminPanelElement extends HTMLElement {
     });
 
     const partyConfigSaveBtn = this.querySelector('#party-config-save-btn');
+    const updatePartySaveButton = (): void => {
+      if (!partyConfigSaveBtn || !this.lastPartyConfig) return;
+      const triggerInput = this.querySelector('#party-trigger') as HTMLInputElement;
+      const responseTextInput = this.querySelector('#party-response-text') as HTMLInputElement;
+      const ec = this.querySelector('#party-elements-count') as HTMLInputElement;
+      const qm = this.querySelector('#party-quantity-max') as HTMLInputElement;
+      const current: PartyConfigValues = {
+        trigger: (triggerInput?.value ?? '!партия').trim() || '!партия',
+        responseText: (responseTextInput?.value ?? 'Партия выдала').trim() || 'Партия выдала',
+        elementsCount: Math.min(10, Math.max(1, parseInt(ec?.value || '2', 10) || 2)),
+        quantityMax: Math.min(99, Math.max(1, parseInt(qm?.value || '4', 10) || 4)),
+      };
+      const equal =
+        current.trigger === this.lastPartyConfig.trigger &&
+        current.responseText === this.lastPartyConfig.responseText &&
+        current.elementsCount === this.lastPartyConfig.elementsCount &&
+        current.quantityMax === this.lastPartyConfig.quantityMax;
+      partyConfigSaveBtn.disabled = equal;
+    };
+
+    const partyTriggerInput = this.querySelector('#party-trigger') as HTMLInputElement | null;
+    const partyResponseInput = this.querySelector('#party-response-text') as HTMLInputElement | null;
+    const partyElementsInput = this.querySelector('#party-elements-count') as HTMLInputElement | null;
+    const partyQuantityInput = this.querySelector('#party-quantity-max') as HTMLInputElement | null;
+    partyTriggerInput?.addEventListener('input', updatePartySaveButton);
+    partyResponseInput?.addEventListener('input', updatePartySaveButton);
+    partyElementsInput?.addEventListener('input', updatePartySaveButton);
+    partyQuantityInput?.addEventListener('input', updatePartySaveButton);
+
     partyConfigSaveBtn?.addEventListener('click', async () => {
       const triggerInput = this.querySelector('#party-trigger') as HTMLInputElement;
       const responseTextInput = this.querySelector('#party-response-text') as HTMLInputElement;
@@ -748,7 +788,7 @@ export class AdminPanelElement extends HTMLElement {
       try {
         const toggle = this.querySelector('#party-skip-cooldown-toggle');
         const skipCooldown = (toggle as HTMLElement)?.getAttribute('data-enabled') === 'true';
-        await updatePartyConfig({
+        const saved = await updatePartyConfig({
           enabled: enabled ?? true,
           trigger: trigger.startsWith('!') ? trigger : `!${trigger}`,
           responseText,
@@ -756,6 +796,13 @@ export class AdminPanelElement extends HTMLElement {
           quantityMax,
           skipCooldown: skipCooldown ?? false,
         });
+        this.lastPartyConfig = {
+          trigger: saved.trigger ?? trigger,
+          responseText: saved.responseText ?? responseText,
+          elementsCount: saved.elementsCount ?? elementsCount,
+          quantityMax: saved.quantityMax ?? quantityMax,
+        };
+        updatePartySaveButton();
       } catch (error) {
         if (error instanceof Error) showAlert(`Ошибка: ${error.message}`, 'error');
       }
@@ -1250,6 +1297,42 @@ export class AdminPanelElement extends HTMLElement {
       if (moderationSaveBtn) moderationSaveBtn.disabled = false;
     };
 
+    const saveModerationNow = async (): Promise<void> => {
+      if (!maxLenInput || !maxLettersDigitsInput || !timeoutInput) return;
+      const moderationEnabled = moderationEnabledToggle?.getAttribute('data-enabled') === 'true';
+      const checkSymbols = checkSymbolsToggle?.getAttribute('data-enabled') === 'true';
+      const checkLetters = checkLettersToggle?.getAttribute('data-enabled') === 'true';
+      const maxMessageLength = Math.max(
+        1,
+        parseInt(maxLenInput.value || String(this.lastChatModerationConfig?.maxMessageLength ?? 300), 10) ||
+          (this.lastChatModerationConfig?.maxMessageLength ?? 300),
+      );
+      const maxLettersDigits = Math.max(
+        1,
+        parseInt(maxLettersDigitsInput.value || String(this.lastChatModerationConfig?.maxLettersDigits ?? 300), 10) ||
+          (this.lastChatModerationConfig?.maxLettersDigits ?? 300),
+      );
+      const timeoutMinutes = Math.max(
+        1,
+        parseInt(timeoutInput.value || String(this.lastChatModerationConfig?.timeoutMinutes ?? 10), 10) ||
+          (this.lastChatModerationConfig?.timeoutMinutes ?? 10),
+      );
+      try {
+        const saved = await updateChatModerationConfig({
+          moderationEnabled,
+          checkSymbols: moderationEnabled ? checkSymbols : false,
+          checkLetters: moderationEnabled ? checkLetters : false,
+          maxMessageLength,
+          maxLettersDigits,
+          timeoutMinutes,
+        });
+        this.lastChatModerationConfig = saved;
+        // сохранение по тоглам не должно влиять на кнопку — оставляем её в текущем состоянии
+      } catch (error) {
+        if (error instanceof Error) showAlert(`Ошибка: ${error.message}`, 'error');
+      }
+    };
+
     moderationEnabledToggle?.addEventListener('click', () => {
       const on = moderationEnabledToggle.getAttribute('data-enabled') === 'true';
       const newVal = !on;
@@ -1259,7 +1342,7 @@ export class AdminPanelElement extends HTMLElement {
         setModerationToggleState(checkSymbolsToggle, false, 'ВЫКЛ');
         setModerationToggleState(checkLettersToggle, false, 'ВЫКЛ');
       }
-      touchModerationDirty();
+      void saveModerationNow();
     });
     checkSymbolsToggle?.addEventListener('click', () => {
       if (moderationEnabledToggle?.getAttribute('data-enabled') !== 'true') return;
@@ -1267,7 +1350,7 @@ export class AdminPanelElement extends HTMLElement {
       const newVal = !on;
       console.log(`[Модерация] Тогл «Проверка по символам» → ${newVal ? 'ВКЛ' : 'ВЫКЛ'}`);
       setModerationToggleState(checkSymbolsToggle, newVal, newVal ? 'ВКЛ' : 'ВЫКЛ');
-      touchModerationDirty();
+      void saveModerationNow();
     });
     checkLettersToggle?.addEventListener('click', () => {
       if (moderationEnabledToggle?.getAttribute('data-enabled') !== 'true') return;
@@ -1275,7 +1358,7 @@ export class AdminPanelElement extends HTMLElement {
       const newVal = !on;
       console.log(`[Модерация] Тогл «Проверка по буквам и цифрам» → ${newVal ? 'ВКЛ' : 'ВЫКЛ'}`);
       setModerationToggleState(checkLettersToggle, newVal, newVal ? 'ВКЛ' : 'ВЫКЛ');
-      touchModerationDirty();
+      void saveModerationNow();
     });
 
     maxLenInput?.addEventListener('input', touchModerationDirty);

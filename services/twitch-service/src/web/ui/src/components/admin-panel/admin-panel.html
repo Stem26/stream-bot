@@ -17,7 +17,8 @@
       <div>
         <h2>Инфо</h2>
         <p>Редактировать общий текст, который отправляется при команде <strong>!ссылки</strong></p>
-        <p class="admin-hint">В чате по команде <strong>!команды</strong> (или !команда, !commands) выводится список всех включённых команд из таблицы ниже — триггеры и алиасы.</p>
+        <p class="admin-hint">В чате по команде <strong>!команды</strong> (или !команда, !commands) выводится список
+          всех включённых команд из таблицы ниже — триггеры и алиасы.</p>
       </div>
       <button class="btn btn-small"
               id="all-links-btn">
@@ -30,7 +31,7 @@
       <div class="admin-duels-config-fields">
         <div class="admin-duels-config-row">
           <label for="links-rotation-interval-min">Интервал ротации ссылок (мин)</label>
-          <input type="number" id="links-rotation-interval-min" min="1" max="120" step="1" value="13" />
+          <input type="number" id="links-rotation-interval-min" min="1" max="120" step="1" value="13"/>
         </div>
         <button type="button" class="btn btn-success" id="links-rotation-save-btn" disabled>Сохранить настройки</button>
       </div>
@@ -41,9 +42,9 @@
           <button type="button" class="btn btn-small" id="add-command-btn">Добавить команду</button>
         </div>
         <div id="commands-container" class="commands-table-container loading-state">
-        <div class="loading">Загрузка команд...</div>
-        <table class="commands-table" id="commands-table" style="display: none;">
-          <thead>
+          <div class="loading">Загрузка команд...</div>
+          <table class="commands-table" id="commands-table" style="display: none;">
+            <thead>
             <tr>
               <th class="col-num">№</th>
               <th class="col-trigger">Триггер</th>
@@ -52,9 +53,9 @@
               <th class="col-rotation">Ротация</th>
               <th class="col-actions">Действия</th>
             </tr>
-          </thead>
-          <tbody id="commands-tbody"></tbody>
-        </table>
+            </thead>
+            <tbody id="commands-tbody"></tbody>
+          </table>
         </div>
       </div>
     </div>
@@ -87,9 +88,9 @@
           <button type="button" class="btn btn-small" id="add-counter-btn">Добавить счётчик</button>
         </div>
         <div id="counters-container" class="counters-table-container loading-state">
-        <div class="loading">Загрузка счётчиков...</div>
-        <table class="counters-table" id="counters-table" style="display: none;">
-          <thead>
+          <div class="loading">Загрузка счётчиков...</div>
+          <table class="counters-table" id="counters-table" style="display: none;">
+            <thead>
             <tr>
               <th class="col-num">№</th>
               <th class="col-trigger">Триггер</th>
@@ -98,9 +99,9 @@
               <th class="col-status">Статус</th>
               <th class="col-actions">Действия</th>
             </tr>
-          </thead>
-          <tbody id="counters-tbody"></tbody>
-        </table>
+            </thead>
+            <tbody id="counters-tbody"></tbody>
+          </table>
         </div>
       </div>
     </div>
@@ -163,7 +164,7 @@
         </div>
         <div class="admin-duels-config-row">
           <label for="duel-miss-penalty">Минус за промах</label>
-          <input type="number" id="duel-miss-penalty" min="0" step="1" value="5" />
+          <input type="number" id="duel-miss-penalty" min="0" step="1" value="5"/>
         </div>
         <button type="button" class="btn btn-success" id="duel-config-save-btn" disabled>Сохранить настройки</button>
       </div>
@@ -177,11 +178,11 @@
           <div class="admin-duels-config-fields">
             <div class="admin-duels-config-row">
               <label for="daily-games-count">Побед в день</label>
-              <input type="number" id="daily-games-count" min="0" step="1" value="5" />
+              <input type="number" id="daily-games-count" min="0" step="1" value="5"/>
             </div>
             <div class="admin-duels-config-row">
               <label for="daily-reward-points">Очков за дейлик</label>
-              <input type="number" id="daily-reward-points" min="0" step="1" value="50" />
+              <input type="number" id="daily-reward-points" min="0" step="1" value="50"/>
             </div>
           </div>
         </div>
@@ -191,11 +192,11 @@
           <div class="admin-duels-config-fields">
             <div class="admin-duels-config-row">
               <label for="streak-wins-count">Побед подряд</label>
-              <input type="number" id="streak-wins-count" min="0" step="1" value="3" />
+              <input type="number" id="streak-wins-count" min="0" step="1" value="3"/>
             </div>
             <div class="admin-duels-config-row">
               <label for="streak-reward-points">Очков за серию</label>
-              <input type="number" id="streak-reward-points" min="0" step="1" value="100" />
+              <input type="number" id="streak-reward-points" min="0" step="1" value="100"/>
             </div>
           </div>
         </div>
@@ -203,8 +204,13 @@
       <div class="duels-daily-actions">
         <button type="button" class="btn btn-success" id="duel-daily-save-btn" disabled>Сохранить настройки</button>
         <div id="duels-dev-actions" class="duels-dev-actions" style="display: none;">
-          <button type="button" class="btn" id="duel-reset-reward-flags-btn" title="Сбросить у всех игроков флаги и счётчики: победы за день, серия побед, полученные награды — для теста">Сбросить флаги и счётчики наград (тест)</button>
-          <button type="button" class="btn" id="duel-reset-points-btn" title="Назначить всем игрокам по 1000 очков">Сбросить очки (всем по 1000)</button>
+          <button type="button" class="btn" id="duel-reset-reward-flags-btn"
+                  title="Сбросить у всех игроков флаги и счётчики: победы за день, серия побед, полученные награды — для теста">
+            Сбросить флаги и счётчики наград (тест)
+          </button>
+          <button type="button" class="btn" id="duel-reset-points-btn" title="Назначить всем игрокам по 1000 очков">
+            Сбросить очки (всем по 1000)
+          </button>
         </div>
       </div>
     </div>
@@ -217,12 +223,12 @@
         <div class="duels-banned-table-container" id="duels-banned-container">
           <table class="duels-banned-table" id="duels-banned-table">
             <thead>
-              <tr>
-                <th class="col-num">№</th>
-                <th class="col-username">Пользователь</th>
-                <th class="col-until">До конца таймаута</th>
-                <th class="col-actions">Действия</th>
-              </tr>
+            <tr>
+              <th class="col-num">№</th>
+              <th class="col-username">Пользователь</th>
+              <th class="col-until">До конца таймаута</th>
+              <th class="col-actions">Действия</th>
+            </tr>
             </thead>
             <tbody id="duels-banned-tbody"></tbody>
           </table>
@@ -233,7 +239,9 @@
             <td class="col-username"></td>
             <td class="col-until"></td>
             <td class="col-actions">
-              <button type="button" class="btn btn-sm btn-primary" data-action="pardon-one" title="Снять тайм-аут">🕊️ Амнистия</button>
+              <button type="button" class="btn btn-sm btn-primary" data-action="pardon-one" title="Снять тайм-аут">🕊️
+                Амнистия
+              </button>
             </td>
           </tr>
         </template>
@@ -306,12 +314,13 @@
                  min="1"
                  max="99">
         </div>
-        <button class="btn btn-small"
+        <button class="btn btn-success btn-small"
                 id="party-config-save-btn">
           Сохранить
         </button>
       </div>
-      <p class="admin-description">Пример: триггер !партия, текст «партия выдали» → «партия выдали 3 дракоша‑сосед и 2 хомяко‑адвоката для @user». Раз в сутки на пользователя.</p>
+      <p class="admin-description">Пример: триггер !партия, текст «партия выдали» → «партия выдали 3 дракоша‑сосед и 2
+        хомяко‑адвоката для @user». Раз в сутки на пользователя.</p>
     </div>
     <div class="party-table-wrap">
       <div class="party-table-card">
@@ -319,7 +328,7 @@
           <button type="button" class="btn btn-small" id="add-party-item-btn">Добавить партию</button>
         </div>
         <div id="party-items-container" class="party-items-table-container loading-state">
-        <div class="loading">Загрузка...</div>
+          <div class="loading">Загрузка...</div>
         </div>
       </div>
     </div>
@@ -341,50 +350,57 @@
           <span class="status-toggle-text">Загрузка...</span>
         </div>
       </div>
-      <div class="admin-duels-toggle-row">
-        <span class="admin-duels-label">Проверка по символам</span>
-        <div class="status-toggle off"
-             id="chat-check-symbols-toggle"
-             data-enabled="false"
-             title="Лимит по общей длине сообщения (символов)">
-          <div class="status-toggle-circle"></div>
-          <span class="status-toggle-text">ВЫКЛ</span>
+
+      <div class="moderation-setting">
+        <div class="moderation-setting-header">
+          <span class="moderation-setting-title">Проверка по символам</span>
+          <div class="status-toggle off"
+               id="chat-check-symbols-toggle"
+               data-enabled="false"
+               title="Лимит по общей длине сообщения (символов)">
+            <div class="status-toggle-circle"></div>
+            <span class="status-toggle-text">ВЫКЛ</span>
+          </div>
         </div>
-      </div>
-      <div class="admin-duels-toggle-row">
-        <span class="admin-duels-label">Проверка по буквам и цифрам</span>
-        <div class="status-toggle off"
-             id="chat-check-letters-toggle"
-             data-enabled="false"
-             title="Лимит по количеству букв и цифр в сообщении">
-          <div class="status-toggle-circle"></div>
-          <span class="status-toggle-text">ВЫКЛ</span>
-        </div>
-      </div>
-      <div class="admin-duels-config-fields">
-        <div class="admin-duels-config-row">
+        <div class="moderation-setting-input">
           <label for="chat-max-length">Макс. длина сообщения (символов)</label>
           <input type="number"
                  id="chat-max-length"
                  min="1"
                  step="1"
-                 value="300" />
+                 value="300">
         </div>
-        <div class="admin-duels-config-row">
+      </div>
+
+      <div class="moderation-setting">
+        <div class="moderation-setting-header">
+          <span class="moderation-setting-title">Проверка по буквам и цифрам</span>
+          <div class="status-toggle off"
+               id="chat-check-letters-toggle"
+               data-enabled="false"
+               title="Лимит по количеству букв и цифр в сообщении">
+            <div class="status-toggle-circle"></div>
+            <span class="status-toggle-text">ВЫКЛ</span>
+          </div>
+        </div>
+        <div class="moderation-setting-input">
           <label for="chat-max-letters-digits">Макс. длина сообщения (букв и цифр)</label>
           <input type="number"
                  id="chat-max-letters-digits"
                  min="1"
                  step="1"
-                 value="300" />
+                 value="300">
         </div>
+      </div>
+
+      <div class="admin-duels-config-fields">
         <div class="admin-duels-config-row">
           <label for="chat-spam-timeout-min">Тайм-аут за спам (мин)</label>
           <input type="number"
                  id="chat-spam-timeout-min"
                  min="1"
                  step="1"
-                 value="10" />
+                 value="10"/>
         </div>
         <button type="button"
                 class="btn btn-success"

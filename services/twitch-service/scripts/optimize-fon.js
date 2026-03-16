@@ -1,6 +1,7 @@
 /**
  * Сжимает fon.png в WebP (макс. ширина 1920px, качество 82).
  * Запускается перед build:web. Исходник не трогает.
+ * Если fon.png нет (например на сервере), но fon.webp есть — ничего не делаем (фон из репозитория).
  */
 const path = require('path');
 const fs = require('fs');
@@ -10,7 +11,11 @@ const inputPath = path.join(assetsDir, 'fon.png');
 const outputPath = path.join(assetsDir, 'fon.webp');
 
 if (!fs.existsSync(inputPath)) {
-  console.log('optimize-fon: fon.png не найден, пропуск');
+  if (fs.existsSync(outputPath)) {
+    console.log('optimize-fon: fon.webp уже есть (из репозитория), пропуск');
+  } else {
+    console.log('optimize-fon: fon.png не найден, пропуск (нужен fon.webp в public/assets или локально запустите после добавления fon.png)');
+  }
   process.exit(0);
 }
 

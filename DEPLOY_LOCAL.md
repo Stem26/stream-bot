@@ -161,6 +161,30 @@ git push
 
 ### 2. На сервере
 
+**Фон (fon.webp):** в репозитории должен быть закоммичен `services/twitch-service/src/web/ui/public/assets/fon.webp` (~130 KB). Тогда на сервере при `git pull` и `npm run build:twitch` сжатый фон попадёт в сборку без установки sharp и без исходного fon.png. Путь в коде менять не нужно — везде уже используется `/assets/fon.webp`.
+
+**Проверка фона на сервере (если грузится долго — возможно отдаётся старый fon.png):**
+```bash
+# ВАЖНО: сборку запускать из КОРНЯ репозитория, не из services/twitch-service
+cd /root/stream-bot
+
+# Если git pull ругается на package-lock.json:
+git stash
+git pull origin main
+git stash pop
+
+npm install
+npm run build:twitch
+
+# Проверка: в сборке должен появиться fon.webp (~130 KB). Если есть fon.png — скрипт optimize:fon создаст fon.webp из него
+ls -la services/twitch-service/dist/src/web/public/assets/fon.*
+grep -o 'fon\.[a-z]*' services/twitch-service/dist/src/web/public/index.html
+
+pm2 restart twitch-bot
+```
+
+В браузере после деплоя: жёсткое обновление (Ctrl+Shift+R) или инкогнито; в Network смотреть, какой файл грузится — должен быть fon.webp ~130 KB.
+
 **Первый запуск (или после удаления из PM2):**
 ```bash
 cd /root/stream-bot
