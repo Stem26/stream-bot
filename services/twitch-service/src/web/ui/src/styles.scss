@@ -83,6 +83,16 @@ body.modal-open {
   }
 }
 
+.header-actions {
+  display: flex;
+  gap: 10px;
+  flex-shrink: 0;
+
+  a.btn {
+    text-decoration: none;
+  }
+}
+
 .controls {
   background: white;
   border-radius: 15px;

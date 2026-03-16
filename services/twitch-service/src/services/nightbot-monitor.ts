@@ -1304,18 +1304,6 @@ export class NightBotMonitor {
         }
     }
 
-    /**
-     * Обработка кастомной команды (из БД)
-     * - Для обычных сообщений (message):
-     *   cooldown=0 → без ограничений, >0 → используем указанный кулдаун в секундах.
-     * - Для объявлений (announcement):
-     *   минимум 5 секунд даже если cooldown=0, при большем значении берём его.
-     * - options.skipCooldown: true — при вызове из веб-UI игнорируем кулдаун
-     */
-    /**
-     * Подставляет плейсхолдеры времени в текст.
-     * Формат: {time:IANA_TIMEZONE} — например {time:Europe/Moscow}, {time:America/New_York}.
-     */
     private substituteTimePlaceholders(text: string): string {
         const now = new Date();
         const fmt = (tz: string) => {

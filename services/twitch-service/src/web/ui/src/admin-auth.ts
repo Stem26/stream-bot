@@ -1,6 +1,5 @@
 const STORAGE_KEY = 'adminAuth';
 
-/** Возвращает JWT-токен (ранее — пароль) для Bearer-авторизации */
 export function getAdminPassword(): string | null {
   try {
     return sessionStorage.getItem(STORAGE_KEY);
@@ -9,7 +8,6 @@ export function getAdminPassword(): string | null {
   }
 }
 
-/** Сохраняет JWT-токен после успешного входа */
 export function setAdminPassword(token: string): void {
   sessionStorage.setItem(STORAGE_KEY, token);
 }

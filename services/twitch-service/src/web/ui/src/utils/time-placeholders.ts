@@ -1,8 +1,3 @@
-/**
- * Подставляет плейсхолдеры времени (для подсчёта фактической длины сообщения).
- * Дублирует логику из nightbot-monitor для отображения в UI.
- * Формат: {time:IANA_TIMEZONE} — например {time:Europe/Moscow}.
- */
 export function substituteTimePlaceholders(text: string): string {
   const now = new Date();
   const fmt = (tz: string) => {

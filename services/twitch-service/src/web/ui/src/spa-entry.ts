@@ -35,11 +35,6 @@ function render(): void {
   app.innerHTML = '';
 
   if (route === 'admin') {
-    const back = document.createElement('a');
-    back.href = '/public';
-    back.className = 'btn btn-back-fixed';
-    back.textContent = 'На главную';
-    document.body.prepend(back);
     app.innerHTML = '<div class="admin-loading">Загрузка…</div>';
     import('./admin-route').then(() => {
       app.innerHTML = '<admin-panel></admin-panel><command-dialog></command-dialog><link-dialog></link-dialog><counter-dialog></counter-dialog><party-dialog></party-dialog><moderation-rules-dialog></moderation-rules-dialog><link-whitelist-dialog></link-whitelist-dialog>';
