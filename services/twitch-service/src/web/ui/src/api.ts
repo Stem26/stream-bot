@@ -212,3 +212,19 @@ export async function updateChatModerationConfig(
   return handleJson<ChatModerationConfig>(response, 'Ошибка сохранения настроек модерации');
 }
 
+// === API для whitelist ссылок ===
+
+export async function fetchLinkWhitelist(): Promise<{ patterns: string[] }> {
+  const response = await fetch('/api/admin/link-whitelist');
+  return handleJson<{ patterns: string[] }>(response, 'Ошибка загрузки whitelist ссылок');
+}
+
+export async function updateLinkWhitelist(patterns: string[]): Promise<{ patterns: string[] }> {
+  const response = await fetch('/api/admin/link-whitelist', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ patterns }),
+  });
+  return handleJson<{ patterns: string[] }>(response, 'Ошибка сохранения whitelist ссылок');
+}
+

@@ -5,3 +5,4 @@ import './components/link-dialog/link-dialog';
 import './components/counter-dialog/counter-dialog';
 import './components/party-dialog/party-dialog';
 import './components/moderation-rules-dialog/moderation-rules-dialog';
+import './components/link-whitelist-dialog/link-whitelist-dialog';

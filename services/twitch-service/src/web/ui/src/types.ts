@@ -61,6 +61,7 @@ export interface ChatModerationConfig {
   moderationEnabled: boolean;
   checkSymbols: boolean;
   checkLetters: boolean;
+  checkLinks: boolean;
   maxMessageLength: number;
   maxLettersDigits: number;
   timeoutMinutes: number;

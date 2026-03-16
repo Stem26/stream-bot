@@ -164,6 +164,7 @@ const BOT_BLACKLIST = new Set([
 export class NightBotMonitor {
     private chatClient: ChatClient | null = null;
     private channelName: string = '';
+    private botUsername: string = ''; // логин аккаунта бота (из токена), для пропуска своих сообщений
     private broadcasterId: string = '';
     private moderatorId: string = '';
     private accessToken: string = '';
@@ -216,6 +217,8 @@ export class NightBotMonitor {
         moderationEnabled: true,
         checkSymbols: true,
         checkLetters: true,
+        checkLinks: false,
+        linkWhitelist: [] as string[],
         maxMessageLength: 25,
         maxLettersDigits: 100,
         windowMs: 5 * 60 * 1000,
@@ -728,8 +731,9 @@ export class NightBotMonitor {
                 throw new Error(`Token validate failed: ${await validateRes.text()}`);
             }
 
-            const validateData = await validateRes.json() as { user_id: string };
+            const validateData = await validateRes.json() as { user_id: string; login?: string };
             this.moderatorId = validateData.user_id;
+            this.botUsername = (validateData.login ?? '').toLowerCase();
 
             // Устанавливаем функцию для получения списка зрителей
             setChattersAPIFunction((channel: string) => this.getChatters(channel));
@@ -807,7 +811,7 @@ export class NightBotMonitor {
                     return;
                 }
 
-                // Проверяем роли пользователя из тегов сообщения (в реальном времени)
+                // Проверяем роли пользователя из тегов сообщения
                 const isMod = msg.userInfo.isMod;
                 const isBroadcaster = msg.userInfo.isBroadcaster;
                 const isModNow = isMod || isBroadcaster;
@@ -847,10 +851,21 @@ export class NightBotMonitor {
                     messageId = this.privmsgIdCache.get(cacheKey);
                 }
 
-                // Анти-спам: удаляем сообщение (если есть id) и таймаут
-                const spamHandled = await this.handleSpamIfNeeded(username, originalMessage, messageId);
-                if (spamHandled) {
-                    return;
+                // Пропускаем модерацию для сообщений самого бота (ссылки бота никогда не удаляются)
+                const botAccount = this.botUsername || this.channelName?.toLowerCase();
+                const isBotOwnMessage = botAccount && username === botAccount;
+                if (!isBotOwnMessage) {
+                    // Анти-спам: удаляем сообщение (если есть id) и таймаут
+                    const spamHandled = await this.handleSpamIfNeeded(username, originalMessage, messageId);
+                    if (spamHandled) {
+                        return;
+                    }
+
+                    // Фильтр ссылок: удаляем сообщения с неразрешёнными ссылками
+                    const linkHandled = await this.handleLinkViolationIfNeeded(username, originalMessage, messageId);
+                    if (linkHandled) {
+                        return;
+                    }
                 }
 
                 // Игнорировать команды если они отключены
@@ -2326,20 +2341,24 @@ export class NightBotMonitor {
                 moderation_enabled: boolean;
                 check_symbols: boolean;
                 check_letters: boolean;
+                check_links: boolean;
                 max_message_length: number;
                 max_letters_digits: number;
                 timeout_minutes: number;
             }>(
-                'SELECT moderation_enabled, check_symbols, check_letters, max_message_length, max_letters_digits, timeout_minutes FROM chat_moderation_config WHERE id = 1'
+                'SELECT moderation_enabled, check_symbols, check_letters, check_links, max_message_length, max_letters_digits, timeout_minutes FROM chat_moderation_config WHERE id = 1'
             );
             if (row) {
                 this.spamConfig.moderationEnabled = row.moderation_enabled ?? this.spamConfig.moderationEnabled;
                 this.spamConfig.checkSymbols = row.check_symbols ?? this.spamConfig.checkSymbols;
                 this.spamConfig.checkLetters = row.check_letters ?? this.spamConfig.checkLetters;
+                this.spamConfig.checkLinks = row.check_links ?? this.spamConfig.checkLinks;
                 this.spamConfig.maxMessageLength = row.max_message_length ?? this.spamConfig.maxMessageLength;
                 this.spamConfig.maxLettersDigits = row.max_letters_digits ?? this.spamConfig.maxLettersDigits;
                 this.spamConfig.timeoutMinutes = row.timeout_minutes ?? this.spamConfig.timeoutMinutes;
             }
+            const whitelistRows = await query('SELECT pattern FROM link_whitelist') as { pattern: string }[];
+            this.spamConfig.linkWhitelist = (whitelistRows ?? []).map((r) => (r.pattern ?? '').trim().toLowerCase()).filter(Boolean);
             this.spamConfigLastLoaded = now;
         } catch (error: any) {
             console.error('⚠️ Ошибка загрузки настроек модерации чата:', error?.message || error);
@@ -2350,6 +2369,36 @@ export class NightBotMonitor {
     /** Сброс кеша настроек модерации (вызывается после сохранения в админке). */
     invalidateSpamConfigCache(): void {
         this.spamConfigLastLoaded = 0;
+    }
+
+    /** Извлекает URL из сообщения (http(s) и www.) */
+    private extractUrls(message: string): string[] {
+        const regex = /https?:\/\/[^\s<>"'\]]+|www\.[^\s<>"'\]]+/gi;
+        const matches = message.match(regex) ?? [];
+        return matches.map((u) => u.replace(/[.,;:!?)\]}>]+$/, '').toLowerCase());
+    }
+
+    /** Проверяет, разрешена ли ссылка (whitelist: домен или полный URL, проверка по вхождению) */
+    private isUrlWhitelisted(url: string, whitelist: string[]): boolean {
+        if (!whitelist.length) return false;
+        const normalized = url.toLowerCase();
+        for (const pattern of whitelist) {
+            const p = pattern.toLowerCase().trim().replace(/[.,;:!?)\]}>]+$/, '');
+            if (!p) continue;
+            if (normalized.includes(p) || normalized.startsWith(p)) return true;
+        }
+        return false;
+    }
+
+    private hasLinkViolation(message: string): boolean {
+        if (!this.spamConfig.moderationEnabled || !this.spamConfig.checkLinks) return false;
+        const urls = this.extractUrls(message);
+        if (urls.length === 0) return false;
+        const whitelist = this.spamConfig.linkWhitelist;
+        for (const url of urls) {
+            if (!this.isUrlWhitelisted(url, whitelist)) return true;
+        }
+        return false;
     }
 
     private isSpammyMessage(message: string): boolean {
@@ -2431,6 +2480,20 @@ export class NightBotMonitor {
             console.error('❌ Ошибка удаления сообщения:', error?.message || error);
             return false;
         }
+    }
+
+    private async handleLinkViolationIfNeeded(username: string, message: string, messageId?: string): Promise<boolean> {
+        await this.ensureSpamConfigLoaded();
+        if (!this.hasLinkViolation(message)) return false;
+        try {
+            if (messageId) {
+                await this.deleteChatMessage(messageId);
+            }
+            console.log(`🔗 LINK: сообщение с неразрешённой ссылкой удалено от ${username}`);
+        } catch (error: any) {
+            console.error('❌ Ошибка удаления сообщения со ссылкой:', error?.message || error);
+        }
+        return true;
     }
 
     private async handleSpamIfNeeded(username: string, message: string, messageId?: string): Promise<boolean> {

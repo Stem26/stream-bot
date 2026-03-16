@@ -39,6 +39,7 @@ import type { LinkDialogElement } from '../link-dialog/link-dialog';
 import type { CounterDialogElement, CounterDialogSaveDetail, CounterDialogDeleteDetail } from '../counter-dialog/counter-dialog';
 import type { PartyDialogElement, PartyDialogSaveDetail } from '../party-dialog/party-dialog';
 import type { ModerationRulesDialogElement } from '../moderation-rules-dialog/moderation-rules-dialog';
+import type { LinkWhitelistDialogElement } from '../link-whitelist-dialog/link-whitelist-dialog';
 
 function escapeHtml(s: string): string {
   return s
@@ -1283,6 +1284,7 @@ export class AdminPanelElement extends HTMLElement {
     const moderationEnabledToggle = this.querySelector('#chat-moderation-enabled-toggle') as HTMLElement | null;
     const checkSymbolsToggle = this.querySelector('#chat-check-symbols-toggle') as HTMLElement | null;
     const checkLettersToggle = this.querySelector('#chat-check-letters-toggle') as HTMLElement | null;
+    const checkLinksToggle = this.querySelector('#chat-check-links-toggle') as HTMLElement | null;
 
     const setModerationToggleState = (el: HTMLElement | null, on: boolean, text: string) => {
       if (!el) return;
@@ -1302,6 +1304,7 @@ export class AdminPanelElement extends HTMLElement {
       const moderationEnabled = moderationEnabledToggle?.getAttribute('data-enabled') === 'true';
       const checkSymbols = checkSymbolsToggle?.getAttribute('data-enabled') === 'true';
       const checkLetters = checkLettersToggle?.getAttribute('data-enabled') === 'true';
+      const checkLinks = checkLinksToggle?.getAttribute('data-enabled') === 'true';
       const maxMessageLength = Math.max(
         1,
         parseInt(maxLenInput.value || String(this.lastChatModerationConfig?.maxMessageLength ?? 300), 10) ||
@@ -1322,6 +1325,7 @@ export class AdminPanelElement extends HTMLElement {
           moderationEnabled,
           checkSymbols: moderationEnabled ? checkSymbols : false,
           checkLetters: moderationEnabled ? checkLetters : false,
+          checkLinks: moderationEnabled ? checkLinks : false,
           maxMessageLength,
           maxLettersDigits,
           timeoutMinutes,
@@ -1341,6 +1345,7 @@ export class AdminPanelElement extends HTMLElement {
       if (!newVal) {
         setModerationToggleState(checkSymbolsToggle, false, 'ВЫКЛ');
         setModerationToggleState(checkLettersToggle, false, 'ВЫКЛ');
+        setModerationToggleState(checkLinksToggle, false, 'ВЫКЛ');
       }
       void saveModerationNow();
     });
@@ -1360,6 +1365,20 @@ export class AdminPanelElement extends HTMLElement {
       setModerationToggleState(checkLettersToggle, newVal, newVal ? 'ВКЛ' : 'ВЫКЛ');
       void saveModerationNow();
     });
+    checkLinksToggle?.addEventListener('click', () => {
+      if (moderationEnabledToggle?.getAttribute('data-enabled') !== 'true') return;
+      const on = checkLinksToggle.getAttribute('data-enabled') === 'true';
+      const newVal = !on;
+      console.log(`[Модерация] Тогл «Проверка ссылок» → ${newVal ? 'ВКЛ' : 'ВЫКЛ'}`);
+      setModerationToggleState(checkLinksToggle, newVal, newVal ? 'ВКЛ' : 'ВЫКЛ');
+      void saveModerationNow();
+    });
+
+    const linkWhitelistBtn = this.querySelector('#chat-link-whitelist-btn') as HTMLButtonElement | null;
+    linkWhitelistBtn?.addEventListener('click', () => {
+      const dialog = document.querySelector('link-whitelist-dialog') as LinkWhitelistDialogElement | null;
+      void dialog?.open();
+    });
 
     maxLenInput?.addEventListener('input', touchModerationDirty);
     maxLettersDigitsInput?.addEventListener('input', touchModerationDirty);
@@ -1370,6 +1389,7 @@ export class AdminPanelElement extends HTMLElement {
       const moderationEnabled = moderationEnabledToggle?.getAttribute('data-enabled') === 'true';
       const checkSymbols = checkSymbolsToggle?.getAttribute('data-enabled') === 'true';
       const checkLetters = checkLettersToggle?.getAttribute('data-enabled') === 'true';
+      const checkLinks = checkLinksToggle?.getAttribute('data-enabled') === 'true';
       const maxMessageLength = Math.max(1, parseInt(maxLenInput.value || '300', 10) || 300);
       const maxLettersDigits = Math.max(1, parseInt(maxLettersDigitsInput.value || '300', 10) || 300);
       const timeoutMinutes = Math.max(1, parseInt(timeoutInput.value || '10', 10) || 10);
@@ -1378,6 +1398,7 @@ export class AdminPanelElement extends HTMLElement {
           moderationEnabled,
           checkSymbols: moderationEnabled ? checkSymbols : false,
           checkLetters: moderationEnabled ? checkLetters : false,
+          checkLinks: moderationEnabled ? checkLinks : false,
           maxMessageLength,
           maxLettersDigits,
           timeoutMinutes,
@@ -1408,12 +1429,14 @@ export class AdminPanelElement extends HTMLElement {
       const moderationEnabledToggle = this.querySelector('#chat-moderation-enabled-toggle') as HTMLElement | null;
       const checkSymbolsToggle = this.querySelector('#chat-check-symbols-toggle') as HTMLElement | null;
       const checkLettersToggle = this.querySelector('#chat-check-letters-toggle') as HTMLElement | null;
+      const checkLinksToggle = this.querySelector('#chat-check-links-toggle') as HTMLElement | null;
       if (maxLenInput) maxLenInput.value = String(config.maxMessageLength ?? 300);
       if (maxLettersDigitsInput) maxLettersDigitsInput.value = String(config.maxLettersDigits ?? 300);
       if (timeoutInput) timeoutInput.value = String(config.timeoutMinutes ?? 10);
       const modOn = config.moderationEnabled ?? true;
       const symOn = config.checkSymbols ?? true;
       const letOn = config.checkLetters ?? true;
+      const linksOn = config.checkLinks ?? false;
       if (moderationEnabledToggle) {
         moderationEnabledToggle.classList.toggle('on', modOn);
         moderationEnabledToggle.classList.toggle('off', !modOn);
@@ -1434,6 +1457,13 @@ export class AdminPanelElement extends HTMLElement {
         checkLettersToggle.setAttribute('data-enabled', String(letOn));
         const t = checkLettersToggle.querySelector('.status-toggle-text');
         if (t) t.textContent = letOn ? 'ВКЛ' : 'ВЫКЛ';
+      }
+      if (checkLinksToggle) {
+        checkLinksToggle.classList.toggle('on', linksOn);
+        checkLinksToggle.classList.toggle('off', !linksOn);
+        checkLinksToggle.setAttribute('data-enabled', String(linksOn));
+        const t = checkLinksToggle.querySelector('.status-toggle-text');
+        if (t) t.textContent = linksOn ? 'ВКЛ' : 'ВЫКЛ';
       }
       if (saveBtn) saveBtn.disabled = true;
     } catch (error) {

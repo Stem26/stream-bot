@@ -1047,6 +1047,7 @@ type ChatModerationRow = {
     moderation_enabled: boolean;
     check_symbols: boolean;
     check_letters: boolean;
+    check_links: boolean;
     max_message_length: number;
     max_letters_digits: number;
     timeout_minutes: number;
@@ -1056,6 +1057,7 @@ const defaultModerationConfig = () => ({
     moderationEnabled: true,
     checkSymbols: true,
     checkLetters: true,
+    checkLinks: false,
     maxMessageLength: 300,
     maxLettersDigits: 300,
     timeoutMinutes: 10,
@@ -1064,7 +1066,7 @@ const defaultModerationConfig = () => ({
 app.get('/api/admin/chat-moderation/config', async (_req: Request, res: Response) => {
     try {
         const row = await queryOne<ChatModerationRow>(
-            'SELECT moderation_enabled, check_symbols, check_letters, max_message_length, max_letters_digits, timeout_minutes FROM chat_moderation_config WHERE id = 1'
+            'SELECT moderation_enabled, check_symbols, check_links, check_letters, max_message_length, max_letters_digits, timeout_minutes FROM chat_moderation_config WHERE id = 1'
         );
         if (!row) {
             res.json(defaultModerationConfig());
@@ -1074,6 +1076,7 @@ app.get('/api/admin/chat-moderation/config', async (_req: Request, res: Response
             moderationEnabled: row.moderation_enabled ?? true,
             checkSymbols: row.check_symbols ?? true,
             checkLetters: row.check_letters ?? true,
+            checkLinks: row.check_links ?? false,
             maxMessageLength: row.max_message_length,
             maxLettersDigits: row.max_letters_digits ?? 300,
             timeoutMinutes: row.timeout_minutes,
@@ -1092,6 +1095,8 @@ app.post('/api/admin/chat-moderation/config', async (req: Request, res: Response
             req.body?.checkSymbols != null ? Boolean(req.body.checkSymbols) : undefined;
         const checkLetters =
             req.body?.checkLetters != null ? Boolean(req.body.checkLetters) : undefined;
+        const checkLinks =
+            req.body?.checkLinks != null ? Boolean(req.body.checkLinks) : undefined;
         const maxMessageLength =
             req.body?.maxMessageLength != null ? Number(req.body.maxMessageLength) : undefined;
         const maxLettersDigits =
@@ -1135,6 +1140,10 @@ app.post('/api/admin/chat-moderation/config', async (req: Request, res: Response
             updates.push(`check_letters = $${i++}`);
             params.push(checkLetters);
         }
+        if (checkLinks != null) {
+            updates.push(`check_links = $${i++}`);
+            params.push(checkLinks);
+        }
         if (maxMessageLength != null) {
             updates.push(`max_message_length = $${i++}`);
             params.push(maxMessageLength);
@@ -1150,13 +1159,14 @@ app.post('/api/admin/chat-moderation/config', async (req: Request, res: Response
 
         if (updates.length === 0) {
             const row = await queryOne<ChatModerationRow>(
-                'SELECT moderation_enabled, check_symbols, check_letters, max_message_length, max_letters_digits, timeout_minutes FROM chat_moderation_config WHERE id = 1'
+                'SELECT moderation_enabled, check_symbols, check_letters, check_links, max_message_length, max_letters_digits, timeout_minutes FROM chat_moderation_config WHERE id = 1'
             );
             const out = row
                 ? {
                       moderationEnabled: row.moderation_enabled ?? true,
                       checkSymbols: row.check_symbols ?? true,
                       checkLetters: row.check_letters ?? true,
+                      checkLinks: row.check_links ?? false,
                       maxMessageLength: row.max_message_length,
                       maxLettersDigits: row.max_letters_digits ?? 300,
                       timeoutMinutes: row.timeout_minutes,
@@ -1172,13 +1182,14 @@ app.post('/api/admin/chat-moderation/config', async (req: Request, res: Response
         );
 
         const row = await queryOne<ChatModerationRow>(
-            'SELECT moderation_enabled, check_symbols, check_letters, max_message_length, max_letters_digits, timeout_minutes FROM chat_moderation_config WHERE id = 1'
+            'SELECT moderation_enabled, check_symbols, check_letters, check_links, max_message_length, max_letters_digits, timeout_minutes FROM chat_moderation_config WHERE id = 1'
         );
         const config = row
             ? {
                   moderationEnabled: row.moderation_enabled ?? true,
                   checkSymbols: row.check_symbols ?? true,
                   checkLetters: row.check_letters ?? true,
+                  checkLinks: row.check_links ?? false,
                   maxMessageLength: row.max_message_length,
                   maxLettersDigits: row.max_letters_digits ?? 300,
                   timeoutMinutes: row.timeout_minutes,
@@ -1198,6 +1209,37 @@ app.post('/api/admin/chat-moderation/config', async (req: Request, res: Response
     } catch (error) {
         console.error('❌ Ошибка сохранения конфига модерации чата:', error);
         res.status(500).json({ error: 'Ошибка сохранения конфига модерации чата' });
+    }
+});
+
+// Whitelist разрешённых ссылок (бот пропускает эти ссылки при фильтрации)
+app.get('/api/admin/link-whitelist', async (_req: Request, res: Response) => {
+    try {
+        const rows = (await query('SELECT pattern FROM link_whitelist ORDER BY id')) as { pattern: string }[];
+        const patterns = (rows ?? []).map((r) => r.pattern ?? '').filter(Boolean);
+        res.json({ patterns });
+    } catch (error) {
+        console.error('❌ Ошибка получения whitelist ссылок:', error);
+        res.status(500).json({ error: 'Ошибка получения whitelist ссылок' });
+    }
+});
+
+app.post('/api/admin/link-whitelist', async (req: Request, res: Response) => {
+    try {
+        const patterns = Array.isArray(req.body?.patterns)
+            ? (req.body.patterns as string[])
+                .map((p) => String(p ?? '').trim().replace(/[.,;:!?)\]}>]+$/, ''))
+                .filter(Boolean)
+            : [];
+        await query('DELETE FROM link_whitelist');
+        for (const pattern of patterns) {
+            await query('INSERT INTO link_whitelist (pattern) VALUES ($1)', [pattern]);
+        }
+        if (onChatModerationConfigUpdatedCallback) onChatModerationConfigUpdatedCallback();
+        res.json({ patterns });
+    } catch (error) {
+        console.error('❌ Ошибка сохранения whitelist ссылок:', error);
+        res.status(500).json({ error: 'Ошибка сохранения whitelist ссылок' });
     }
 });
 

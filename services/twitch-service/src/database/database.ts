@@ -244,9 +244,20 @@ export async function initDatabase(): Promise<void> {
         ALTER TABLE chat_moderation_config ADD COLUMN IF NOT EXISTS check_letters BOOLEAN NOT NULL DEFAULT true
       `).catch(() => {});
       await client.query(`
+        ALTER TABLE chat_moderation_config ADD COLUMN IF NOT EXISTS check_links BOOLEAN NOT NULL DEFAULT false
+      `).catch(() => {});
+      await client.query(`
         INSERT INTO chat_moderation_config (id, max_message_length, max_letters_digits, timeout_minutes)
         VALUES (1, 300, 300, 10)
         ON CONFLICT (id) DO NOTHING
+      `);
+
+      // Whitelist разрешённых ссылок для модерации (бот пропускает эти ссылки)
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS link_whitelist (
+          id SERIAL PRIMARY KEY,
+          pattern TEXT NOT NULL
+        )
       `);
 
       // Дейлики дуэлей: ежедневная награда и серия побед (одна строка)

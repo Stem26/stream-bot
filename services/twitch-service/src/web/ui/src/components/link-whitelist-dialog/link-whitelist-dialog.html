@@ -1,0 +1,25 @@
+<div class="modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2>Разрешённые ссылки</h2>
+      <button type="button" class="modal-close-btn" data-close>×</button>
+    </div>
+    <form id="link-whitelist-form">
+      <div class="modal-body">
+        <p class="link-whitelist-desc">
+          Сообщения с ссылками удаляются, кроме ссылок из этого списка. Сообщения самого бота всегда пропускаются.
+          Добавь домены или полные URL — по одному на строку.
+        </p>
+        <div class="form-group">
+          <label for="link-whitelist-text">Домены или URL для пропуска</label>
+          <textarea id="link-whitelist-text"
+            placeholder="twitch.tv&#10;discord.gg&#10;boosty.to&#10;https://t.me/mychannel"></textarea>
+          <small>Примеры: twitch.tv, discord.gg, boosty.to, https://t.me/mychannel</small>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-success">Сохранить</button>
+      </div>
+    </form>
+  </div>
+</div>
