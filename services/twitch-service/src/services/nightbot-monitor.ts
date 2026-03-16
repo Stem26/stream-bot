@@ -218,7 +218,7 @@ export class NightBotMonitor {
         checkSymbols: true,
         checkLetters: true,
         checkLinks: false,
-        linkWhitelist: [] as string[],
+        linkWhitelistCompiled: { domains: new Set<string>(), paths: [] as string[] },
         maxMessageLength: 25,
         maxLettersDigits: 100,
         windowMs: 5 * 60 * 1000,
@@ -2346,7 +2346,8 @@ export class NightBotMonitor {
                 this.spamConfig.timeoutMinutes = row.timeout_minutes ?? this.spamConfig.timeoutMinutes;
             }
             const whitelistRows = await query('SELECT pattern FROM link_whitelist') as { pattern: string }[];
-            this.spamConfig.linkWhitelist = (whitelistRows ?? []).map((r) => (r.pattern ?? '').trim().toLowerCase()).filter(Boolean);
+            const patterns = (whitelistRows ?? []).map((r) => (r.pattern ?? '').trim()).filter(Boolean);
+            this.spamConfig.linkWhitelistCompiled = this.compileLinkWhitelist(patterns);
             this.spamConfigLastLoaded = now;
         } catch (error: any) {
             console.error('⚠️ Ошибка загрузки настроек модерации чата:', error?.message || error);
@@ -2359,37 +2360,68 @@ export class NightBotMonitor {
         this.spamConfigLastLoaded = 0;
     }
 
-    /** Извлекает URL из сообщения: http(s)://, www., а также домен/путь без протокола (twitch.tv/xxx) */
-    private extractUrls(message: string): string[] {
-        // Убираем пробелы внутри домена (discord. com → discord.com), чтобы обойти обход фильтра
-        const withProtocol = /https?:\/\/[^\s<>"'\]]+|www\.[^\s<>"'\]]+/gi;
-        const bareDomain = /\b[a-z0-9](?:[-a-z0-9]*[a-z0-9])?\.[a-z]{2,}(?:\/[^\s<>"'\]]*)?/gi;
-        const a = message.match(withProtocol) ?? [];
-        const b = message.match(bareDomain) ?? [];
-        return [...a, ...b]
-            .map((u) => u.replace(/[.,;:!?)\]}>]+$/, '').toLowerCase())
-            .filter((u, i, arr) => arr.indexOf(u) === i);
+    /** Компилирует whitelist: домены (Set) и пути (массив). Алиасы: youtube.com↔youtu.be, t.me↔telegram.me */
+    private compileLinkWhitelist(patterns: string[]): { domains: Set<string>; paths: string[] } {
+        const domains = new Set<string>();
+        const paths: string[] = [];
+        const DOMAIN_ALIASES: Record<string, string[]> = {
+            youtube: ['youtube.com', 'youtu.be'],
+            telegram: ['t.me', 'telegram.me'],
+        };
+        for (let p of patterns) {
+            p = p
+                .toLowerCase()
+                .trim()
+                .replace(/^https?:\/\//, '')
+                .replace(/^www\./, '')
+                .replace(/\/+$/, '')
+                .replace(/[.,;:!?)\]}>]+$/, '');
+            if (!p) continue;
+            if (p.includes('/')) {
+                paths.push(p);
+            } else {
+                domains.add(p);
+                for (const [, aliases] of Object.entries(DOMAIN_ALIASES)) {
+                    if (aliases.includes(p)) aliases.forEach((a) => domains.add(a));
+                }
+            }
+        }
+        return { domains, paths };
     }
 
-    /** Проверяет, разрешена ли ссылка (whitelist: домен или полный URL). @ — для youtube.com/@channel */
-    private isUrlWhitelisted(url: string, whitelist: string[]): boolean {
-        if (!whitelist.length) return false;
-        const normalized = url.toLowerCase();
-        for (const pattern of whitelist) {
-            const p = pattern.toLowerCase().trim().replace(/[.,;:!?)\]}>]+$/, '');
-            if (!p) continue;
-            if (!p.includes('/')) {
-                try {
-                    const toParse = normalized.startsWith('http') ? normalized : `https://${normalized}`;
-                    const host = new URL(toParse).hostname.replace(/^www\./, '').toLowerCase();
-                    if (host === p || host.endsWith('.' + p)) return true;
-                } catch { /* не URL */ }
-            }
-            const idx = normalized.indexOf(p);
-            if (idx === -1) continue;
-            const after = normalized[idx + p.length];
-            if (after !== undefined && !/[/?#&=.@]/.test(after)) continue;
-            return true;
+    /** Извлекает URL из сообщения: http(s)://, www., а также домен/путь без протокола (twitch.tv/xxx) */
+    private extractUrls(message: string): string[] {
+        const normalized = message.replace(/([a-z0-9-])\.\s+([a-z0-9])/gi, '$1.$2');
+        const withProtocol = /https?:\/\/[^\s<>"'\]]+|www\.[^\s<>"'\]]+/gi;
+        const bareDomain = /\b[a-z0-9](?:[-a-z0-9]*[a-z0-9])?\.[a-z]{2,}(?:\/[^\s<>"'\]]*)?/gi;
+        const a = (normalized.match(withProtocol) ?? []).map((u) => u.replace(/[.,;:!?)\]}>]+$/, '').toLowerCase());
+        const bRaw = normalized.match(bareDomain) ?? [];
+        const b = bRaw
+            .map((u) => u.replace(/[.,;:!?)\]}>]+$/, '').toLowerCase())
+            .filter((u) => !a.some((full) => full.includes(u)));
+        return [...a, ...b].filter((u, i, arr) => arr.indexOf(u) === i);
+    }
+
+    /** Проверяет, разрешена ли ссылка (CompiledWhitelist: domains + paths) */
+    private isUrlWhitelisted(url: string, wl: { domains: Set<string>; paths: string[] }): boolean {
+        let parsed: URL;
+        try {
+            const toParse = url.startsWith('http') ? url : `https://${url}`;
+            parsed = new URL(toParse);
+        } catch {
+            return false;
+        }
+        if (parsed.pathname.includes('://')) return false;
+        if (parsed.username || parsed.password) return false;
+        const host = parsed.hostname.toLowerCase().replace(/^www\./, '');
+        const full = (host + parsed.pathname).toLowerCase();
+        for (const domain of wl.domains) {
+            if (host === domain || host.endsWith('.' + domain)) return true;
+        }
+        for (const p of wl.paths) {
+            if (!full.startsWith(p)) continue;
+            const next = full[p.length];
+            if (next === undefined || /[/?#]/.test(next)) return true;
         }
         return false;
     }
@@ -2398,9 +2430,9 @@ export class NightBotMonitor {
         if (!this.spamConfig.moderationEnabled || !this.spamConfig.checkLinks) return false;
         const urls = this.extractUrls(message);
         if (urls.length === 0) return false;
-        const whitelist = this.spamConfig.linkWhitelist;
+        const wl = this.spamConfig.linkWhitelistCompiled;
         for (const url of urls) {
-            if (!this.isUrlWhitelisted(url, whitelist)) return true;
+            if (!this.isUrlWhitelisted(url, wl)) return true;
         }
         return false;
     }

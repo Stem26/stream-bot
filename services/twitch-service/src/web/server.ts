@@ -1384,6 +1384,7 @@ function normalizeLinkPattern(url: string): string {
         .trim()
         .replace(/^https?:\/\//i, '')
         .replace(/^www\./i, '')
+        .replace(/\/+$/, '')
         .replace(/[.,;:!?)\]}>]+$/, '');
 }
 
