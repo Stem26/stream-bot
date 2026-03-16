@@ -298,6 +298,17 @@ export async function initDatabase(): Promise<void> {
         )
       `);
 
+      // Админы админ-панели (логин + bcrypt-хеш пароля)
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS admin_users (
+          id SERIAL PRIMARY KEY,
+          username TEXT NOT NULL UNIQUE,
+          password_hash TEXT NOT NULL,
+          created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+      await client.query(`CREATE INDEX IF NOT EXISTS idx_admin_users_username ON admin_users(LOWER(username))`);
+
       // Добавляем дефолтные элементы партии если таблица пустая (только названия, количество 1–4 генерируется при выдаче)
       const partyCount = await client.query('SELECT COUNT(*)::int AS cnt FROM party_items');
       if (partyCount.rows[0]?.cnt === 0) {

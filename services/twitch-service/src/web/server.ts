@@ -1,4 +1,6 @@
 import express, { Request, Response } from 'express';
+import * as bcrypt from 'bcrypt';
+import * as jwt from 'jsonwebtoken';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as http from 'http';
@@ -6,19 +8,90 @@ import WebSocket from 'ws';
 import { query, queryOne } from '../database/database';
 
 const app = express();
-const PORT = process.env.WEB_PORT || 3000;
+const PORT = parseInt(String(process.env.WEB_PORT || 3000), 10) || 3000;
 
 // WebSocket для реал-тайм обновлений (например, список забаненных по дуэлям) — только по событиям (дуэль/амнистия)
 const WS_PATH = '/ws';
 let wss: WebSocket.Server | null = null;
 let broadcastDuelBannedChanged: (() => void) | null = null;
 
+// === Авторизация админки: admin_users в БД + JWT ===
+const JWT_SECRET = process.env.JWT_SECRET ?? (process.env.NODE_ENV === 'production' ? undefined : 'dev-secret-change-in-prod');
+const isProd = process.env.NODE_ENV === 'production';
+const JWT_EXPIRES_IN = '7d';
+
+interface JwtPayload {
+  userId: number;
+  username: string;
+}
+
+/** Middleware: проверяет JWT Bearer-токен */
+function requireAdmin(req: Request, res: Response, next: () => void): void {
+  const authHeader = req.headers.authorization;
+  const token = typeof authHeader === 'string' ? authHeader.replace(/^Bearer\s+/i, '').trim() : '';
+  if (!token || !JWT_SECRET) {
+    res.status(401).json({ error: 'Требуется авторизация' });
+    return;
+  }
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET) as JwtPayload;
+    (req as Request & { adminUser?: JwtPayload }).adminUser = decoded;
+    next();
+  } catch {
+    res.status(401).json({ error: 'Требуется авторизация' });
+  }
+}
+
+/** Rate limit для логина: 5 попыток в минуту с IP */
+const loginAttempts = new Map<string, { count: number; resetAt: number }>();
+const LOGIN_RATE_LIMIT = 5;
+const LOGIN_RATE_WINDOW_MS = 60_000;
+
+function checkLoginRateLimit(ip: string): boolean {
+  const now = Date.now();
+  const entry = loginAttempts.get(ip);
+  if (!entry) return true;
+  if (now > entry.resetAt) {
+    loginAttempts.delete(ip);
+    return true;
+  }
+  return entry.count < LOGIN_RATE_LIMIT;
+}
+
+function recordLoginAttempt(ip: string): void {
+  const now = Date.now();
+  const entry = loginAttempts.get(ip);
+  if (!entry) {
+    loginAttempts.set(ip, { count: 1, resetAt: now + LOGIN_RATE_WINDOW_MS });
+  } else {
+    entry.count++;
+  }
+}
+
 // Middleware
 app.use(express.json());
 // Статика с долгим кешем — фон и ассеты не перезапрашиваются при переходах
 app.use(express.static(path.join(__dirname, 'public'), { maxAge: '1y', immutable: true }));
 
-// Авторизация админки пока только через nginx (auth_basic). Middleware в приложении не используется.
+// Лимиты для защиты от злоупотреблений
+const MAX_ID_LENGTH = 80;
+const MAX_TRIGGER_LENGTH = 80;
+const MAX_RESPONSE_LENGTH = 8000;
+const MAX_DESCRIPTION_LENGTH = 500;
+const MAX_ALIASES = 30;
+const MAX_TEXT_LENGTH = 2000; // party items, link whitelist patterns
+
+function sanitizeString(s: unknown, maxLen: number): string {
+  if (typeof s !== 'string') return '';
+  return s.slice(0, maxLen).trim();
+}
+
+// Защита API: все маршруты кроме /api/auth, /api/leaderboard, /ws требуют авторизации
+app.use('/api/admin', requireAdmin);
+app.use('/api/commands', requireAdmin);
+app.use('/api/counters', requireAdmin);
+app.use('/api/links', requireAdmin);
+app.use('/api/party', requireAdmin);
 
 // Интерфейс команды
 interface CustomCommand {
@@ -362,6 +435,9 @@ app.put('/api/links', async (req: Request, res: Response) => {
         if (typeof allLinksText !== 'string') {
             return res.status(400).json({ error: 'Поле allLinksText обязательно' });
         }
+        if (allLinksText.length > 50000) {
+            return res.status(400).json({ error: 'Текст ссылок слишком длинный' });
+        }
 
         // Если минут нет в теле запроса — не трогаем интервал, берём текущее значение из БД
         let effectiveInterval: number;
@@ -422,9 +498,22 @@ app.post('/api/commands', async (req: Request, res: Response) => {
         if (!newCommand.id || !newCommand.trigger || !newCommand.response) {
             return res.status(400).json({ error: 'Обязательные поля: id, trigger, response' });
         }
+        const safeId = sanitizeString(newCommand.id, MAX_ID_LENGTH);
+        const safeTrigger = sanitizeString(newCommand.trigger, MAX_TRIGGER_LENGTH);
+        const safeResponse = sanitizeString(newCommand.response, MAX_RESPONSE_LENGTH);
+        if (!safeId || !safeTrigger || !safeResponse) {
+            return res.status(400).json({ error: 'id, trigger и response не должны быть пустыми' });
+        }
+        if (Array.isArray(newCommand.aliases) && newCommand.aliases.length > MAX_ALIASES) {
+            return res.status(400).json({ error: `Максимум ${MAX_ALIASES} алиасов` });
+        }
+        const cooldown = Number(newCommand.cooldown);
+        if (!Number.isNaN(cooldown) && (cooldown < 0 || cooldown > 3600)) {
+            return res.status(400).json({ error: 'Кулдаун должен быть от 0 до 3600 сек' });
+        }
 
         // Проверка на дубликат ID
-        const existingById = await getCommandByIdFromDb(newCommand.id);
+        const existingById = await getCommandByIdFromDb(safeId);
         if (existingById) {
             return res.status(400).json({ error: 'Команда с таким ID уже существует' });
         }
@@ -436,20 +525,27 @@ app.post('/api/commands', async (req: Request, res: Response) => {
                 OR EXISTS (
                   SELECT 1 FROM unnest(aliases) a WHERE LOWER(a) = LOWER($1)
              )`,
-            [newCommand.trigger],
+            [safeTrigger],
         );
 
         if (triggerCheck) {
             return res.status(400).json({
-                error: `Триггер "${newCommand.trigger}" уже используется командой "${triggerCheck.id}"`,
+                error: `Триггер "${safeTrigger}" уже используется командой "${triggerCheck.id}"`,
             });
         }
 
+        const safeAliases = Array.isArray(newCommand.aliases)
+            ? newCommand.aliases.slice(0, MAX_ALIASES).map((a) => sanitizeString(a, MAX_TRIGGER_LENGTH)).filter(Boolean)
+            : [];
         const toSave: CustomCommand = {
             ...newCommand,
-            aliases: newCommand.aliases || [],
+            id: safeId,
+            trigger: safeTrigger,
+            response: safeResponse,
+            description: sanitizeString(newCommand.description, MAX_DESCRIPTION_LENGTH) || '',
+            aliases: safeAliases,
             enabled: newCommand.enabled !== false,
-            cooldown: newCommand.cooldown || 10,
+            cooldown: Number.isNaN(cooldown) ? 10 : Math.max(0, Math.min(3600, cooldown)),
             messageType: newCommand.messageType || 'announcement',
             color: newCommand.color || 'primary',
         };
@@ -475,8 +571,35 @@ app.put('/api/commands/:id', async (req: Request, res: Response) => {
             return res.status(404).json({ error: 'Команда не найдена' });
         }
 
+        // Санитизация и лимиты для обновляемых полей
+        const sanitized: Partial<CustomCommand> = { ...updatedCommand };
+        if (updatedCommand.trigger !== undefined) {
+            const t = sanitizeString(updatedCommand.trigger, MAX_TRIGGER_LENGTH);
+            if (!t) return res.status(400).json({ error: 'Триггер не должен быть пустым' });
+            sanitized.trigger = t;
+        }
+        if (updatedCommand.response !== undefined) {
+            sanitized.response = sanitizeString(updatedCommand.response, MAX_RESPONSE_LENGTH) || existing.response;
+        }
+        if (updatedCommand.description !== undefined) {
+            sanitized.description = sanitizeString(updatedCommand.description, MAX_DESCRIPTION_LENGTH);
+        }
+        if (Array.isArray(updatedCommand.aliases) && updatedCommand.aliases.length > MAX_ALIASES) {
+            return res.status(400).json({ error: `Максимум ${MAX_ALIASES} алиасов` });
+        }
+        if (updatedCommand.aliases !== undefined) {
+            sanitized.aliases = updatedCommand.aliases.slice(0, MAX_ALIASES).map((a) => sanitizeString(a, MAX_TRIGGER_LENGTH)).filter(Boolean);
+        }
+        if (updatedCommand.cooldown !== undefined) {
+            const cd = Number(updatedCommand.cooldown);
+            if (!Number.isNaN(cd) && (cd < 0 || cd > 3600)) {
+                return res.status(400).json({ error: 'Кулдаун должен быть от 0 до 3600 сек' });
+            }
+            sanitized.cooldown = Number.isNaN(cd) ? existing.cooldown : Math.max(0, Math.min(3600, cd));
+        }
+
         // Если меняется trigger, проверяем на дубликаты
-        if (updatedCommand.trigger && updatedCommand.trigger !== existing.trigger) {
+        if (sanitized.trigger && sanitized.trigger !== existing.trigger) {
             const existingTrigger = await queryOne<{ id: string }>(
                 `SELECT id FROM custom_commands
                  WHERE id <> $1 AND (
@@ -485,17 +608,17 @@ app.put('/api/commands/:id', async (req: Request, res: Response) => {
                      SELECT 1 FROM unnest(aliases) a WHERE LOWER(a) = LOWER($2)
                    )
                  )`,
-                [id, updatedCommand.trigger],
+                [id, sanitized.trigger],
             );
 
             if (existingTrigger) {
                 return res.status(400).json({
-                    error: `Триггер "${updatedCommand.trigger}" уже используется командой "${existingTrigger.id}"`,
+                    error: `Триггер "${sanitized.trigger}" уже используется командой "${existingTrigger.id}"`,
                 });
             }
         }
 
-        const merged = await updateCommandInDb(id, updatedCommand);
+        const merged = await updateCommandInDb(id, sanitized);
         if (!merged) {
             return res.status(404).json({ error: 'Команда не найдена' });
         }
@@ -863,13 +986,15 @@ app.post('/api/party/items', async (req: Request, res: Response) => {
         if (!text || typeof text !== 'string' || !text.trim()) {
             return res.status(400).json({ error: 'Поле text обязательно' });
         }
+        const safeText = sanitizeString(text, MAX_TEXT_LENGTH);
+        if (!safeText) return res.status(400).json({ error: 'Поле text не должно быть пустым' });
         const maxOrder = await queryOne<{ max: number | null }>(
             'SELECT MAX(sort_order) AS max FROM party_items',
         );
         const sortOrder = (maxOrder?.max ?? -1) + 1;
         const result = await query<PartyItemRow>(
             'INSERT INTO party_items (text, sort_order) VALUES ($1, $2) RETURNING id, text, sort_order',
-            [text.trim(), sortOrder],
+            [safeText, sortOrder],
         );
         res.status(201).json(result[0]);
     } catch (error) {
@@ -886,9 +1011,11 @@ app.put('/api/party/items/:id', async (req: Request, res: Response) => {
         if (!text || typeof text !== 'string' || !text.trim()) {
             return res.status(400).json({ error: 'Поле text обязательно' });
         }
+        const safeText = sanitizeString(text, MAX_TEXT_LENGTH);
+        if (!safeText) return res.status(400).json({ error: 'Поле text не должно быть пустым' });
         const result = await query<PartyItemRow>(
             'UPDATE party_items SET text = $2 WHERE id = $1 RETURNING id, text, sort_order',
-            [id, text.trim()],
+            [id, safeText],
         );
         if (result.length === 0) return res.status(404).json({ error: 'Элемент не найден' });
         res.json(result[0]);
@@ -978,16 +1105,44 @@ app.get('/api/leaderboard', async (req: Request, res: Response) => {
 
 // === API для авторизации ===
 
-app.post('/api/auth/login', (req: Request, res: Response) => {
+app.post('/api/auth/login', async (req: Request, res: Response) => {
     try {
-        const { password } = req.body;
-        const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
-        
-        if (password === adminPassword) {
-            res.json({ success: true });
-        } else {
-            res.status(401).json({ success: false, error: 'Неверный пароль' });
+        if (!JWT_SECRET && isProd) {
+            res.status(503).json({ success: false, error: 'JWT_SECRET не настроен на сервере' });
+            return;
         }
+        const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.socket.remoteAddress || 'unknown';
+        if (!checkLoginRateLimit(ip)) {
+            res.status(429).json({ success: false, error: 'Слишком много попыток входа. Повторите через минуту.' });
+            return;
+        }
+        const { username, password } = req.body;
+        if (typeof username !== 'string' || typeof password !== 'string') {
+            recordLoginAttempt(ip);
+            res.status(400).json({ success: false, error: 'Укажите логин и пароль' });
+            return;
+        }
+        const name = username.trim().toLowerCase();
+        if (!name || name.length > 80) {
+            recordLoginAttempt(ip);
+            res.status(400).json({ success: false, error: 'Некорректный логин' });
+            return;
+        }
+        const row = await queryOne<{ id: number; username: string; password_hash: string }>(
+            'SELECT id, username, password_hash FROM admin_users WHERE LOWER(username) = $1',
+            [name]
+        );
+        if (!row || !(await bcrypt.compare(password, row.password_hash))) {
+            recordLoginAttempt(ip);
+            res.status(401).json({ success: false, error: 'Неверный логин или пароль' });
+            return;
+        }
+        const token = jwt.sign(
+            { userId: row.id, username: row.username } as JwtPayload,
+            JWT_SECRET!,
+            { expiresIn: JWT_EXPIRES_IN }
+        );
+        res.json({ success: true, token });
     } catch (error) {
         console.error('❌ Ошибка авторизации:', error);
         res.status(500).json({ error: 'Ошибка авторизации' });
@@ -1646,34 +1801,53 @@ export function getBroadcastDuelBannedChanged(): (() => void) | null {
     return broadcastDuelBannedChanged;
 }
 
-// Запуск сервера (HTTP + WebSocket на том же порту)
+// Запуск сервера (HTTP + WebSocket на том же порту). При EADDRINUSE пробует порты 3001, 3002...
 export function startWebServer(): Promise<void> {
-    return new Promise((resolve) => {
-        const server = http.createServer(app);
+    return new Promise((resolve, reject) => {
+        function attempt(port: number): void {
+            const server = http.createServer(app);
+            const wsServer = new WebSocket.Server({ server, path: WS_PATH });
+            const clients = new Set<WebSocket>();
 
-        wss = new WebSocket.Server({ server, path: WS_PATH });
-        const clients = new Set<WebSocket>();
+            wsServer.on('connection', (ws: WebSocket) => {
+                clients.add(ws);
+                ws.on('close', () => { clients.delete(ws); });
+                ws.on('error', () => { clients.delete(ws); });
+            });
 
-        wss.on('connection', (ws: WebSocket) => {
-            clients.add(ws);
-            ws.on('close', () => { clients.delete(ws); });
-            ws.on('error', () => { clients.delete(ws); });
-        });
+            const payload = JSON.stringify({ type: 'duel-banned-changed' });
+            broadcastDuelBannedChanged = () => {
+                clients.forEach((client) => {
+                    if (client.readyState === WebSocket.OPEN) {
+                        client.send(payload);
+                    }
+                });
+            };
 
-        const payload = JSON.stringify({ type: 'duel-banned-changed' });
-        broadcastDuelBannedChanged = () => {
-            clients.forEach((client) => {
-                if (client.readyState === WebSocket.OPEN) {
-                    client.send(payload);
+            const onListen = (): void => {
+                wss = wsServer;
+                console.log(`🌐 Веб-интерфейс доступен: http://localhost:${port}`);
+                console.log(`🔌 WebSocket для админки: ws://localhost:${port}${WS_PATH}`);
+                if (port !== PORT) {
+                    console.warn(`💡 Порт ${PORT} был занят. При dev:all проверьте, что target в vite.config.ts указывает на localhost:${port}`);
+                }
+                resolve();
+            };
+
+            server.once('error', (err: NodeJS.ErrnoException) => {
+                if (err.code === 'EADDRINUSE' && port < 3010) {
+                    console.warn(`⚠️ Порт ${port} занят, пробуем ${port + 1}...`);
+                    server.close();
+                    attempt(port + 1);
+                } else {
+                    reject(err);
                 }
             });
-        };
 
-        server.listen(PORT, () => {
-            console.log(`🌐 Веб-интерфейс доступен: http://localhost:${PORT}`);
-            console.log(`🔌 WebSocket для админки: ws://localhost:${PORT}${WS_PATH}`);
-            resolve();
-        });
+            server.listen(port, onListen);
+        }
+
+        attempt(PORT);
     });
 }
 

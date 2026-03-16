@@ -1,7 +1,25 @@
-<div class="container" id="admin-panel-container">
-  <div class="header">
-    <h1>🎮 Админ-панель</h1>
-    <p>Управление ботом и командами</p>
+<div class="auth-modal active" id="auth-modal">
+  <div class="auth-content">
+    <h2>Вход в админ-панель</h2>
+    <p class="auth-hint">Введите логин и пароль</p>
+    <form id="auth-form">
+      <input type="text" id="auth-username" placeholder="Логин" autocomplete="username" required />
+      <input type="password" id="auth-password" placeholder="Пароль" autocomplete="current-password" required />
+      <div id="auth-error" class="auth-error" style="display: none;"></div>
+      <div class="auth-actions">
+        <button type="button" class="btn btn-outline" id="auth-cancel-btn">Отмена</button>
+        <button type="submit" class="btn btn-primary" id="auth-submit-btn">Войти</button>
+      </div>
+    </form>
+  </div>
+</div>
+<div class="container" id="admin-panel-container" style="display: none;">
+  <div class="header header-with-logout">
+    <div>
+      <h1>🎮 Админ-панель</h1>
+      <p>Управление ботом и командами</p>
+    </div>
+    <button type="button" class="btn btn-outline" id="logout-btn">Выйти</button>
   </div>
   <div id="alert-container"></div>
   <div class="tabs">
@@ -325,7 +343,7 @@
     <div class="party-table-wrap">
       <div class="party-table-card">
         <div class="party-table-header">
-          <button type="button" class="btn btn-small" id="add-party-item-btn">Добавить партию</button>
+          <button type="button" class="btn btn-small" id="add-party-item-btn">Добавить</button>
         </div>
         <div id="party-items-container" class="party-items-table-container loading-state">
           <div class="loading">Загрузка...</div>

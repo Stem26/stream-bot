@@ -3,11 +3,13 @@ import template from './admin-panel.html?raw';
 import './admin-panel.scss';
 import { showAlert } from '../../alerts';
 import {
+  authFetch,
   createCommand,
   deleteCommand,
   fetchCommands,
   fetchLinksConfig,
   updateLinksConfig,
+  login,
   toggleCommand,
   toggleCommandRotation,
   updateCommand,
@@ -40,6 +42,7 @@ import type { CounterDialogElement, CounterDialogSaveDetail, CounterDialogDelete
 import type { PartyDialogElement, PartyDialogSaveDetail } from '../party-dialog/party-dialog';
 import type { ModerationRulesDialogElement } from '../moderation-rules-dialog/moderation-rules-dialog';
 import type { LinkWhitelistDialogElement } from '../link-whitelist-dialog/link-whitelist-dialog';
+import { clearAdminAuth, getAdminPassword, setAdminPassword } from '../../admin-auth';
 
 function escapeHtml(s: string): string {
   return s
@@ -80,10 +83,18 @@ export class AdminPanelElement extends HTMLElement {
     if (this.initialized) return;
     this.initialized = true;
     this.innerHTML = template;
-    this.bootstrap().catch((err) => console.error(err));
+    this.setupAuthModal();
+    window.addEventListener('admin-auth-required', this.handleAuthRequired);
+    if (getAdminPassword()) {
+      this.showPanel();
+      this.bootstrap().catch((err) => console.error(err));
+    } else {
+      this.showAuthModal();
+    }
   }
 
   disconnectedCallback(): void {
+    window.removeEventListener('admin-auth-required', this.handleAuthRequired);
     if (this.duelBannedWsReconnect) {
       clearTimeout(this.duelBannedWsReconnect);
       this.duelBannedWsReconnect = null;
@@ -96,6 +107,57 @@ export class AdminPanelElement extends HTMLElement {
       clearInterval(this.duelBannedTickId);
       this.duelBannedTickId = null;
     }
+  }
+
+  private handleAuthRequired = (): void => {
+    this.showAuthModal();
+  };
+
+  private showAuthModal(): void {
+    const modal = this.querySelector('#auth-modal');
+    const container = this.querySelector('#admin-panel-container');
+    if (modal) modal.classList.add('active');
+    if (container) (container as HTMLElement).style.display = 'none';
+  }
+
+  private showPanel(): void {
+    const modal = this.querySelector('#auth-modal');
+    const container = this.querySelector('#admin-panel-container');
+    if (modal) modal.classList.remove('active');
+    if (container) (container as HTMLElement).style.display = '';
+  }
+
+  private setupAuthModal(): void {
+    const form = this.querySelector<HTMLFormElement>('#auth-form');
+    const usernameInput = this.querySelector<HTMLInputElement>('#auth-username');
+    const passwordInput = this.querySelector<HTMLInputElement>('#auth-password');
+    const errorEl = this.querySelector<HTMLElement>('#auth-error');
+    const submitBtn = this.querySelector<HTMLButtonElement>('#auth-submit-btn');
+
+    this.querySelector('#auth-cancel-btn')?.addEventListener('click', () => {
+      window.location.href = '/public';
+    });
+
+    form?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const username = usernameInput?.value?.trim();
+      const password = passwordInput?.value;
+      if (!username || !password || !errorEl || !submitBtn) return;
+      errorEl.style.display = 'none';
+      errorEl.textContent = '';
+      submitBtn.disabled = true;
+      try {
+        const { token } = await login(username, password);
+        setAdminPassword(token);
+        this.showPanel();
+        void this.bootstrap().catch((err) => console.error(err));
+      } catch (err) {
+        errorEl.textContent = err instanceof Error ? err.message : 'Ошибка входа';
+        errorEl.style.display = 'block';
+      } finally {
+        submitBtn.disabled = false;
+      }
+    });
   }
 
   private connectDuelBannedWs(): void {
@@ -394,7 +456,7 @@ export class AdminPanelElement extends HTMLElement {
 
   private async loadDuelsStatus(): Promise<boolean> {
     try {
-      const response = await fetch('/api/admin/duels/status');
+      const response = await authFetch('/api/admin/duels/status');
       const data = (await response.json()) as { enabled?: boolean; skipCooldown?: boolean };
       const toggle = this.querySelector('#duels-toggle');
       if (toggle) {
@@ -425,7 +487,7 @@ export class AdminPanelElement extends HTMLElement {
 
   private async loadDuelBannedList(): Promise<void> {
     try {
-      const res = await fetch('/api/admin/duels/banned');
+      const res = await authFetch('/api/admin/duels/banned');
       const data = (await res.json()) as { list?: { username: string; timeoutUntil: number }[] };
       this.renderDuelBannedTable(data.list ?? []);
     } catch (error) {
@@ -436,7 +498,7 @@ export class AdminPanelElement extends HTMLElement {
 
   private async loadDuelConfig(): Promise<void> {
     try {
-      const res = await fetch('/api/admin/duels/config');
+      const res = await authFetch('/api/admin/duels/config');
       const data = (await res.json()) as { timeoutMinutes?: number; winPoints?: number; lossPoints?: number; missPenalty?: number };
       const timeoutMinutes = data.timeoutMinutes ?? 5;
       const winPoints = data.winPoints ?? 25;
@@ -485,7 +547,7 @@ export class AdminPanelElement extends HTMLElement {
 
   private async applyDevModeVisibility(): Promise<void> {
     try {
-      const res = await fetch('/api/admin/dev-mode');
+      const res = await authFetch('/api/admin/dev-mode');
       const data = (await res.json()) as { devMode?: boolean };
       const devActions = this.querySelector<HTMLElement>('#duels-dev-actions');
       if (devActions) {
@@ -498,7 +560,7 @@ export class AdminPanelElement extends HTMLElement {
 
   private async loadDuelDailyConfig(): Promise<void> {
     try {
-      const res = await fetch('/api/admin/duels/daily-config');
+      const res = await authFetch('/api/admin/duels/daily-config');
       const data = (await res.json()) as {
         dailyGamesCount?: number;
         dailyRewardPoints?: number;
@@ -667,6 +729,10 @@ export class AdminPanelElement extends HTMLElement {
     }
 
     this.setupTabs();
+    this.querySelector('#logout-btn')?.addEventListener('click', () => {
+      clearAdminAuth();
+      window.location.href = '/public';
+    });
     await this.initLinks(linkDialog);
     await this.loadCommands();
     await this.loadCounters();
@@ -989,7 +1055,7 @@ export class AdminPanelElement extends HTMLElement {
           return;
         }
         try {
-          const res = await fetch(`/api/commands/${encodeURIComponent(id)}/send`, { method: 'POST' });
+          const res = await authFetch(`/api/commands/${encodeURIComponent(id)}/send`, { method: 'POST' });
           if (!res.ok) {
             const err = await res.json().catch(() => ({}));
             throw new Error((err as { error?: string }).error || `HTTP ${res.status}`);
@@ -1071,7 +1137,7 @@ export class AdminPanelElement extends HTMLElement {
 
     linkDialog.addEventListener('send', async () => {
       try {
-        await fetch('/api/links/send', { method: 'POST' });
+        await authFetch('/api/links/send', { method: 'POST' });
       } catch (error) {
         if (error instanceof Error) showAlert(`Ошибка отправки ссылок: ${error.message}`, 'error');
       }
@@ -1084,7 +1150,7 @@ export class AdminPanelElement extends HTMLElement {
       const enabled = (duelsToggle as HTMLElement).getAttribute('data-enabled') === 'true';
       const endpoint = enabled ? '/api/admin/duels/disable' : '/api/admin/duels/enable';
       try {
-        const res = await fetch(endpoint, { method: 'POST' });
+        const res = await authFetch(endpoint, { method: 'POST' });
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
           throw new Error((err as { error?: string }).error || `HTTP ${res.status}`);
@@ -1100,7 +1166,7 @@ export class AdminPanelElement extends HTMLElement {
       const skipCooldown = (duelsCooldownToggle as HTMLElement).getAttribute('data-skip-cooldown') === 'true';
       const newSkip = !skipCooldown;
       try {
-        const res = await fetch('/api/admin/duels/set-cooldown-skip', {
+        const res = await authFetch('/api/admin/duels/set-cooldown-skip', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ skip: newSkip }),
@@ -1145,7 +1211,7 @@ export class AdminPanelElement extends HTMLElement {
         return;
       }
       try {
-        const res = await fetch('/api/admin/duels/config', {
+        const res = await authFetch('/api/admin/duels/config', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ timeoutMinutes, winPoints, lossPoints, missPenalty }),
@@ -1168,7 +1234,7 @@ export class AdminPanelElement extends HTMLElement {
         return;
       }
       try {
-        const res = await fetch('/api/admin/duels/daily-config', {
+        const res = await authFetch('/api/admin/duels/daily-config', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ dailyGamesCount, dailyRewardPoints, streakWinsCount, streakRewardPoints }),
@@ -1187,7 +1253,7 @@ export class AdminPanelElement extends HTMLElement {
     duelResetRewardFlagsBtn?.addEventListener('click', async () => {
       if (!confirm('Сбросить у всех игроков флаги и счётчики наград (победы за день, серия побед)? Нужно для теста.')) return;
       try {
-        const res = await fetch('/api/admin/duels/reset-reward-flags', { method: 'POST' });
+        const res = await authFetch('/api/admin/duels/reset-reward-flags', { method: 'POST' });
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
           throw new Error((err as { error?: string }).error || `HTTP ${res.status}`);
@@ -1201,7 +1267,7 @@ export class AdminPanelElement extends HTMLElement {
     duelResetPointsBtn?.addEventListener('click', async () => {
       if (!confirm('Назначить всем игрокам по 1000 очков? Это нельзя отменить.')) return;
       try {
-        const res = await fetch('/api/admin/duels/reset-points', { method: 'POST' });
+        const res = await authFetch('/api/admin/duels/reset-points', { method: 'POST' });
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
           throw new Error((err as { error?: string }).error || `HTTP ${res.status}`);
@@ -1214,7 +1280,7 @@ export class AdminPanelElement extends HTMLElement {
     pardonAllBtn?.addEventListener('click', async () => {
       if (!confirm('Простить всех игроков (снять таймауты дуэлей)?')) return;
       try {
-        const res = await fetch('/api/admin/pardon-all', { method: 'POST' });
+        const res = await authFetch('/api/admin/pardon-all', { method: 'POST' });
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
           throw new Error((err as { error?: string }).error || `HTTP ${res.status}`);
@@ -1267,7 +1333,7 @@ export class AdminPanelElement extends HTMLElement {
       const username = row?.getAttribute('data-username');
       if (!username) return;
       try {
-        const res = await fetch(`/api/admin/duels/pardon/${encodeURIComponent(username)}`, { method: 'POST' });
+        const res = await authFetch(`/api/admin/duels/pardon/${encodeURIComponent(username)}`, { method: 'POST' });
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
           throw new Error((err as { error?: string }).error || `HTTP ${res.status}`);

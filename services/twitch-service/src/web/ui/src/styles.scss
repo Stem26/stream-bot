@@ -69,6 +69,20 @@ body.modal-open {
   opacity: 0.9;
 }
 
+.header-with-logout {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin-right: 10px;
+
+  & > div:first-child {
+    flex: 1;
+    text-align: center;
+  }
+}
+
 .controls {
   background: white;
   border-radius: 15px;
@@ -133,6 +147,16 @@ body.modal-open {
 .btn-small {
   padding: 8px 16px;
   font-size: 14px;
+}
+
+.btn-outline {
+  background: transparent;
+  border: 2px solid rgba(255, 255, 255, 0.9);
+  color: white;
+
+  &:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.2);
+  }
 }
 
 .commands-grid {
@@ -1390,6 +1414,22 @@ body.modal-open {
     text-align: center;
   }
 
+  .auth-hint {
+    margin: -10px 0 15px;
+    font-size: 14px;
+    color: #666;
+    text-align: center;
+  }
+
+  .auth-error {
+    margin-bottom: 15px;
+    padding: 10px;
+    background: #fde8e8;
+    color: #c53030;
+    border-radius: 8px;
+    font-size: 14px;
+  }
+
   input {
     width: 100%;
     padding: 12px;
@@ -1409,6 +1449,16 @@ body.modal-open {
   display: flex;
   gap: 10px;
   justify-content: flex-end;
+}
+
+.auth-content .btn-outline {
+  border-color: #ccc;
+  color: #555;
+  background: transparent;
+
+  &:hover:not(:disabled) {
+    background: #f0f0f0;
+  }
 }
 
 // Таблица лидеров

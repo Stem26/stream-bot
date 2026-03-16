@@ -9,6 +9,21 @@ import type {
   PartyConfig,
   ChatModerationConfig,
 } from './types';
+import { clearAdminAuth, getAdminHeaders } from './admin-auth';
+
+/** fetch с заголовком авторизации; при 401 — очищает сессию и dispatch события для показа логина. Экспорт для прямых вызовов из admin-panel. */
+export async function authFetch(url: string | URL, init?: RequestInit): Promise<Response> {
+  const authHeaders = getAdminHeaders();
+  const mergedHeaders = init?.headers
+    ? { ...authHeaders, ...(init.headers instanceof Headers ? Object.fromEntries(init.headers) : init.headers) }
+    : authHeaders;
+  const response = await fetch(url, { ...init, headers: mergedHeaders });
+  if (response.status === 401) {
+    clearAdminAuth();
+    window.dispatchEvent(new CustomEvent('admin-auth-required'));
+  }
+  return response;
+}
 
 async function handleJson<T>(response: Response, defaultError: string): Promise<T> {
   if (!response.ok) {
@@ -27,12 +42,12 @@ async function handleJson<T>(response: Response, defaultError: string): Promise<
 }
 
 export async function fetchCommands(): Promise<CommandsData> {
-  const response = await fetch('/api/commands');
+  const response = await authFetch('/api/commands');
   return handleJson<CommandsData>(response, 'Ошибка загрузки команд');
 }
 
 export async function createCommand(command: CustomCommand): Promise<CustomCommand> {
-  const response = await fetch('/api/commands', {
+  const response = await authFetch('/api/commands', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(command),
@@ -41,7 +56,7 @@ export async function createCommand(command: CustomCommand): Promise<CustomComma
 }
 
 export async function updateCommand(id: string, command: CustomCommand): Promise<CustomCommand> {
-  const response = await fetch(`/api/commands/${encodeURIComponent(id)}`, {
+  const response = await authFetch(`/api/commands/${encodeURIComponent(id)}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(command),
@@ -50,33 +65,33 @@ export async function updateCommand(id: string, command: CustomCommand): Promise
 }
 
 export async function deleteCommand(id: string): Promise<void> {
-  const response = await fetch(`/api/commands/${encodeURIComponent(id)}`, {
+  const response = await authFetch(`/api/commands/${encodeURIComponent(id)}`, {
     method: 'DELETE',
   });
   await handleJson<unknown>(response, 'Ошибка удаления команды');
 }
 
 export async function toggleCommand(id: string): Promise<CustomCommand> {
-  const response = await fetch(`/api/commands/${encodeURIComponent(id)}/toggle`, {
+  const response = await authFetch(`/api/commands/${encodeURIComponent(id)}/toggle`, {
     method: 'PATCH',
   });
   return handleJson<CustomCommand>(response, 'Ошибка переключения команды');
 }
 
 export async function toggleCommandRotation(id: string): Promise<CustomCommand> {
-  const response = await fetch(`/api/commands/${encodeURIComponent(id)}/rotation-toggle`, {
+  const response = await authFetch(`/api/commands/${encodeURIComponent(id)}/rotation-toggle`, {
     method: 'PATCH',
   });
   return handleJson<CustomCommand>(response, 'Ошибка переключения ротации команды');
 }
 
 export async function fetchLinksConfig(): Promise<LinksConfig> {
-  const response = await fetch('/api/links');
+  const response = await authFetch('/api/links');
   return handleJson<LinksConfig>(response, 'Ошибка загрузки ссылок');
 }
 
 export async function updateLinksConfig(config: { allLinksText: string; rotationIntervalMinutes?: number }): Promise<LinksConfig> {
-  const response = await fetch('/api/links', {
+  const response = await authFetch('/api/links', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(
@@ -96,12 +111,12 @@ export async function updateLinksConfig(config: { allLinksText: string; rotation
 // === API для счётчиков ===
 
 export async function fetchCounters(): Promise<CountersData> {
-  const response = await fetch('/api/counters');
+  const response = await authFetch('/api/counters');
   return handleJson<CountersData>(response, 'Ошибка загрузки счётчиков');
 }
 
 export async function createCounter(counter: Counter): Promise<Counter> {
-  const response = await fetch('/api/counters', {
+  const response = await authFetch('/api/counters', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(counter),
@@ -110,7 +125,7 @@ export async function createCounter(counter: Counter): Promise<Counter> {
 }
 
 export async function updateCounter(id: string, counter: Counter): Promise<Counter> {
-  const response = await fetch(`/api/counters/${encodeURIComponent(id)}`, {
+  const response = await authFetch(`/api/counters/${encodeURIComponent(id)}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(counter),
@@ -119,21 +134,21 @@ export async function updateCounter(id: string, counter: Counter): Promise<Count
 }
 
 export async function deleteCounter(id: string): Promise<void> {
-  const response = await fetch(`/api/counters/${encodeURIComponent(id)}`, {
+  const response = await authFetch(`/api/counters/${encodeURIComponent(id)}`, {
     method: 'DELETE',
   });
   await handleJson<unknown>(response, 'Ошибка удаления счётчика');
 }
 
 export async function toggleCounter(id: string): Promise<Counter> {
-  const response = await fetch(`/api/counters/${encodeURIComponent(id)}/toggle`, {
+  const response = await authFetch(`/api/counters/${encodeURIComponent(id)}/toggle`, {
     method: 'PATCH',
   });
   return handleJson<Counter>(response, 'Ошибка переключения счётчика');
 }
 
 export async function incrementCounter(id: string): Promise<Counter> {
-  const response = await fetch(`/api/counters/${encodeURIComponent(id)}/increment`, {
+  const response = await authFetch(`/api/counters/${encodeURIComponent(id)}/increment`, {
     method: 'PATCH',
   });
   return handleJson<Counter>(response, 'Ошибка инкремента счётчика');
@@ -142,17 +157,17 @@ export async function incrementCounter(id: string): Promise<Counter> {
 // === API для партии ===
 
 export async function fetchPartyItems(): Promise<PartyItemsData> {
-  const response = await fetch('/api/party/items');
+  const response = await authFetch('/api/party/items');
   return handleJson<PartyItemsData>(response, 'Ошибка загрузки партии');
 }
 
 export async function fetchPartyConfig(): Promise<PartyConfig> {
-  const response = await fetch('/api/party/config');
+  const response = await authFetch('/api/party/config');
   return handleJson<PartyConfig>(response, 'Ошибка загрузки настроек');
 }
 
 export async function updatePartyConfig(config: PartyConfig): Promise<PartyConfig> {
-  const response = await fetch('/api/party/config', {
+  const response = await authFetch('/api/party/config', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(config),
@@ -161,7 +176,7 @@ export async function updatePartyConfig(config: PartyConfig): Promise<PartyConfi
 }
 
 export async function setPartySkipCooldown(skipCooldown: boolean): Promise<{ skipCooldown: boolean }> {
-  const response = await fetch('/api/party/config/skip-cooldown', {
+  const response = await authFetch('/api/party/config/skip-cooldown', {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ skipCooldown }),
@@ -170,7 +185,7 @@ export async function setPartySkipCooldown(skipCooldown: boolean): Promise<{ ski
 }
 
 export async function createPartyItem(text: string): Promise<PartyItem> {
-  const response = await fetch('/api/party/items', {
+  const response = await authFetch('/api/party/items', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ text }),
@@ -179,7 +194,7 @@ export async function createPartyItem(text: string): Promise<PartyItem> {
 }
 
 export async function updatePartyItem(id: number, text: string): Promise<PartyItem> {
-  const response = await fetch(`/api/party/items/${id}`, {
+  const response = await authFetch(`/api/party/items/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ text }),
@@ -188,7 +203,7 @@ export async function updatePartyItem(id: number, text: string): Promise<PartyIt
 }
 
 export async function deletePartyItem(id: number): Promise<void> {
-  const response = await fetch(`/api/party/items/${id}`, {
+  const response = await authFetch(`/api/party/items/${id}`, {
     method: 'DELETE',
   });
   await handleJson<unknown>(response, 'Ошибка удаления');
@@ -197,14 +212,14 @@ export async function deletePartyItem(id: number): Promise<void> {
 // === API для модерации чата ===
 
 export async function fetchChatModerationConfig(): Promise<ChatModerationConfig> {
-  const response = await fetch('/api/admin/chat-moderation/config');
+  const response = await authFetch('/api/admin/chat-moderation/config');
   return handleJson<ChatModerationConfig>(response, 'Ошибка загрузки настроек модерации');
 }
 
 export async function updateChatModerationConfig(
   config: ChatModerationConfig,
 ): Promise<ChatModerationConfig> {
-  const response = await fetch('/api/admin/chat-moderation/config', {
+  const response = await authFetch('/api/admin/chat-moderation/config', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(config),
@@ -215,16 +230,26 @@ export async function updateChatModerationConfig(
 // === API для whitelist ссылок ===
 
 export async function fetchLinkWhitelist(): Promise<{ patterns: string[] }> {
-  const response = await fetch('/api/admin/link-whitelist');
+  const response = await authFetch('/api/admin/link-whitelist');
   return handleJson<{ patterns: string[] }>(response, 'Ошибка загрузки whitelist ссылок');
 }
 
 export async function updateLinkWhitelist(patterns: string[]): Promise<{ patterns: string[] }> {
-  const response = await fetch('/api/admin/link-whitelist', {
+  const response = await authFetch('/api/admin/link-whitelist', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ patterns }),
   });
   return handleJson<{ patterns: string[] }>(response, 'Ошибка сохранения whitelist ссылок');
+}
+
+// === Логин (без authFetch — эндпоинт публичный) ===
+export async function login(username: string, password: string): Promise<{ success: true; token: string }> {
+  const response = await fetch('/api/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password }),
+  });
+  return handleJson<{ success: true; token: string }>(response, 'Ошибка входа');
 }
 
