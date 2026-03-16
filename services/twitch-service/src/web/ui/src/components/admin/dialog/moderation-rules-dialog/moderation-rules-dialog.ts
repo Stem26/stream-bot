@@ -1,7 +1,7 @@
 import template from './moderation-rules-dialog.html?raw';
 import './moderation-rules-dialog.scss';
-import { createModal } from '../../utils/modal';
-import type { ChatModerationConfig } from '../../types';
+import { createModal } from '../../../../utils/modal';
+import type { ChatModerationConfig } from '../../../../types';
 
 export interface ModerationRulesDialogElement extends HTMLElement {
   open(config?: ChatModerationConfig): void;

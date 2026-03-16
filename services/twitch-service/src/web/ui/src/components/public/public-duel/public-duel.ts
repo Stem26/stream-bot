@@ -1,7 +1,7 @@
 // @ts-ignore
 import template from './public-duel.html?raw';
 import './public-duel.scss';
-import type {LeaderboardResponse} from '../../interfaces/leaderboard';
+import type {LeaderboardResponse} from '../../../interfaces/leaderboard';
 
 const MEDALS = ['🥇', '🥈', '🥉'];
 

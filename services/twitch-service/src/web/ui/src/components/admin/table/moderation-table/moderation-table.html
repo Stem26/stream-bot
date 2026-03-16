@@ -1,0 +1,62 @@
+<div class="admin-section">
+  <h3>Модерация чата</h3>
+  <p class="admin-description">
+    Первые 2 слишком длинных сообщения скрываются (как vanish), при повторе за последние 5 минут — тайм-аут.
+    Проверка ссылок удаляет сообщения с любыми ссылками, кроме разрешённых в whitelist.
+  </p>
+  <div class="admin-duels-toggle-row">
+    <span class="admin-duels-label">Модерация чата</span>
+    <div class="status-toggle off" id="chat-moderation-enabled-toggle" data-enabled="false" title="Включить/выключить всю модерацию">
+      <div class="status-toggle-circle"></div>
+      <span class="status-toggle-text">Загрузка...</span>
+    </div>
+  </div>
+  <div class="moderation-setting">
+    <div class="moderation-setting-header">
+      <span class="moderation-setting-title">Проверка по символам</span>
+      <div class="status-toggle off" id="chat-check-symbols-toggle" data-enabled="false" title="Лимит по общей длине сообщения">
+        <div class="status-toggle-circle"></div>
+        <span class="status-toggle-text">ВЫКЛ</span>
+      </div>
+    </div>
+    <div class="moderation-setting-input">
+      <label for="chat-max-length">Макс. длина сообщения (символов)</label>
+      <input type="number" id="chat-max-length" min="1" step="1" value="300">
+    </div>
+  </div>
+  <div class="moderation-setting">
+    <div class="moderation-setting-header">
+      <span class="moderation-setting-title">Проверка по буквам и цифрам</span>
+      <div class="status-toggle off" id="chat-check-letters-toggle" data-enabled="false" title="Лимит по количеству букв и цифр">
+        <div class="status-toggle-circle"></div>
+        <span class="status-toggle-text">ВЫКЛ</span>
+      </div>
+    </div>
+    <div class="moderation-setting-input">
+      <label for="chat-max-letters-digits">Макс. длина сообщения (букв и цифр)</label>
+      <input type="number" id="chat-max-letters-digits" min="1" step="1" value="300">
+    </div>
+  </div>
+  <div class="moderation-setting">
+    <div class="moderation-setting-header">
+      <span class="moderation-setting-title">Проверка ссылок</span>
+      <div class="status-toggle off" id="chat-check-links-toggle" data-enabled="false" title="Удалять сообщения со ссылками">
+        <div class="status-toggle-circle"></div>
+        <span class="status-toggle-text">ВЫКЛ</span>
+      </div>
+    </div>
+    <div class="moderation-setting-actions">
+      <button type="button" class="btn btn-small" id="chat-link-whitelist-btn" title="Настроить список разрешённых ссылок">🔗 Разрешённые ссылки</button>
+    </div>
+  </div>
+  <div class="admin-duels-config-fields">
+    <div class="admin-duels-config-row">
+      <label for="chat-spam-timeout-min">Тайм-аут за спам (мин)</label>
+      <input type="number" id="chat-spam-timeout-min" min="1" step="1" value="10"/>
+    </div>
+    <button type="button" class="btn btn-success" id="chat-moderation-save-btn" disabled>Сохранить настройки</button>
+  </div>
+  <div class="moderation-rules-block">
+    <button type="button" class="btn btn-small" id="chat-moderation-rules-btn" title="Подробная инструкция по правилам анти-спама">📋 Правила бана</button>
+  </div>
+</div>

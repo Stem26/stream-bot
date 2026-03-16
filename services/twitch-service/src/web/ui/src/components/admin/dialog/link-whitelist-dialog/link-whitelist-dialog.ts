@@ -1,9 +1,9 @@
 // @ts-ignore
 import template from './link-whitelist-dialog.html?raw';
 import './link-whitelist-dialog.scss';
-import { createModal } from '../../utils/modal';
-import { fetchLinkWhitelist, updateLinkWhitelist } from '../../api';
-import { showAlert } from '../../alerts';
+import { createModal } from '../../../../utils/modal';
+import { fetchLinkWhitelist, updateLinkWhitelist } from '../../../../api';
+import { showAlert } from '../../../../alerts';
 
 export interface LinkWhitelistDialogElement extends HTMLElement {
   open(): void;

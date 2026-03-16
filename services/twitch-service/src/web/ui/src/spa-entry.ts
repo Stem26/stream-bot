@@ -1,8 +1,8 @@
 import './public-base.scss';
 import './styles.scss';
-import './components/public-home/public-home';
-import './components/public-duel/public-duel';
-import './components/public-links/public-links';
+import './components/public/public-home/public-home';
+import './components/public/public-duel/public-duel';
+import './components/public/public-links/public-links';
 
 const TITLES: Record<string, string> = {
   public: 'kunilika666 - Twitch стример',
@@ -58,7 +58,7 @@ document.addEventListener('click', (event) => {
   const href = link.getAttribute('href');
   if (!href || href.startsWith('//')) return;
   // Переход в админку — только полная загрузка, чтобы nginx запросил пароль до отдачи страницы
-  const path = href.replace(/\/$/, '') || '/';
+  const path = href.split('#')[0].replace(/\/$/, '') || '/';
   if (path === '/admin' || path.startsWith('/admin/')) {
     window.location.href = href;
     return;

@@ -1,0 +1,249 @@
+// @ts-ignore
+import template from './admin-panel.html?raw';
+import './admin-panel.scss';
+import { showAlert } from '../../../alerts';
+import { authFetch, fetchLinksConfig, login, updateLinksConfig } from '../../../api';
+import type { LinkDialogElement } from '../dialog/link-dialog/link-dialog';
+import type { LinkDialogSaveDetail } from '../../../interfaces/link-dialog';
+import { clearAdminAuth, getAdminPassword, setAdminPassword } from '../../../admin-auth';
+
+const VALID_TABS = ['commands', 'counters', 'duels', 'party', 'moderation'] as const;
+
+function getAdminTabFromHash(): (typeof VALID_TABS)[number] {
+  const hash = window.location.hash.slice(1).toLowerCase();
+  return VALID_TABS.includes(hash as (typeof VALID_TABS)[number]) ? (hash as (typeof VALID_TABS)[number]) : 'commands';
+}
+
+function updateAdminHash(tab: string): void {
+  const url = new URL(window.location.href);
+  url.hash = tab === 'commands' ? '' : tab;
+  history.replaceState(null, '', url.toString());
+}
+
+export class AdminPanelElement extends HTMLElement {
+  private initialized = false;
+  private lastLinksRotationMinutes: number | null = null;
+  private hashChangeHandler: (() => void) | null = null;
+
+  connectedCallback(): void {
+    if (this.initialized) return;
+    this.initialized = true;
+    this.innerHTML = template;
+    this.setupAuthModal();
+    window.addEventListener('admin-auth-required', this.handleAuthRequired);
+    if (getAdminPassword()) {
+      this.showPanel();
+      this.setupTabs();
+      this.setupLogout();
+      this.setupCommandsTab();
+    } else {
+      this.showAuthModal();
+    }
+  }
+
+  disconnectedCallback(): void {
+    window.removeEventListener('admin-auth-required', this.handleAuthRequired);
+    if (this.hashChangeHandler) {
+      window.removeEventListener('hashchange', this.hashChangeHandler);
+      this.hashChangeHandler = null;
+    }
+  }
+
+  private handleAuthRequired = (): void => {
+    this.showAuthModal();
+  };
+
+  private showAuthModal(): void {
+    const modal = this.querySelector('#auth-modal');
+    const container = this.querySelector('#admin-panel-container');
+    if (modal) modal.classList.add('active');
+    if (container) (container as HTMLElement).style.display = 'none';
+  }
+
+  private showPanel(): void {
+    const modal = this.querySelector('#auth-modal');
+    const container = this.querySelector('#admin-panel-container');
+    if (modal) modal.classList.remove('active');
+    if (container) (container as HTMLElement).style.display = '';
+  }
+
+  private setupAuthModal(): void {
+    const form = this.querySelector<HTMLFormElement>('#auth-form');
+    const usernameInput = this.querySelector<HTMLInputElement>('#auth-username');
+    const passwordInput = this.querySelector<HTMLInputElement>('#auth-password');
+    const errorEl = this.querySelector<HTMLElement>('#auth-error');
+    const submitBtn = this.querySelector<HTMLButtonElement>('#auth-submit-btn');
+
+    this.querySelector('#auth-cancel-btn')?.addEventListener('click', () => {
+      window.location.href = '/public';
+    });
+
+    form?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const username = usernameInput?.value?.trim();
+      const password = passwordInput?.value;
+      if (!username || !password || !errorEl || !submitBtn) return;
+      errorEl.style.display = 'none';
+      errorEl.textContent = '';
+      submitBtn.disabled = true;
+      try {
+        const { token } = await login(username, password);
+        setAdminPassword(token);
+        this.showPanel();
+        this.setupTabs();
+        this.setupLogout();
+        this.setupCommandsTab();
+        window.dispatchEvent(new CustomEvent('admin-auth-success'));
+      } catch (err) {
+        errorEl.textContent = err instanceof Error ? err.message : 'Ошибка входа';
+        errorEl.style.display = 'block';
+      } finally {
+        submitBtn.disabled = false;
+      }
+    });
+  }
+
+  private setupTabs(): void {
+    const root = this;
+    const tabButtons = root.querySelectorAll<HTMLButtonElement>('.tab-btn');
+    const tabContents = root.querySelectorAll<HTMLElement>('.tab-content');
+    const tabsContainer = root.querySelector<HTMLElement>('.tabs');
+
+    const applyTab = (targetTab: string): void => {
+      const btn = root.querySelector<HTMLButtonElement>(`.tab-btn[data-tab="${targetTab}"]`);
+      if (!btn) return;
+      tabButtons.forEach((b) => b.classList.remove('active'));
+      tabContents.forEach((c) => {
+        c.classList.remove('active');
+        (c as HTMLElement).style.display = 'none';
+      });
+      btn.classList.add('active');
+      const targetContent = root.querySelector(`#tab-${targetTab}`);
+      if (targetContent) {
+        targetContent.classList.add('active');
+        (targetContent as HTMLElement).style.display = 'block';
+      }
+      if (tabsContainer) {
+        btn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+      }
+    };
+
+    const initialTab = getAdminTabFromHash();
+    applyTab(initialTab);
+
+    tabButtons.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const targetTab = btn.dataset.tab;
+        if (!targetTab) return;
+        updateAdminHash(targetTab);
+        applyTab(targetTab);
+      });
+    });
+
+    if (this.hashChangeHandler) {
+      window.removeEventListener('hashchange', this.hashChangeHandler);
+    }
+    this.hashChangeHandler = () => {
+      if (getAdminPassword()) applyTab(getAdminTabFromHash());
+    };
+    window.addEventListener('hashchange', this.hashChangeHandler);
+  }
+
+  private setupLogout(): void {
+    this.querySelector('#logout-btn')?.addEventListener('click', () => {
+      clearAdminAuth();
+      window.location.href = '/public';
+    });
+  }
+
+  private setupCommandsTab(): void {
+    const allLinksBtn = this.querySelector('#all-links-btn');
+    const linkDialog = document.querySelector<LinkDialogElement>('link-dialog');
+    if (!allLinksBtn || !linkDialog) return;
+
+    void this.initLinks(linkDialog);
+
+    allLinksBtn.addEventListener('click', async () => {
+      try {
+        const config = await fetchLinksConfig();
+        linkDialog.open({ allLinksText: config.allLinksText ?? '' });
+      } catch (error) {
+        if (error instanceof Error) showAlert(`Ошибка загрузки ссылок: ${error.message}`, 'error');
+      }
+    });
+
+    linkDialog.addEventListener('save', async (event: Event) => {
+      const customEvent = event as CustomEvent<LinkDialogSaveDetail>;
+      const { allLinksText } = customEvent.detail;
+      try {
+        await updateLinksConfig({ allLinksText });
+        linkDialog.close();
+      } catch (error) {
+        if (error instanceof Error) showAlert(`Ошибка сохранения ссылок: ${error.message}`, 'error');
+      }
+    });
+
+    linkDialog.addEventListener('send', async () => {
+      try {
+        await authFetch('/api/links/send', { method: 'POST' });
+      } catch (error) {
+        if (error instanceof Error) showAlert(`Ошибка отправки ссылок: ${error.message}`, 'error');
+      }
+    });
+
+    const linksIntervalInput = this.querySelector<HTMLInputElement>('#links-rotation-interval-min');
+    const linksSaveBtn = this.querySelector<HTMLButtonElement>('#links-rotation-save-btn');
+
+    const updateLinksSaveButton = (): void => {
+      if (!linksIntervalInput || !linksSaveBtn) return;
+      const current = parseInt(linksIntervalInput.value, 10) || 0;
+      const same = this.lastLinksRotationMinutes !== null && this.lastLinksRotationMinutes === current;
+      linksSaveBtn.disabled = same || current <= 0;
+    };
+
+    linksIntervalInput?.addEventListener('input', updateLinksSaveButton);
+    linksIntervalInput?.addEventListener('change', updateLinksSaveButton);
+
+    linksSaveBtn?.addEventListener('click', async () => {
+      if (!linksIntervalInput) return;
+      const raw = parseInt(linksIntervalInput.value, 10) || 0;
+      const safeMinutes = Math.max(1, Math.min(120, raw));
+      try {
+        const config = await fetchLinksConfig();
+        const updated = await updateLinksConfig({
+          allLinksText: config.allLinksText ?? '',
+          rotationIntervalMinutes: safeMinutes,
+        });
+        this.lastLinksRotationMinutes = updated.rotationIntervalMinutes ?? safeMinutes;
+        linksIntervalInput.value = String(this.lastLinksRotationMinutes);
+        updateLinksSaveButton();
+        showAlert('Интервал ротации ссылок сохранён', 'success');
+      } catch (error) {
+        if (error instanceof Error) showAlert(`Ошибка сохранения интервала ротации: ${error.message}`, 'error');
+      }
+    });
+  }
+
+  private async initLinks(linkDialog: LinkDialogElement): Promise<void> {
+    try {
+      const config = await fetchLinksConfig();
+      this.lastLinksRotationMinutes = config.rotationIntervalMinutes ?? 13;
+      const linksIntervalInput = this.querySelector<HTMLInputElement>('#links-rotation-interval-min');
+      if (linksIntervalInput) linksIntervalInput.value = String(this.lastLinksRotationMinutes);
+      linkDialog.open({ allLinksText: config.allLinksText ?? '' });
+      linkDialog.close();
+    } catch (error) {
+      if (error instanceof Error) {
+        showAlert(`Ошибка загрузки ссылок: ${error.message}`, 'error');
+      }
+    }
+  }
+}
+
+declare global {
+  interface HTMLElementTagNameMap {
+    'admin-panel': AdminPanelElement;
+  }
+}
+
+customElements.define('admin-panel', AdminPanelElement);

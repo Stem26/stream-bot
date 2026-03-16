@@ -1,8 +1,8 @@
 import template from './counter-dialog.html?raw';
 import './counter-dialog.scss';
-import { createModal } from '../../utils/modal';
-import { substituteTimePlaceholders } from '../../utils/time-placeholders';
-import type { Counter } from '../../types';
+import { createModal } from '../../../../utils/modal';
+import { substituteTimePlaceholders } from '../../../../utils/time-placeholders';
+import type { Counter } from '../../../../types';
 
 export interface CounterDialogSaveDetail {
   counter: Counter;

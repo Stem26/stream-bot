@@ -1,0 +1,81 @@
+<div class="auth-modal active" id="auth-modal">
+  <div class="auth-content">
+    <h2>Вход в админ-панель</h2>
+    <p class="auth-hint">Введите логин и пароль</p>
+    <form id="auth-form">
+      <input type="text" id="auth-username"
+             placeholder="Логин"
+             autocomplete="username"
+             required>
+      <input type="password"
+             id="auth-password"
+             placeholder="Пароль"
+             autocomplete="current-password"
+             required>
+      <div id="auth-error"
+           class="auth-error"
+           style="display: none;"></div>
+      <div class="auth-actions">
+        <button type="button" class="btn btn-outline" id="auth-cancel-btn">Отмена</button>
+        <button type="submit" class="btn btn-primary" id="auth-submit-btn">Войти</button>
+      </div>
+    </form>
+  </div>
+</div>
+<div class="container"
+     id="admin-panel-container"
+     style="display: none;">
+  <div class="header header-with-logout">
+    <div>
+      <h1>🎮 Админ-панель</h1>
+      <p>Управление ботом и командами</p>
+    </div>
+    <div class="header-actions">
+      <a href="/public" class="btn btn-outline">На главную</a>
+      <button type="button" class="btn btn-outline" id="logout-btn">Выйти</button>
+    </div>
+  </div>
+  <div id="alert-container"></div>
+  <div class="tabs">
+    <button class="tab-btn active" data-tab="commands">📝 Команды</button>
+    <button class="tab-btn" data-tab="counters">🔢 Счётчики</button>
+    <button class="tab-btn" data-tab="duels">⚔️ Дуэли</button>
+    <button class="tab-btn" data-tab="party">🎉 Партия</button>
+    <button class="tab-btn" data-tab="moderation">🛡️ Модерация чата</button>
+  </div>
+  <div class="tab-content active" id="tab-commands">
+    <div class="controls">
+      <div>
+        <h2>Инфо</h2>
+        <p>Редактировать общий текст, который отправляется при команде <strong>!ссылки</strong></p>
+        <p class="admin-hint">В чате по команде <strong>!команды</strong> (или !команда, !commands) выводится список
+          всех включённых команд из таблицы ниже — триггеры и алиасы.</p>
+      </div>
+      <button class="btn btn-small" id="all-links-btn">Все ссылки</button>
+    </div>
+    <div class="admin-section admin-links-rotation-section">
+      <h3>Ротация ссылок</h3>
+      <p class="admin-description">Бот по очереди шлёт объявления из команд с флагом «В ротации».</p>
+      <div class="admin-duels-config-fields">
+        <div class="admin-duels-config-row">
+          <label for="links-rotation-interval-min">Интервал ротации ссылок (мин)</label>
+          <input type="number" id="links-rotation-interval-min" min="1" max="120" step="1" value="13"/>
+        </div>
+        <button type="button" class="btn btn-success" id="links-rotation-save-btn" disabled>Сохранить настройки</button>
+      </div>
+    </div>
+    <commands-table></commands-table>
+  </div>
+  <div class="tab-content" id="tab-counters">
+    <counters-table></counters-table>
+  </div>
+  <div class="tab-content" id="tab-duels">
+    <duels-table></duels-table>
+  </div>
+  <div class="tab-content" id="tab-party">
+    <party-table></party-table>
+  </div>
+  <div class="tab-content" id="tab-moderation">
+    <moderation-table></moderation-table>
+  </div>
+</div>

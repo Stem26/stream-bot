@@ -1,9 +1,9 @@
 // @ts-ignore
 import template from './command-dialog.html?raw';
 import './command-dialog.scss';
-import { createModal } from '../../utils/modal';
-import { substituteTimePlaceholders } from '../../utils/time-placeholders';
-import type { CustomCommand, MessageType, CommandColor } from '../../types';
+import { createModal } from '../../../../utils/modal';
+import { substituteTimePlaceholders } from '../../../../utils/time-placeholders';
+import type { CustomCommand, MessageType, CommandColor } from '../../../../types';
 
 const ANNOUNCEMENT_COLORS: {value: CommandColor; label: string }[] =[
   {value: "primary", label: 'Обычный (Primary)'},

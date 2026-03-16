@@ -1,5 +1,28 @@
 // Дополнительные стили админ-панели (основа — styles.scss)
 
+admin-panel .admin-page-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+admin-panel .admin-page-section {
+  margin-bottom: 2.5rem;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+}
+
+admin-panel .admin-page-section-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 1rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 2px solid #e0e0e0;
+}
+
 admin-panel .controls {
   margin-top: 20px;
   display: flex;

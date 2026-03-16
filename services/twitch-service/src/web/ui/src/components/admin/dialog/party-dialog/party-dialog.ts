@@ -1,8 +1,8 @@
 // @ts-ignore
 import template from './party-dialog.html?raw';
 import './party-dialog.scss';
-import { createModal } from '../../utils/modal';
-import type { PartyItem } from '../../types';
+import { createModal } from '../../../../utils/modal';
+import type { PartyItem } from '../../../../types';
 
 export interface PartyDialogSaveDetail {
   editId?: number;

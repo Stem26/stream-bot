@@ -1,8 +1,8 @@
 // @ts-ignore
 import template from './link-dialog.html?raw';
 import './link-dialog.scss';
-import { createModal } from '../../utils/modal';
-import { substituteTimePlaceholders } from '../../utils/time-placeholders';
+import { createModal } from '../../../../utils/modal';
+import { substituteTimePlaceholders } from '../../../../utils/time-placeholders';
 
 export interface LinkDialogSaveDetail {
   allLinksText: string;
