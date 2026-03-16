@@ -57,12 +57,6 @@ document.addEventListener('click', (event) => {
   if (!link || link.target === '_blank') return;
   const href = link.getAttribute('href');
   if (!href || href.startsWith('//')) return;
-  // Переход в админку — только полная загрузка, чтобы nginx запросил пароль до отдачи страницы
-  const path = href.split('#')[0].replace(/\/$/, '') || '/';
-  if (path === '/admin' || path.startsWith('/admin/')) {
-    window.location.href = href;
-    return;
-  }
   event.preventDefault();
   history.pushState(null, '', href);
   render();
