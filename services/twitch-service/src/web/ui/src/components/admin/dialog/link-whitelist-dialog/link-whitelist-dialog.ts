@@ -30,7 +30,7 @@ export class LinkWhitelistDialogElement extends HTMLElement {
       const textarea = this.querySelector<HTMLTextAreaElement>('#link-whitelist-text');
       const text = textarea?.value ?? '';
       const patterns = text
-        .split(/\n/)
+        .split(/[\n,]/)
         .map((s) => s.trim())
         .filter(Boolean);
       try {

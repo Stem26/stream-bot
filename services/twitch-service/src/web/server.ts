@@ -1379,13 +1379,27 @@ app.get('/api/admin/link-whitelist', async (_req: Request, res: Response) => {
     }
 });
 
+function normalizeLinkPattern(url: string): string {
+    return url
+        .trim()
+        .replace(/^https?:\/\//i, '')
+        .replace(/^www\./i, '')
+        .replace(/[.,;:!?)\]}>]+$/, '');
+}
+
 app.post('/api/admin/link-whitelist', async (req: Request, res: Response) => {
     try {
-        const patterns = Array.isArray(req.body?.patterns)
-            ? (req.body.patterns as string[])
-                .map((p) => String(p ?? '').trim().replace(/[.,;:!?)\]}>]+$/, ''))
-                .filter(Boolean)
-            : [];
+        const raw = Array.isArray(req.body?.patterns) ? (req.body.patterns as string[]) : [];
+        const patterns = [
+            ...new Set(
+                raw.flatMap((p) =>
+                    String(p ?? '')
+                        .split(/[\n,]/)
+                        .map((s) => normalizeLinkPattern(s))
+                        .filter(Boolean)
+                )
+            ),
+        ];
         await query('DELETE FROM link_whitelist');
         for (const pattern of patterns) {
             await query('INSERT INTO link_whitelist (pattern) VALUES ($1)', [pattern]);
