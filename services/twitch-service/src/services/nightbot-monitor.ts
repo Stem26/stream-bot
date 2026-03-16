@@ -2378,6 +2378,13 @@ export class NightBotMonitor {
         for (const pattern of whitelist) {
             const p = pattern.toLowerCase().trim().replace(/[.,;:!?)\]}>]+$/, '');
             if (!p) continue;
+            if (!p.includes('/')) {
+                try {
+                    const toParse = normalized.startsWith('http') ? normalized : `https://${normalized}`;
+                    const host = new URL(toParse).hostname.replace(/^www\./, '').toLowerCase();
+                    if (host === p || host.endsWith('.' + p)) return true;
+                } catch { /* не URL */ }
+            }
             const idx = normalized.indexOf(p);
             if (idx === -1) continue;
             const after = normalized[idx + p.length];
