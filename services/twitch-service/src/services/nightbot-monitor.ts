@@ -2371,18 +2371,29 @@ export class NightBotMonitor {
             .filter((u, i, arr) => arr.indexOf(u) === i);
     }
 
-    /** Проверяет, разрешена ли ссылка (whitelist: домен или полный URL). После паттерна не должно быть букв/цифр/подчёркивания — иначе t.me/FairyPixel матчит t.me/FairyPixel1 */
+    /** Проверяет, разрешена ли ссылка (whitelist: домен или полный URL). @ — для youtube.com/@channel */
     private isUrlWhitelisted(url: string, whitelist: string[]): boolean {
         if (!whitelist.length) return false;
         const normalized = url.toLowerCase();
         for (const pattern of whitelist) {
             const p = pattern.toLowerCase().trim().replace(/[.,;:!?)\]}>]+$/, '');
             if (!p) continue;
+            if (p.includes('/')) {
+                const idx = normalized.indexOf(p);
+                if (idx === -1) continue;
+                const after = normalized[idx + p.length];
+                if (after !== undefined && !/[/?#&=.@]/.test(after)) continue;
+                return true;
+            }
+            try {
+                const toParse = normalized.startsWith('http') ? normalized : `https://${normalized}`;
+                const host = new URL(toParse).hostname.replace(/^www\./, '').toLowerCase();
+                if (host === p || host.endsWith('.' + p)) return true;
+            } catch { /* не URL — fallback на substring */ }
             const idx = normalized.indexOf(p);
             if (idx === -1) continue;
             const after = normalized[idx + p.length];
-            // После паттерна — только конец строки или разделитель URL. Иначе отсекаем: FairyPixel1, zrNsn4vAw2в, kun123a
-            if (after !== undefined && !/[/?#&=.]/.test(after)) continue;
+            if (after !== undefined && !/[/?#&=.@]/.test(after)) continue;
             return true;
         }
         return false;
