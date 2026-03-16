@@ -2359,21 +2359,31 @@ export class NightBotMonitor {
         this.spamConfigLastLoaded = 0;
     }
 
-    /** Извлекает URL из сообщения (http(s) и www.) */
+    /** Извлекает URL из сообщения: http(s)://, www., а также домен/путь без протокола (twitch.tv/xxx) */
     private extractUrls(message: string): string[] {
-        const regex = /https?:\/\/[^\s<>"'\]]+|www\.[^\s<>"'\]]+/gi;
-        const matches = message.match(regex) ?? [];
-        return matches.map((u) => u.replace(/[.,;:!?)\]}>]+$/, '').toLowerCase());
+        // Убираем пробелы внутри домена (discord. com → discord.com), чтобы обойти обход фильтра
+        const withProtocol = /https?:\/\/[^\s<>"'\]]+|www\.[^\s<>"'\]]+/gi;
+        const bareDomain = /\b[a-z0-9](?:[-a-z0-9]*[a-z0-9])?\.[a-z]{2,}(?:\/[^\s<>"'\]]*)?/gi;
+        const a = message.match(withProtocol) ?? [];
+        const b = message.match(bareDomain) ?? [];
+        return [...a, ...b]
+            .map((u) => u.replace(/[.,;:!?)\]}>]+$/, '').toLowerCase())
+            .filter((u, i, arr) => arr.indexOf(u) === i);
     }
 
-    /** Проверяет, разрешена ли ссылка (whitelist: домен или полный URL, проверка по вхождению) */
+    /** Проверяет, разрешена ли ссылка (whitelist: домен или полный URL). После паттерна не должно быть букв/цифр/подчёркивания — иначе t.me/FairyPixel матчит t.me/FairyPixel1 */
     private isUrlWhitelisted(url: string, whitelist: string[]): boolean {
         if (!whitelist.length) return false;
         const normalized = url.toLowerCase();
         for (const pattern of whitelist) {
             const p = pattern.toLowerCase().trim().replace(/[.,;:!?)\]}>]+$/, '');
             if (!p) continue;
-            if (normalized.includes(p) || normalized.startsWith(p)) return true;
+            const idx = normalized.indexOf(p);
+            if (idx === -1) continue;
+            const after = normalized[idx + p.length];
+            // После паттерна — только конец строки или разделитель URL. Иначе отсекаем: FairyPixel1, zrNsn4vAw2в, kun123a
+            if (after !== undefined && !/[/?#&=.]/.test(after)) continue;
+            return true;
         }
         return false;
     }

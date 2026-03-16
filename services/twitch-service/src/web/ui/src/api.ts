@@ -11,13 +11,9 @@ import type {
 } from './types';
 import { clearAdminAuth, getAdminHeaders } from './admin-auth';
 
-/** fetch с заголовком авторизации; при 401 — очищает сессию и dispatch события для показа логина. Экспорт для прямых вызовов из admin-panel. */
 export async function authFetch(url: string | URL, init?: RequestInit): Promise<Response> {
-  const authHeaders = getAdminHeaders();
-  const mergedHeaders = init?.headers
-    ? { ...authHeaders, ...(init.headers instanceof Headers ? Object.fromEntries(init.headers) : init.headers) }
-    : authHeaders;
-  const response = await fetch(url, { ...init, headers: mergedHeaders });
+  const headers = { ...getAdminHeaders(), ...(init?.headers as Record<string, string> | undefined) };
+  const response = await fetch(url, { ...init, headers });
   if (response.status === 401) {
     clearAdminAuth();
     window.dispatchEvent(new CustomEvent('admin-auth-required'));
