@@ -67,3 +67,23 @@ export interface ChatModerationConfig {
   timeoutMinutes: number;
 }
 
+export type JournalEventType = 'message' | 'command' | 'system';
+
+export interface JournalEntry {
+  id: number;
+  createdAt: string;
+  username: string;
+  message: string;
+  eventType: JournalEventType;
+}
+
+export interface JournalResponse {
+  items: JournalEntry[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
+

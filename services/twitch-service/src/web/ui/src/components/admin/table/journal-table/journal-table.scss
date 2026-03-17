@@ -1,0 +1,156 @@
+.journal-table-wrap {
+  padding: 0;
+}
+
+.journal-table-card {
+  background: var(--card-bg, #fff);
+  border-radius: 12px;
+  padding: 1.25rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.journal-table-header {
+  margin-bottom: 1rem;
+
+  h3 {
+    margin: 0 0 0.25rem;
+    font-size: 1.25rem;
+    font-weight: 600;
+  }
+}
+
+.journal-description {
+  margin: 0 0 1rem;
+  font-size: 0.9rem;
+  color: var(--text-muted, #666);
+}
+
+.journal-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+.journal-search {
+  flex: 1;
+  min-width: 200px;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border-color, #ddd);
+  border-radius: 8px;
+  font-size: 0.9rem;
+}
+
+.journal-type-filter,
+.journal-days-filter {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border-color, #ddd);
+  border-radius: 8px;
+  font-size: 0.9rem;
+  background: #fff;
+}
+
+.journal-table-container {
+  position: relative;
+  min-height: 120px;
+}
+
+.journal-table-container.loading-state .journal-table-scroll,
+.journal-table-container.loading-state .journal-pagination {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.journal-table-scroll {
+  overflow-x: auto;
+  margin-bottom: 1rem;
+}
+
+.journal-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+
+  th, td {
+    padding: 0.6rem 0.75rem;
+    text-align: left;
+    border-bottom: 1px solid var(--border-color, #eee);
+  }
+
+  th {
+    font-weight: 600;
+    color: var(--text-muted, #666);
+    white-space: nowrap;
+  }
+
+  td {
+    vertical-align: top;
+  }
+
+  .col-date {
+    width: 140px;
+    white-space: nowrap;
+  }
+
+  .col-user {
+    width: 140px;
+  }
+
+  .col-message {
+    min-width: 200px;
+    max-width: 400px;
+    word-break: break-word;
+  }
+
+  tr:hover {
+    background: var(--row-hover, rgba(0, 0, 0, 0.03));
+  }
+}
+
+.journal-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border-color, #eee);
+}
+
+.pagination-info {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+
+  label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.9rem;
+  }
+
+  select {
+    padding: 0.25rem 0.5rem;
+    border: 1px solid var(--border-color, #ddd);
+    border-radius: 6px;
+    font-size: 0.9rem;
+  }
+}
+
+.page-info {
+  font-size: 0.9rem;
+  color: var(--text-muted, #666);
+}
+
+.pagination-buttons {
+  display: flex;
+  gap: 0.5rem;
+}

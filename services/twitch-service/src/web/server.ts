@@ -92,6 +92,7 @@ app.use('/api/commands', requireAdmin);
 app.use('/api/counters', requireAdmin);
 app.use('/api/links', requireAdmin);
 app.use('/api/party', requireAdmin);
+app.use('/api/journal', requireAdmin);
 
 // Интерфейс команды
 interface CustomCommand {
@@ -875,6 +876,74 @@ app.patch('/api/counters/:id/increment', async (req: Request, res: Response) => 
     } catch (error) {
         console.error('❌ Ошибка инкремента счётчика:', error);
         res.status(500).json({ error: 'Ошибка инкремента счётчика' });
+    }
+});
+
+// === API для журнала событий (по аналогии с Nightbot) ===
+
+type JournalRow = { id: number; created_at: Date; username: string; message: string; event_type: string };
+
+app.get('/api/journal', async (req: Request, res: Response) => {
+    try {
+        const page = Math.max(1, parseInt(req.query.page as string) || 1);
+        const limit = Math.min(100, Math.max(10, parseInt(req.query.limit as string) || 25));
+        const search = typeof req.query.search === 'string' ? req.query.search.trim().slice(0, 200) : '';
+        const eventType = typeof req.query.type === 'string' ? req.query.type.trim().toLowerCase() : '';
+        const days = Math.min(30, Math.max(1, parseInt(req.query.days as string) || 7));
+        const offset = (page - 1) * limit;
+
+        const validTypes = ['message', 'command', 'system'];
+        const typeFilter = eventType && validTypes.includes(eventType) ? eventType : null;
+
+        let whereClause = `WHERE created_at >= NOW() - ($1::int * INTERVAL '1 day')`;
+        const params: (string | number)[] = [days];
+        let paramIndex = 2;
+
+        if (typeFilter) {
+            whereClause += ` AND event_type = $${paramIndex++}`;
+            params.push(typeFilter);
+        }
+        if (search) {
+            whereClause += ` AND (LOWER(username) LIKE $${paramIndex} OR LOWER(message) LIKE $${paramIndex})`;
+            params.push(`%${search.toLowerCase()}%`);
+            paramIndex++;
+        }
+
+        const countResult = await queryOne<{ count: string }>(
+            `SELECT COUNT(*)::text AS count FROM event_journal ${whereClause}`,
+            params,
+        );
+        const total = parseInt(countResult?.count || '0', 10);
+
+        const limitParam = paramIndex;
+        const offsetParam = paramIndex + 1;
+        const rows = await query<JournalRow>(
+            `SELECT id, created_at, username, message, event_type
+             FROM event_journal
+             ${whereClause}
+             ORDER BY created_at DESC
+             LIMIT $${limitParam} OFFSET $${offsetParam}`,
+            [...params, limit, offset],
+        );
+
+        res.json({
+            items: rows.map((r) => ({
+                id: r.id,
+                createdAt: r.created_at,
+                username: r.username,
+                message: r.message,
+                eventType: r.event_type,
+            })),
+            pagination: {
+                page,
+                limit,
+                total,
+                totalPages: Math.ceil(total / limit),
+            },
+        });
+    } catch (error) {
+        console.error('❌ Ошибка загрузки журнала:', error);
+        res.status(500).json({ error: 'Ошибка загрузки журнала' });
     }
 });
 

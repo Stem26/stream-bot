@@ -309,6 +309,19 @@ export async function initDatabase(): Promise<void> {
       `);
       await client.query(`CREATE INDEX IF NOT EXISTS idx_admin_users_username ON admin_users(LOWER(username))`);
 
+      // Журнал событий (сообщения чата, команды, системные события) — по аналогии с Nightbot
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS event_journal (
+          id SERIAL PRIMARY KEY,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          username TEXT NOT NULL DEFAULT '',
+          message TEXT NOT NULL,
+          event_type TEXT NOT NULL DEFAULT 'message'
+        )
+      `);
+      await client.query(`CREATE INDEX IF NOT EXISTS idx_event_journal_created_at ON event_journal(created_at DESC)`);
+      await client.query(`CREATE INDEX IF NOT EXISTS idx_event_journal_username ON event_journal(LOWER(username))`);
+
       // Добавляем дефолтные элементы партии если таблица пустая (только названия, количество 1–4 генерируется при выдаче)
       const partyCount = await client.query('SELECT COUNT(*)::int AS cnt FROM party_items');
       if (partyCount.rows[0]?.cnt === 0) {

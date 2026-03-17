@@ -8,6 +8,7 @@ import type {
   PartyItem,
   PartyConfig,
   ChatModerationConfig,
+  JournalResponse,
 } from './types';
 import { clearAdminAuth, getAdminHeaders } from './admin-auth';
 
@@ -237,6 +238,26 @@ export async function updateLinkWhitelist(patterns: string[]): Promise<{ pattern
     body: JSON.stringify({ patterns }),
   });
   return handleJson<{ patterns: string[] }>(response, 'Ошибка сохранения whitelist ссылок');
+}
+
+// === API для журнала событий ===
+
+export async function fetchJournal(params: {
+  page?: number;
+  limit?: number;
+  search?: string;
+  type?: string;
+  days?: number;
+}): Promise<JournalResponse> {
+  const searchParams = new URLSearchParams();
+  if (params.page != null) searchParams.set('page', String(params.page));
+  if (params.limit != null) searchParams.set('limit', String(params.limit));
+  if (params.search) searchParams.set('search', params.search);
+  if (params.type) searchParams.set('type', params.type);
+  if (params.days != null) searchParams.set('days', String(params.days));
+  const url = '/api/journal' + (searchParams.toString() ? '?' + searchParams.toString() : '');
+  const response = await authFetch(url);
+  return handleJson<JournalResponse>(response, 'Ошибка загрузки журнала');
 }
 
 // === Логин (без authFetch — эндпоинт публичный) ===

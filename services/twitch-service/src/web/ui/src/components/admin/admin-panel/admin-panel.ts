@@ -7,7 +7,7 @@ import type { LinkDialogElement } from '../dialog/link-dialog/link-dialog';
 import type { LinkDialogSaveDetail } from '../../../interfaces/link-dialog';
 import { clearAdminAuth, getAdminPassword, setAdminPassword } from '../../../admin-auth';
 
-const VALID_TABS = ['commands', 'counters', 'duels', 'party', 'moderation'] as const;
+const VALID_TABS = ['commands', 'counters', 'duels', 'party', 'moderation', 'logs'] as const;
 
 function getAdminTabFromHash(): (typeof VALID_TABS)[number] {
   const hash = window.location.hash.slice(1).toLowerCase();

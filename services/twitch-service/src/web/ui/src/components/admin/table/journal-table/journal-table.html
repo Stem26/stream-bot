@@ -1,0 +1,67 @@
+<div class="journal-table-wrap">
+  <div class="journal-table-card">
+    <div class="journal-table-header">
+      <h3>Журналы</h3>
+      <p class="journal-description">Просмотрите журналы за последние 7 дней.</p>
+      <div class="journal-filters">
+        <div class="filter-row">
+          <input type="search"
+                 id="journal-search"
+                 class="journal-search"
+                 placeholder="Поиск по пользователю или сообщению..."
+                 autocomplete="off">
+          <select id="journal-type-filter" class="journal-type-filter">
+            <option value="">Все типы</option>
+            <option value="message">Сообщения</option>
+            <option value="command">Команды</option>
+            <option value="system">Системные</option>
+          </select>
+          <select id="journal-days-filter" class="journal-days-filter">
+            <option value="7" selected>7 дней</option>
+            <option value="1">1 день</option>
+            <option value="3">3 дня</option>
+            <option value="14">14 дней</option>
+            <option value="30">30 дней</option>
+          </select>
+          <button type="button" class="btn btn-small" id="journal-refresh-btn">Обновить</button>
+        </div>
+      </div>
+    </div>
+    <div id="journal-container" class="journal-table-container loading-state">
+      <div class="loading">Загрузка журнала...</div>
+      <div class="journal-table-scroll">
+        <table class="journal-table" id="journal-table" style="display: none;">
+          <thead>
+          <tr>
+            <th class="col-date">Создано в ↓</th>
+            <th class="col-user">Пользователь</th>
+            <th class="col-message">Сообщение</th>
+          </tr>
+          </thead>
+          <tbody id="journal-tbody"></tbody>
+        </table>
+      </div>
+      <div class="journal-pagination" id="journal-pagination" style="display: none;">
+        <div class="pagination-info">
+          <label>
+            Показать
+            <select id="journal-limit-select">
+              <option value="25" selected>25</option>
+              <option value="50">50</option>
+              <option value="100">100</option>
+            </select>
+          </label>
+          <span class="page-info" id="journal-page-info">Страница 1 из 1</span>
+        </div>
+        <div class="pagination-buttons">
+          <button type="button" class="btn btn-small" id="journal-prev-btn" disabled>← Назад</button>
+          <button type="button" class="btn btn-small" id="journal-next-btn" disabled>Вперёд →</button>
+        </div>
+      </div>
+    </div>
+    <div class="empty-state" id="journal-empty-state" style="display: none;">
+      <h3>Записей нет</h3>
+      <p>События появятся при активности в чате</p>
+    </div>
+  </div>
+</div>

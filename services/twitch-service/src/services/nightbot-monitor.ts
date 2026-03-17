@@ -12,6 +12,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { query, queryOne } from '../database/database';
 import { log } from '../utils/event-logger';
+import { logJournalEvent } from './journal-logger';
 import {
     fetchOverlayCharacters,
     setOverlayPlayerCharacter,
@@ -202,7 +203,7 @@ export class NightBotMonitor {
         '!fp', '!фп',
         '!команда', '!команды', '!commands',
         '!ссылки', '!links',
-        '!персонажи', '!персонаж',
+        '!скины', '!скин',
         '!игры', '!help',
         '!дуэль', '!duel', '!fight',
         '!старт_дуэль', '!start_duel',
@@ -210,7 +211,6 @@ export class NightBotMonitor {
         '!амнистия', '!pardon'
     ]);
 
-    // Мапа команд для чистого роутинга
     private commands = this.buildCommandsMap('!партия');
     private partyTrigger = '!партия';
     private partyResponseText = 'Партия выдала';
@@ -219,6 +219,24 @@ export class NightBotMonitor {
     private customCommands: Map<string, CustomCommand> = new Map();
     // Кастомные счётчики из БД (обновляются динамически)
     private counters: Map<string, any> = new Map();
+    // Кеш доступных скинов (обновляется при !скины)
+    private availableSkinsCache: string[] = [];
+
+    /** Извлекает ссылку на донат из ответа команды !donation (кастомные команды). Поддерживает https://... и donatex.gg/... */
+    private getSkinDonateLink(): string {
+        const donationTriggers = ['!donation', '!донат'];
+        for (const trigger of donationTriggers) {
+            const cmd = this.customCommands.get(trigger.toLowerCase());
+            if (cmd?.response) {
+                const match = cmd.response.match(/https?:\/\/[^\s"'<>]+|[a-zA-Z0-9][-a-zA-Z0-9.]*\.[a-zA-Z]{2,}\/[^\s"'<>]+/);
+                if (match) {
+                    const url = match[0];
+                    return url.startsWith('http') ? url : `https://${url}`;
+                }
+            }
+        }
+        return '';
+    }
     
     private buildCommandsMap(partyTrigger: string): Map<string, CommandHandler> {
         const map = new Map<string, CommandHandler>();
@@ -248,7 +266,8 @@ export class NightBotMonitor {
         register(['!крыса'], (ch, u, m, msg) => void this.handleRatCommand(ch, u, m, msg));
         register(['!милашка'], (ch, u, m, msg) => void this.handleCutieCommand(ch, u, m, msg));
         register(['!vanish'], (ch, u, m, msg) => void this.handleVanishCommand(ch, u, msg));
-        register(['!персонажи'], (ch, u, m, msg) => void this.handleCharactersListCommand(ch, u, msg));
+        register(['!jump', '!j', '!прыжок'], (ch, u, m, msg) => void this.handleJumpCommand(ch, u, msg));
+        register(['!скины'], (ch, u, m, msg) => void this.handleCharactersListCommand(ch, u, msg));
         register(['!игры', '!help'], (ch, u, m, msg) => void this.handleGamesCommand(ch, u, msg));
         register(['!ссылки', '!links'], (ch, u, m, msg) => void this.handleLinksCommand(ch, u, msg));
         register(['!команда', '!команды', '!commands'], (ch, u, m, msg) => void this.handleAllCommandsCommand(ch, u, msg));
@@ -848,6 +867,10 @@ export class NightBotMonitor {
                 const trimmedMessage = originalMessage.toLowerCase();
                 console.log(`📨 ${user}: ${message}`);
 
+                // Записываем в журнал событий (для админки, по аналогии с Nightbot)
+                const eventType = trimmedMessage.startsWith('!') ? 'command' as const : 'message' as const;
+                logJournalEvent(user, originalMessage, eventType);
+
                 let messageId = this.getChatMessageId(msg);
                 if (!messageId && this.channelName) {
                     const cacheKey = `#${this.channelName}:${username}:${originalMessage}`;
@@ -905,8 +928,8 @@ export class NightBotMonitor {
                     return;
                 }
 
-                // Команда выбора персонажа: !персонаж <имя>
-                if (trimmedMessage.startsWith('!персонаж ')) {
+                // Команда выбора скина: !скин <имя>
+                if (trimmedMessage.startsWith('!скин ')) {
                     this.handleSetCharacterCommand(channel, user, message, msg);
                     return;
                 }
@@ -1375,6 +1398,9 @@ export class NightBotMonitor {
 
             // Подставляем значение в шаблон
             const response = counter.responseTemplate.replace(/{value}/g, newValue.toString());
+
+            // Записываем в журнал (системное событие, как в Nightbot)
+            logJournalEvent(user, response, 'system');
 
             // Отправляем в чат
             await this.sendMessage(channel, response);
@@ -1865,6 +1891,7 @@ export class NightBotMonitor {
                 return;
             }
             log('COMMAND', { command: '!title', username: user, channel, newTitle });
+            logJournalEvent(user, `Название изменено на: ${newTitle}`, 'system');
             await this.sendMessage(channel, `📺 Название изменено на: ${newTitle}`);
         } catch (error: any) {
             console.error('❌ Ошибка !title:', error?.message || error);
@@ -1931,6 +1958,7 @@ export class NightBotMonitor {
                 return;
             }
             log('COMMAND', { command: '!game', username: user, channel, gameName: first.name, gameId: first.id });
+            logJournalEvent(user, `Категория изменена на: ${first.name}`, 'system');
             await this.sendMessage(channel, `🎮 Категория изменена на: ${first.name}`);
         } catch (error: any) {
             console.error('❌ Ошибка !game:', error?.message || error);
@@ -2361,9 +2389,10 @@ export class NightBotMonitor {
             '!дуэль @user - вызвать конкретного игрока на дуэль',
             '!крыса/!милашка - выбрать случайную крысу/милашку из чата',
             '!vanish - скрыть свои сообщения',
-            '!персонажи - показать персонажей',
-            '!персонаж <имя> - выбрать персонажа',
-            '!jump/!j - прыжок'
+            '!скины - показать скины',
+            '!скин <имя> - выбрать скин',
+            '!скин рандом - случайный скин',
+            '!jump/!j/!прыжок'
         ];
 
         const response = `📋Список доступных команд в чате:\n${commandsList.join(' • ')}`;
@@ -2605,28 +2634,29 @@ export class NightBotMonitor {
     }
 
     /**
-     * Обработка команды !персонажи
-     * Показывает список доступных публичных персонажей из Overlay API
+     * Обработка команды !скины
+     * Показывает список доступных публичных скинов из Overlay API
      */
     private async handleCharactersListCommand(channel: string, user: string, msg: any) {
-        console.log(`🎭 Команда !персонажи от ${user} в ${channel}`);
+        console.log(`🎭 Команда !скины от ${user} в ${channel}`);
 
         try {
             const characters = await fetchOverlayCharacters();
+            this.availableSkinsCache = characters;
 
             const response =
                 characters.length === 0
-                    ? 'Публичные персонажи пока не настроены.'
-                    : `Доступные персонажи: ${characters.join(', ')}`;
+                    ? 'Публичные скины пока не настроены. Надеть скин: !скин <имя> или !скин рандом'
+                    : `Доступные скины: ${characters.join(', ')}. Надеть скин: !скин <имя> или !скин рандом`;
 
             await this.sendMessage(channel, response);
-            console.log(`✅ Список персонажей отправлен в чат`);
+            console.log(`✅ Список скинов отправлен в чат`);
         } catch (error) {
-            console.error('❌ Ошибка при обработке команды !персонажи:', error);
+            console.error('❌ Ошибка при обработке команды !скины:', error);
             try {
                 await this.sendMessage(
                     channel,
-                    'Не удалось получить список персонажей :('
+                    'Не удалось получить список скинов :('
                 );
             } catch {
                 // игнорируем вторичную ошибку отправки
@@ -2635,8 +2665,8 @@ export class NightBotMonitor {
     }
 
     /**
-     * Обработка команды !персонаж <имя>
-     * Устанавливает публичного персонажа для пользователя в Overlay API
+     * Обработка команды !скин <имя>
+     * Устанавливает публичный скин для пользователя в Overlay API
      */
     private async handleSetCharacterCommand(
         channel: string,
@@ -2644,33 +2674,70 @@ export class NightBotMonitor {
         message: string,
         msg: any
     ) {
-        console.log(`🎭 Команда !персонаж от ${user} в ${channel}: ${message}`);
+        console.log(`🎭 Команда !скин от ${user} в ${channel}: ${message}`);
 
         const parts = message.trim().split(/\s+/);
         const character = parts[1];
 
         if (!character) {
             const usage =
-                'Использование: !персонаж <имя>. Список доступных: !персонажи';
+                'Использование: !скин <имя> или !скин рандом. Список доступных: !скины';
             try {
                 await this.sendMessage(channel, usage);
             } catch (error) {
-                console.error('❌ Ошибка отправки usage для !персонаж:', error);
+                console.error('❌ Ошибка отправки usage для !скин:', error);
+            }
+            return;
+        }
+
+        // Получаем актуальный список скинов (кеш обновляется при !скины)
+        if (this.availableSkinsCache.length === 0) {
+            this.availableSkinsCache = await fetchOverlayCharacters();
+        }
+        if (this.availableSkinsCache.length === 0) {
+            try {
+                await this.sendMessage(channel, 'Публичные скины пока не настроены.');
+            } catch {
+                // игнорируем
+            }
+            return;
+        }
+
+        let characterToSet = character.trim();
+        if (characterToSet.toLowerCase() === 'рандом') {
+            characterToSet =
+                this.availableSkinsCache[
+                    Math.floor(Math.random() * this.availableSkinsCache.length)
+                ];
+        }
+
+        const charLower = characterToSet.toLowerCase();
+        const isAvailable = this.availableSkinsCache.some(
+            (s) => s.toLowerCase() === charLower
+        );
+        if (!isAvailable) {
+            try {
+                await this.sendMessage(
+                    channel,
+                    `@${user}, скин "${characterToSet}" недоступен. Доступные скины: !скины. Хочешь свой скин? ${this.getSkinDonateLink() || '!donation'}`
+                );
+            } catch (error) {
+                console.error('❌ Ошибка отправки сообщения о недоступном скине:', error);
             }
             return;
         }
 
         try {
-            await setOverlayPlayerCharacter(user, character);
-            const response = `@${user}, персонаж "${character}" установлен.`;
+            await setOverlayPlayerCharacter(user, characterToSet);
+            const response = `@${user}, скин "${characterToSet}" установлен.`;
             await this.sendMessage(channel, response);
-            console.log(`✅ Персонаж "${character}" установлен для ${user}`);
+            console.log(`✅ Скин "${characterToSet}" установлен для ${user}`);
         } catch (error) {
-            console.error('❌ Ошибка при обработке команды !персонаж:', error);
+            console.error('❌ Ошибка при обработке команды !скин:', error);
             try {
                 await this.sendMessage(
                     channel,
-                    `@${user}, не удалось установить персонажа "${character}".`
+                    `@${user}, не удалось установить скин "${characterToSet}".`
                 );
             } catch {
                 // игнорируем вторичную ошибку отправки

@@ -148,7 +148,7 @@ export async function fetchOverlayCharacters(): Promise<string[]> {
     return [];
   } catch (error: any) {
     console.error(
-      '⚠️ Ошибка получения списка персонажей Overlay:',
+      '⚠️ Ошибка получения списка скинов Overlay:',
       error?.message || error
     );
     return [];
