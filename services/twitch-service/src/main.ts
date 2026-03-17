@@ -173,8 +173,6 @@ async function main() {
         resetDuelsOnStreamEnd();
         clearActiveUsers(config.twitch.channel);
         nightBotMonitor.clearChattersCache();
-        nightBotMonitor.clearStopCounters();
-        nightBotMonitor.clearDeathCounters();
         nightBotMonitor.clearDetectedModerators();
         nightBotMonitor.disableDuelsFromWeb();
         nightBotMonitor.stopViewersSync();

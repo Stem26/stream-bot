@@ -20,9 +20,6 @@ import {
     jumpOverlayPlayer,
 } from './overlay-api';
 
-// Файл для хранения состояния счётчиков (в корне монорепы)
-const COUNTERS_STATE_FILE = path.resolve(__dirname, '../../../../../counters-state.json');
-
 // Файл для хранения кастомных команд (если понадобится fallback)
 const DATA_DIR = (() => {
     const fromModule = path.resolve(__dirname, '..', 'data');
@@ -30,11 +27,6 @@ const DATA_DIR = (() => {
     return path.resolve(process.cwd(), 'src/data');
 })();
 const CUSTOM_COMMANDS_FILE = path.join(DATA_DIR, 'custom-commands.json');
-
-interface CountersState {
-    stopCounters: Record<string, number>;
-    deathCounters: Record<string, number>;
-}
 
 interface LinksConfig {
     allLinksText: string;
@@ -50,34 +42,6 @@ interface CustomCommand {
     messageType: 'announcement' | 'message';
     color: 'primary' | 'blue' | 'green' | 'orange' | 'purple';
     description: string;
-}
-
-/**
- * Загружает состояние счётчиков из файла
- */
-function loadCountersState(): CountersState {
-    try {
-        if (fs.existsSync(COUNTERS_STATE_FILE)) {
-            const data = fs.readFileSync(COUNTERS_STATE_FILE, 'utf-8');
-            const parsed = JSON.parse(data);
-            console.log('📋 Загружено состояние счётчиков:', parsed);
-            return parsed;
-        }
-    } catch (error) {
-        console.error('⚠️ Ошибка загрузки состояния счётчиков:', error);
-    }
-    return {stopCounters: {}, deathCounters: {}};
-}
-
-/**
- * Сохраняет состояние счётчиков в файл
- */
-function saveCountersState(state: CountersState): void {
-    try {
-        fs.writeFileSync(COUNTERS_STATE_FILE, JSON.stringify(state, null, 2));
-    } catch (error) {
-        console.error('⚠️ Ошибка сохранения состояния счётчиков:', error);
-    }
 }
 
 async function loadLinksConfigFromDb(): Promise<LinksConfig> {
@@ -176,12 +140,6 @@ export class NightBotMonitor {
 
     private dickQueue: Promise<void> = Promise.resolve();
 
-    // Счётчик команды !стоп (username -> количество остановок)
-    private stopCounters = new Map<string, number>();
-
-    // Счётчик команды !смерть (username -> количество смертей в игре)
-    private deathCounters = new Map<string, number>();
-
     // Кеш User ID для предотвращения повторных запросов к helix/users (username -> userId)
     // Критично для !vanish и !дуэль - без кеша каждый вызов = API запрос
     private userIdCache = new Map<string, string>();
@@ -246,8 +204,6 @@ export class NightBotMonitor {
         '!ссылки', '!links',
         '!персонажи', '!персонаж',
         '!игры', '!help',
-        '!смерть', '!смертьинфо', '!смертьоткат', '!смертьсброс',
-        '!стоп', '!стопинфо', '!стопоткат', '!стопсброс',
         '!дуэль', '!duel', '!fight',
         '!старт_дуэль', '!start_duel',
         '!стоп_дуэль', '!stop_duel',
@@ -292,14 +248,6 @@ export class NightBotMonitor {
         register(['!крыса'], (ch, u, m, msg) => void this.handleRatCommand(ch, u, m, msg));
         register(['!милашка'], (ch, u, m, msg) => void this.handleCutieCommand(ch, u, m, msg));
         register(['!vanish'], (ch, u, m, msg) => void this.handleVanishCommand(ch, u, msg));
-        register(['!стоп'], (ch, u, m, msg) => void this.handleStopCommand(ch, u, msg));
-        register(['!стопоткат'], (ch, u, m, msg) => void this.handleStopRollbackCommand(ch, u, msg));
-        register(['!стопсброс'], (ch, u, m, msg) => void this.handleStopResetCommand(ch, u, msg));
-        register(['!стопинфо'], (ch, u, m, msg) => void this.handleStopInfoCommand(ch, u, msg));
-        register(['!смерть'], (ch, u, m, msg) => void this.handleDeathCommand(ch, u, msg));
-        register(['!смертьоткат'], (ch, u, m, msg) => void this.handleDeathRollbackCommand(ch, u, msg));
-        register(['!смертьсброс'], (ch, u, m, msg) => void this.handleDeathResetCommand(ch, u, msg));
-        register(['!смертьинфо'], (ch, u, m, msg) => void this.handleDeathInfoCommand(ch, u, msg));
         register(['!персонажи'], (ch, u, m, msg) => void this.handleCharactersListCommand(ch, u, msg));
         register(['!игры', '!help'], (ch, u, m, msg) => void this.handleGamesCommand(ch, u, msg));
         register(['!ссылки', '!links'], (ch, u, m, msg) => void this.handleLinksCommand(ch, u, msg));
@@ -338,17 +286,6 @@ export class NightBotMonitor {
     }
 
     constructor() {
-        // Загружаем состояние счётчиков при создании
-        const countersState = loadCountersState();
-
-        for (const [username, count] of Object.entries(countersState.stopCounters)) {
-            this.stopCounters.set(username, count);
-        }
-
-        for (const [username, count] of Object.entries(countersState.deathCounters)) {
-            this.deathCounters.set(username, count);
-        }
-
         // Конфиг ссылок загружается из БД в main через reloadLinksConfigAsync()
 
         // Загружаем кастомные команды
@@ -474,17 +411,6 @@ export class NightBotMonitor {
         } catch (error) {
             console.error('❌ Ошибка при ручном запуске !ссылки из UI:', error);
         }
-    }
-
-    /**
-     * Сохраняет текущее состояние счётчиков в файл
-     */
-    private saveCounters(): void {
-        const state: CountersState = {
-            stopCounters: Object.fromEntries(this.stopCounters),
-            deathCounters: Object.fromEntries(this.deathCounters)
-        };
-        saveCountersState(state);
     }
 
     /**
@@ -963,44 +889,6 @@ export class NightBotMonitor {
                     return;
                 }
 
-                // Проверяем команду !стоп[число] (например: !стоп5, !стоп10)
-                const stopWithNumberMatch = trimmedMessage.match(/^!стоп(\d+)$/);
-                if (stopWithNumberMatch) {
-                    const targetValue = parseInt(stopWithNumberMatch[1], 10);
-
-                    // Проверка что стрим онлайн
-                    if (!this.isStreamOnlineCheck() && !IS_LOCAL) {
-                        console.log(`⚠️ Команда ${trimmedMessage} проигнорирована: стрим оффлайн`);
-                        return;
-                    }
-
-                    if (IS_LOCAL && !this.isStreamOnlineCheck()) {
-                        console.log(`🧪 ТЕСТ в оффлайне: выполняем команду ${trimmedMessage}`);
-                    }
-
-                    this.handleStopSetCommand(channel, user, targetValue, msg);
-                    return;
-                }
-
-                // Проверяем команду !смерть[число] (например: !смерть5, !смерть10)
-                const deathWithNumberMatch = trimmedMessage.match(/^!смерть(\d+)$/);
-                if (deathWithNumberMatch) {
-                    const targetValue = parseInt(deathWithNumberMatch[1], 10);
-
-                    // Проверка что стрим онлайн
-                    if (!this.isStreamOnlineCheck() && !IS_LOCAL) {
-                        console.log(`⚠️ Команда ${trimmedMessage} проигнорирована: стрим оффлайн`);
-                        return;
-                    }
-
-                    if (IS_LOCAL && !this.isStreamOnlineCheck()) {
-                        console.log(`🧪 ТЕСТ в оффлайне: выполняем команду ${trimmedMessage}`);
-                    }
-
-                    this.handleDeathSetCommand(channel, user, targetValue, msg);
-                    return;
-                }
-
                 // Проверяем команду !дуэль с параметрами (например: !дуэль @user или !дуэль user)
                 if (trimmedMessage.startsWith('!дуэль ')) {
                     // Проверка что стрим онлайн
@@ -1020,6 +908,20 @@ export class NightBotMonitor {
                 // Команда выбора персонажа: !персонаж <имя>
                 if (trimmedMessage.startsWith('!персонаж ')) {
                     this.handleSetCharacterCommand(channel, user, message, msg);
+                    return;
+                }
+
+                // !title <новое название> — смена названия трансляции (стример, модераторы, EXTRA_DUEL_ADMINS)
+                if (trimmedMessage.startsWith('!title ')) {
+                    const newTitle = message.slice(7).trim();
+                    this.handleTitleCommand(channel, user, newTitle, msg);
+                    return;
+                }
+
+                // !game <категория> — смена категории/игры (стример, модераторы, EXTRA_DUEL_ADMINS)
+                if (trimmedMessage.startsWith('!game ')) {
+                    const gameQuery = message.slice(6).trim();
+                    this.handleGameCommand(channel, user, gameQuery, msg);
                     return;
                 }
 
@@ -1068,7 +970,7 @@ export class NightBotMonitor {
                     const base = variantMatch[1];
                     const suffix = variantMatch[2];
                     const baseCounter = this.counters.get(base);
-                    if (baseCounter && baseCounter.id !== 'stop' && baseCounter.id !== 'death') {
+                    if (baseCounter) {
                         if (suffix === 'инфо') {
                             this.handleCounterInfoCommand(channel, user, baseCounter, msg);
                         } else if (suffix === 'сброс') {
@@ -1927,6 +1829,116 @@ export class NightBotMonitor {
     }
 
     /**
+     * Обработка команды !title <название> — смена названия трансляции
+     * Доступна: стример, модераторы, EXTRA_DUEL_ADMINS. Требует BROADCAST_TWITCH_ACCESS_TOKEN с scope channel:manage:broadcast
+     */
+    private async handleTitleCommand(channel: string, user: string, newTitle: string, msg: any) {
+        if (!this.isBroadcaster(user) && !canManageDuels(user)) {
+            return;
+        }
+        if (!newTitle || newTitle.length > 140) {
+            await this.sendMessage(channel, 'Название должно быть от 1 до 140 символов');
+            return;
+        }
+        if (!this.broadcastAccessToken || !this.broadcasterId) {
+            console.error('❌ !title: нет токена стримера (BROADCAST_TWITCH_ACCESS_TOKEN) или broadcasterId');
+            await this.sendMessage(channel, 'Команда недоступна (нет токена стримера)');
+            return;
+        }
+        try {
+            const res = await fetch(
+                `https://api.twitch.tv/helix/channels?broadcaster_id=${this.broadcasterId}`,
+                {
+                    method: 'PATCH',
+                    headers: {
+                        'Authorization': `Bearer ${this.broadcastAccessToken}`,
+                        'Client-Id': this.clientId,
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ title: newTitle }),
+                }
+            );
+            if (!res.ok) {
+                const text = await res.text();
+                console.error(`❌ !title API error ${res.status}:`, text);
+                await this.sendMessage(channel, `Ошибка обновления (${res.status})`);
+                return;
+            }
+            log('COMMAND', { command: '!title', username: user, channel, newTitle });
+            await this.sendMessage(channel, `📺 Название изменено на: ${newTitle}`);
+        } catch (error: any) {
+            console.error('❌ Ошибка !title:', error?.message || error);
+            await this.sendMessage(channel, 'Ошибка при смене названия');
+        }
+    }
+
+    /**
+     * Обработка команды !game <категория> — смена категории/игры трансляции
+     * Доступна: стример, модераторы, EXTRA_DUEL_ADMINS. Требует BROADCAST_TWITCH_ACCESS_TOKEN с scope channel:manage:broadcast
+     */
+    private async handleGameCommand(channel: string, user: string, gameQuery: string, msg: any) {
+        if (!this.isBroadcaster(user) && !canManageDuels(user)) {
+            return;
+        }
+        if (!gameQuery.trim()) {
+            await this.sendMessage(channel, 'Укажи название категории, например: !game Just Chatting');
+            return;
+        }
+        if (!this.broadcastAccessToken || !this.broadcasterId) {
+            console.error('❌ !game: нет токена стримера (BROADCAST_TWITCH_ACCESS_TOKEN) или broadcasterId');
+            await this.sendMessage(channel, 'Команда недоступна (нет токена стримера)');
+            return;
+        }
+        try {
+            const searchRes = await fetch(
+                `https://api.twitch.tv/helix/search/categories?query=${encodeURIComponent(gameQuery.trim())}`,
+                {
+                    headers: {
+                        'Authorization': `Bearer ${this.broadcastAccessToken}`,
+                        'Client-Id': this.clientId,
+                    },
+                }
+            );
+            if (!searchRes.ok) {
+                const text = await searchRes.text();
+                console.error(`❌ !game search API error ${searchRes.status}:`, text);
+                await this.sendMessage(channel, `Ошибка поиска категории (${searchRes.status})`);
+                return;
+            }
+            const searchData = await searchRes.json() as { data?: Array<{ id: string; name: string }> };
+            const categories = searchData.data;
+            if (!categories?.length) {
+                await this.sendMessage(channel, `Категория "${gameQuery}" не найдена`);
+                return;
+            }
+            const first = categories[0];
+            const patchRes = await fetch(
+                `https://api.twitch.tv/helix/channels?broadcaster_id=${this.broadcasterId}`,
+                {
+                    method: 'PATCH',
+                    headers: {
+                        'Authorization': `Bearer ${this.broadcastAccessToken}`,
+                        'Client-Id': this.clientId,
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ game_id: first.id }),
+                }
+            );
+            if (!patchRes.ok) {
+                const text = await patchRes.text();
+                console.error(`❌ !game patch API error ${patchRes.status}:`, text);
+                await this.sendMessage(channel, `Ошибка обновления категории (${patchRes.status})`);
+                return;
+            }
+            log('COMMAND', { command: '!game', username: user, channel, gameName: first.name, gameId: first.id });
+            await this.sendMessage(channel, `🎮 Категория изменена на: ${first.name}`);
+        } catch (error: any) {
+            console.error('❌ Ошибка !game:', error?.message || error);
+            await this.sendMessage(channel, 'Ошибка при смене категории');
+        }
+    }
+
+    /**
      * Обработка команды !крыса из чата
      * Выбирает рандомного активного чатера из списка подключенных зрителей
      */
@@ -1969,408 +1981,6 @@ export class NightBotMonitor {
             await jumpOverlayPlayer(user);
         } catch (error) {
             console.error('❌ Ошибка при обработке команды !jump:', error);
-        }
-    }
-
-    /**
-     * Обработка команды !стоп из чата
-     * Увеличивает счётчик остановок стрима для kunilika666 (независимо от того, кто написал команду)
-     */
-    private async handleStopCommand(channel: string, user: string, msg: any) {
-        console.log(`🛑 Команда !стоп от ${user} в ${channel}`);
-
-        try {
-            // Проверяем что счётчик включен
-            const check = await query('SELECT enabled FROM counters WHERE id = $1', ['stop']);
-            if (!check[0]?.enabled) {
-                console.log('⚠️ Счётчик !стоп выключен, команда проигнорирована');
-                return;
-            }
-
-            // Инкрементируем счётчик в БД
-            await query('UPDATE counters SET value = value + 1 WHERE id = $1', ['stop']);
-            
-            // Получаем новое значение и шаблон
-            const result = await query('SELECT value, response_template FROM counters WHERE id = $1', ['stop']);
-            const newCount = result[0]?.value || 1;
-            const template = result[0]?.response_template || 'Количество стопов: {value}';
-
-            // Используем шаблон из БД
-            const response = template.replace(/{value}/g, newCount.toString());
-
-            await this.sendMessage(channel, response);
-            console.log(`✅ Отправлен ответ в чат: ${response}`);
-            
-            // Обновляем кеш
-            this.reloadCounters();
-        } catch (error) {
-            console.error('❌ Ошибка при обработке команды !стоп:', error);
-        }
-    }
-
-    /**
-     * Обработка команды !стоп[число] из чата (например: !стоп5, !стоп10)
-     */
-    private async handleStopSetCommand(channel: string, user: string, targetValue: number, msg: any) {
-        console.log(`🎯 Команда !стоп${targetValue} от ${user} в ${channel}`);
-
-        try {
-            // Проверяем что счётчик включен
-            const check = await query('SELECT enabled FROM counters WHERE id = $1', ['stop']);
-            if (!check[0]?.enabled) {
-                console.log('⚠️ Счётчик !стоп выключен, команда проигнорирована');
-                return;
-            }
-
-            if (targetValue < 0 || targetValue > 9999) {
-                const response = `Значение должно быть от 0 до 9999`;
-                await this.sendMessage(channel, response);
-                console.log(`⚠️ Некорректное значение: ${targetValue}`);
-                return;
-            }
-
-            // Обновляем значение в БД
-            await query('UPDATE counters SET value = $1 WHERE id = $2', [targetValue, 'stop']);
-            
-            // Получаем шаблон
-            const result = await query('SELECT response_template FROM counters WHERE id = $1', ['stop']);
-            const template = result[0]?.response_template || 'Количество стопов: {value}';
-
-            // Используем шаблон из БД
-            const response = `Счётчик установлен: ${template.replace(/{value}/g, targetValue.toString())}`;
-
-            await this.sendMessage(channel, response);
-            console.log(`✅ Отправлен ответ в чат: ${response}`);
-            
-            // Обновляем кеш
-            this.reloadCounters();
-        } catch (error) {
-            console.error('❌ Ошибка при обработке команды !стоп[число]:', error);
-        }
-    }
-
-    /**
-     * Обработка команды !стопоткат из чата
-     * Уменьшает счётчик остановок стрима для kunilika666 (откат ошибочного нажатия)
-     */
-    private async handleStopRollbackCommand(channel: string, user: string, msg: any) {
-        console.log(`↩️ Команда !стопоткат от ${user} в ${channel}`);
-
-        try {
-            // Получаем текущее значение из БД
-            const result = await query('SELECT value, enabled FROM counters WHERE id = $1', ['stop']);
-            if (!result[0]?.enabled) {
-                console.log('⚠️ Счётчик !стоп выключен, команда проигнорирована');
-                return;
-            }
-            const currentCount = result[0]?.value || 0;
-
-            if (currentCount === 0) {
-                const response = `Нет остановок для отката`;
-                await this.sendMessage(channel, response);
-                console.log(`✅ Отправлен ответ в чат: ${response}`);
-                return;
-            }
-
-            const newCount = currentCount - 1;
-
-            // Обновляем в БД
-            await query('UPDATE counters SET value = $1 WHERE id = $2', [newCount, 'stop']);
-
-            // Формируем правильное окончание слова "раз"
-            let razWord = 'раз';
-            if (newCount % 10 === 1 && newCount % 100 !== 11) {
-                razWord = 'раз';
-            } else if ([2, 3, 4].includes(newCount % 10) && ![12, 13, 14].includes(newCount % 100)) {
-                razWord = 'раза';
-            } else {
-                razWord = 'раз';
-            }
-
-            const response = newCount === 0
-                ? `Откат выполнен, счётчик сброшен`
-                : `Откат выполнен, kunilika666 остановила стрим ${newCount} ${razWord}`;
-
-            await this.sendMessage(channel, response);
-            console.log(`✅ Отправлен ответ в чат: ${response}`);
-            
-            // Обновляем кеш
-            this.reloadCounters();
-        } catch (error) {
-            console.error('❌ Ошибка при обработке команды !стопоткат:', error);
-        }
-    }
-
-    /**
-     * Обработка команды !стопсброс из чата
-     * Полностью сбрасывает счётчик остановок для kunilika666
-     */
-    private async handleStopResetCommand(channel: string, user: string, msg: any) {
-        console.log(`🔄 Команда !стопсброс от ${user} в ${channel}`);
-
-        try {
-            // Получаем текущее значение из БД
-            const result = await query('SELECT value, enabled FROM counters WHERE id = $1', ['stop']);
-            if (!result[0]?.enabled) {
-                console.log('⚠️ Счётчик !стоп выключен, команда проигнорирована');
-                return;
-            }
-            const currentCount = result[0]?.value || 0;
-
-            if (currentCount === 0) {
-                const response = `Счётчик остановок уже на нуле`;
-                await this.sendMessage(channel, response);
-                console.log(`✅ Отправлен ответ в чат: ${response}`);
-                return;
-            }
-
-            // Сбрасываем в БД
-            await query('UPDATE counters SET value = 0 WHERE id = $1', ['stop']);
-
-            const response = `Счётчик остановок сброшен`;
-
-            await this.sendMessage(channel, response);
-            console.log(`✅ Отправлен ответ в чат: ${response}`);
-            
-            // Обновляем кеш
-            this.reloadCounters();
-        } catch (error) {
-            console.error('❌ Ошибка при обработке команды !стопсброс:', error);
-        }
-    }
-
-    /**
-     * Обработка команды !стопинфо из чата
-     * Показывает текущее количество остановок kunilika666
-     */
-    private async handleStopInfoCommand(channel: string, user: string, msg: any) {
-        console.log(`ℹ️ Команда !стопинфо от ${user} в ${channel}`);
-
-        try {
-            // Получаем данные счётчика из БД
-            const result = await query('SELECT value, response_template, enabled FROM counters WHERE id = $1', ['stop']);
-            if (!result[0]?.enabled) {
-                console.log('⚠️ Счётчик !стоп выключен, команда проигнорирована');
-                return;
-            }
-            const currentCount = result[0]?.value || 0;
-            const template = result[0]?.response_template || 'Количество стопов: {value}';
-
-            if (currentCount === 0) {
-                const response = `Счётчик стопов пока на нуле`;
-                await this.sendMessage(channel, response);
-                console.log(`✅ Отправлен ответ в чат: ${response}`);
-                return;
-            }
-
-            // Используем шаблон из БД
-            const response = template.replace(/{value}/g, currentCount.toString());
-
-            await this.sendMessage(channel, response);
-            console.log(`✅ Отправлен ответ в чат: ${response}`);
-        } catch (error) {
-            console.error('❌ Ошибка при обработке команды !стопинфо:', error);
-        }
-    }
-
-    /**
-     * Обработка команды !смерть из чата
-     * Увеличивает счётчик смертей в игре для kunilika666 (независимо от того, кто написал команду)
-     */
-    private async handleDeathCommand(channel: string, user: string, msg: any) {
-        console.log(`💀 Команда !смерть от ${user} в ${channel}`);
-
-        try {
-            // Проверяем что счётчик включен
-            const check = await query('SELECT enabled FROM counters WHERE id = $1', ['death']);
-            if (!check[0]?.enabled) {
-                console.log('⚠️ Счётчик !смерть выключен, команда проигнорирована');
-                return;
-            }
-
-            // Инкрементируем счётчик в БД
-            await query('UPDATE counters SET value = value + 1 WHERE id = $1', ['death']);
-            
-            // Получаем новое значение и шаблон
-            const result = await query('SELECT value, response_template FROM counters WHERE id = $1', ['death']);
-            const newCount = result[0]?.value || 1;
-            const template = result[0]?.response_template || 'Смертей: {value}';
-
-            // Используем шаблон из БД
-            const response = template.replace(/{value}/g, newCount.toString());
-
-            await this.sendMessage(channel, response);
-            console.log(`✅ Отправлен ответ в чат: ${response}`);
-            
-            // Обновляем кеш
-            this.reloadCounters();
-        } catch (error) {
-            console.error('❌ Ошибка при обработке команды !смерть:', error);
-        }
-    }
-
-    /**
-     * Обработка команды !смерть[число] из чата (например: !смерть5, !смерть10)
-     */
-    private async handleDeathSetCommand(channel: string, user: string, targetValue: number, msg: any) {
-        console.log(`🎯 Команда !смерть${targetValue} от ${user} в ${channel}`);
-
-        try {
-            // Проверяем что счётчик включен
-            const check = await query('SELECT enabled FROM counters WHERE id = $1', ['death']);
-            if (!check[0]?.enabled) {
-                console.log('⚠️ Счётчик !смерть выключен, команда проигнорирована');
-                return;
-            }
-
-            if (targetValue < 0 || targetValue > 9999) {
-                const response = `Значение должно быть от 0 до 9999`;
-                await this.sendMessage(channel, response);
-                console.log(`⚠️ Некорректное значение: ${targetValue}`);
-                return;
-            }
-
-            // Обновляем значение в БД
-            await query('UPDATE counters SET value = $1 WHERE id = $2', [targetValue, 'death']);
-            
-            // Получаем шаблон
-            const result = await query('SELECT response_template FROM counters WHERE id = $1', ['death']);
-            const template = result[0]?.response_template || 'Смертей: {value}';
-
-            // Используем шаблон из БД
-            const response = `Счётчик установлен: ${template.replace(/{value}/g, targetValue.toString())}`;
-
-            await this.sendMessage(channel, response);
-            console.log(`✅ Отправлен ответ в чат: ${response}`);
-            
-            // Обновляем кеш
-            this.reloadCounters();
-        } catch (error) {
-            console.error('❌ Ошибка при обработке команды !смерть[число]:', error);
-        }
-    }
-
-    /**
-     * Обработка команды !смертьоткат из чата
-     * Уменьшает счётчик смертей для kunilika666 (откат ошибочного нажатия)
-     */
-    private async handleDeathRollbackCommand(channel: string, user: string, msg: any) {
-        console.log(`↩️ Команда !смертьоткат от ${user} в ${channel}`);
-
-        try {
-            // Получаем текущее значение из БД
-            const result = await query('SELECT value, enabled FROM counters WHERE id = $1', ['death']);
-            if (!result[0]?.enabled) {
-                console.log('⚠️ Счётчик !смерть выключен, команда проигнорирована');
-                return;
-            }
-            const currentCount = result[0]?.value || 0;
-
-            if (currentCount === 0) {
-                const response = `Нет смертей для отката`;
-                await this.sendMessage(channel, response);
-                console.log(`✅ Отправлен ответ в чат: ${response}`);
-                return;
-            }
-
-            const newCount = currentCount - 1;
-
-            // Обновляем в БД
-            await query('UPDATE counters SET value = $1 WHERE id = $2', [newCount, 'death']);
-
-            // Формируем правильное окончание слова "раз"
-            let razWord = 'раз';
-            if (newCount % 10 === 1 && newCount % 100 !== 11) {
-                razWord = 'раз';
-            } else if ([2, 3, 4].includes(newCount % 10) && ![12, 13, 14].includes(newCount % 100)) {
-                razWord = 'раза';
-            } else {
-                razWord = 'раз';
-            }
-
-            const response = newCount === 0
-                ? `Откат выполнен, счётчик сброшен`
-                : `Откат выполнен, kunilika666 умерла ${newCount} ${razWord}`;
-
-            await this.sendMessage(channel, response);
-            console.log(`✅ Отправлен ответ в чат: ${response}`);
-            
-            // Обновляем кеш
-            this.reloadCounters();
-        } catch (error) {
-            console.error('❌ Ошибка при обработке команды !смертьоткат:', error);
-        }
-    }
-
-    /**
-     * Обработка команды !смертьсброс из чата
-     * Полностью сбрасывает счётчик смертей для kunilika666
-     */
-    private async handleDeathResetCommand(channel: string, user: string, msg: any) {
-        console.log(`🔄 Команда !смертьсброс от ${user} в ${channel}`);
-
-        try {
-            // Получаем текущее значение из БД
-            const result = await query('SELECT value, enabled FROM counters WHERE id = $1', ['death']);
-            if (!result[0]?.enabled) {
-                console.log('⚠️ Счётчик !смерть выключен, команда проигнорирована');
-                return;
-            }
-            const currentCount = result[0]?.value || 0;
-
-            if (currentCount === 0) {
-                const response = `Счётчик смертей уже на нуле`;
-                await this.sendMessage(channel, response);
-                console.log(`✅ Отправлен ответ в чат: ${response}`);
-                return;
-            }
-
-            // Сбрасываем в БД
-            await query('UPDATE counters SET value = 0 WHERE id = $1', ['death']);
-
-            const response = `Счётчик смертей сброшен`;
-
-            await this.sendMessage(channel, response);
-            console.log(`✅ Отправлен ответ в чат: ${response}`);
-            
-            // Обновляем кеш
-            this.reloadCounters();
-        } catch (error) {
-            console.error('❌ Ошибка при обработке команды !смертьсброс:', error);
-        }
-    }
-
-    /**
-     * Обработка команды !смертьинфо из чата
-     * Показывает текущее количество смертей kunilika666
-     */
-    private async handleDeathInfoCommand(channel: string, user: string, msg: any) {
-        console.log(`ℹ️ Команда !смертьинфо от ${user} в ${channel}`);
-
-        try {
-            // Получаем данные счётчика из БД
-            const result = await query('SELECT value, response_template, enabled FROM counters WHERE id = $1', ['death']);
-            if (!result[0]?.enabled) {
-                console.log('⚠️ Счётчик !смерть выключен, команда проигнорирована');
-                return;
-            }
-            const currentCount = result[0]?.value || 0;
-            const template = result[0]?.response_template || 'Смертей: {value}';
-
-            if (currentCount === 0) {
-                const response = `Счётчик смертей пока на нуле`;
-                await this.sendMessage(channel, response);
-                console.log(`✅ Отправлен ответ в чат: ${response}`);
-                return;
-            }
-
-            // Используем шаблон из БД
-            const response = template.replace(/{value}/g, currentCount.toString());
-
-            await this.sendMessage(channel, response);
-            console.log(`✅ Отправлен ответ в чат: ${response}`);
-        } catch (error) {
-            console.error('❌ Ошибка при обработке команды !смертьинфо:', error);
         }
     }
 
@@ -3205,40 +2815,6 @@ export class NightBotMonitor {
         this.chattersCache.clear();
         this.chattersFetchPromise = null;
         console.log('🧹 Кеш зрителей очищен');
-    }
-
-    /**
-     * Выключить все счётчики (вызывается при окончании стрима)
-     */
-    clearStopCounters(): void {
-        query('UPDATE counters SET enabled = false WHERE id = $1', ['stop'])
-            .then(() => {
-                console.log('🧹 Счётчик !стоп выключен (можно включить вручную в веб для теста)');
-                this.reloadCounters();
-            })
-            .catch((err) => {
-                console.error('❌ Ошибка выключения счётчика !стоп:', err);
-            });
-        
-        this.stopCounters.clear();
-        this.saveCounters();
-    }
-
-    /**
-     * Выключить счётчик смертей (вызывается при окончании стрима)
-     */
-    clearDeathCounters(): void {
-        query('UPDATE counters SET enabled = false WHERE id = $1', ['death'])
-            .then(() => {
-                console.log('🧹 Счётчик !смерть выключен (можно включить вручную в веб для теста)');
-                this.reloadCounters();
-            })
-            .catch((err) => {
-                console.error('❌ Ошибка выключения счётчика !смерть:', err);
-            });
-        
-        this.deathCounters.clear();
-        this.saveCounters();
     }
 
     /**
