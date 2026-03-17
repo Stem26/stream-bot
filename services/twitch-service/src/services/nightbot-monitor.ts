@@ -3,7 +3,7 @@ import { StaticAuthProvider } from '@twurple/auth';
 import { processTwitchDickCommand } from '../commands/twitch-dick';
 import { processTwitchTopDickCommand } from '../commands/twitch-topDick';
 import { processTwitchBottomDickCommand } from '../commands/twitch-bottomDick';
-import { processTwitchDuelCommand, enableDuels, disableDuels, pardonAllDuelTimeouts, enableDuelsFromWeb as enableDuelsFromWebApi, disableDuelsFromWeb as disableDuelsFromWebApi, pardonAllDuelTimeoutsFromWeb, getDuelBannedPlayersFromWeb, pardonDuelUserFromWeb, getDuelCooldownSkipped, setDuelCooldownSkipped, getDuelTimeoutSeconds, acceptDuelChallenge, declineDuelChallenge, clearDuelChallenges, setDuelAdminsFromModerators, areDuelsEnabled } from '../commands/twitch-duel';
+import { processTwitchDuelCommand, enableDuels, disableDuels, pardonAllDuelTimeouts, enableDuelsFromWeb as enableDuelsFromWebApi, disableDuelsFromWeb as disableDuelsFromWebApi, pardonAllDuelTimeoutsFromWeb, getDuelBannedPlayersFromWeb, pardonDuelUserFromWeb, getDuelCooldownSkipped, setDuelCooldownSkipped, getDuelTimeoutSeconds, acceptDuelChallenge, declineDuelChallenge, clearDuelChallenges, setDuelAdminsFromModerators, areDuelsEnabled, canManageDuels } from '../commands/twitch-duel';
 import { processTwitchRatCommand, processTwitchCutieCommand, addActiveUser, setChattersAPIFunction } from '../commands/twitch-rat';
 import { processTwitchPointsCommand, processTwitchTopPointsCommand } from '../commands/twitch-points';
 import { ENABLE_BOT_FEATURES, ALLOW_LOCAL_COMMANDS } from '../config/features';
@@ -928,10 +928,11 @@ export class NightBotMonitor {
                     messageId = this.privmsgIdCache.get(cacheKey);
                 }
 
-                // Пропускаем модерацию для сообщений самого бота (ссылки бота никогда не удаляются)
+                // Пропускаем модерацию для: самого бота, стримера, модераторов Twitch, EXTRA_DUEL_ADMINS
                 const botAccount = this.botUsername || this.channelName?.toLowerCase();
                 const isBotOwnMessage = botAccount && username === botAccount;
-                if (!isBotOwnMessage) {
+                const isModerationExempt = this.isBroadcaster(username) || canManageDuels(username);
+                if (!isBotOwnMessage && !isModerationExempt) {
                     // Анти-спам: удаляем сообщение (если есть id) и таймаут
                     const spamHandled = await this.handleSpamIfNeeded(username, originalMessage, messageId);
                     if (spamHandled) {
