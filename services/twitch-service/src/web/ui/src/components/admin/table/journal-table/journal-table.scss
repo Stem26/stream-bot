@@ -154,3 +154,57 @@
   display: flex;
   gap: 0.5rem;
 }
+
+@media (max-width: 768px) {
+  .journal-table-scroll {
+    overflow-x: hidden;
+  }
+
+  .journal-table {
+    display: block;
+    thead { display: none; }
+    tbody { display: block; }
+
+    tbody tr {
+      display: flex;
+      flex-wrap: wrap;
+      padding: 0.75rem;
+      border-bottom: 1px solid var(--border-color, #eee);
+      gap: 0.25rem 0;
+
+      &:hover {
+        background: var(--row-hover, rgba(0, 0, 0, 0.03));
+      }
+    }
+
+    tbody td {
+      padding: 0;
+      border: none;
+      vertical-align: top;
+    }
+
+    tbody td.col-user {
+      font-weight: 600;
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    tbody td.col-date {
+      flex-shrink: 0;
+      font-size: 0.85em;
+      color: var(--text-muted, #666);
+      white-space: nowrap;
+    }
+
+    tbody td.col-message {
+      flex-basis: 100%;
+      min-width: 0;
+      padding-top: 0.25rem;
+      font-size: 0.9em;
+      overflow-wrap: anywhere;
+    }
+  }
+}

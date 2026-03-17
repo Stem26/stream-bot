@@ -29,6 +29,38 @@ export class ModerationTableElement extends HTMLElement {
     void this.loadChatModerationConfig();
   };
 
+  private updateModerationSaveButton(): void {
+    const moderationSaveBtn = this.querySelector('#chat-moderation-save-btn') as HTMLButtonElement | null;
+    const maxLenInput = this.querySelector('#chat-max-length') as HTMLInputElement | null;
+    const maxLettersDigitsInput = this.querySelector('#chat-max-letters-digits') as HTMLInputElement | null;
+    const timeoutInput = this.querySelector('#chat-spam-timeout-min') as HTMLInputElement | null;
+    const moderationEnabledToggle = this.querySelector('#chat-moderation-enabled-toggle') as HTMLElement | null;
+    const checkSymbolsToggle = this.querySelector('#chat-check-symbols-toggle') as HTMLElement | null;
+    const checkLettersToggle = this.querySelector('#chat-check-letters-toggle') as HTMLElement | null;
+    const checkLinksToggle = this.querySelector('#chat-check-links-toggle') as HTMLElement | null;
+    if (!moderationSaveBtn || !maxLenInput || !maxLettersDigitsInput || !timeoutInput || !this.lastChatModerationConfig) {
+      if (moderationSaveBtn) moderationSaveBtn.disabled = true;
+      return;
+    }
+    const c = this.lastChatModerationConfig;
+    const maxLen = Math.max(1, parseInt(maxLenInput.value || '300', 10) || 300);
+    const maxLetters = Math.max(1, parseInt(maxLettersDigitsInput.value || '300', 10) || 300);
+    const timeout = Math.max(1, parseInt(timeoutInput.value || '10', 10) || 10);
+    const modOn = moderationEnabledToggle?.getAttribute('data-enabled') === 'true';
+    const symOn = checkSymbolsToggle?.getAttribute('data-enabled') === 'true';
+    const letOn = checkLettersToggle?.getAttribute('data-enabled') === 'true';
+    const linksOn = checkLinksToggle?.getAttribute('data-enabled') === 'true';
+    const same =
+      (c.moderationEnabled ?? true) === modOn &&
+      (c.checkSymbols ?? true) === symOn &&
+      (c.checkLetters ?? true) === letOn &&
+      (c.checkLinks ?? false) === linksOn &&
+      (c.maxMessageLength ?? 300) === maxLen &&
+      (c.maxLettersDigits ?? 300) === maxLetters &&
+      (c.timeoutMinutes ?? 10) === timeout;
+    moderationSaveBtn.disabled = same;
+  }
+
   private setModerationToggleState(el: HTMLElement | null, on: boolean, text: string): void {
     if (!el) return;
     el.classList.toggle('on', on);
@@ -48,7 +80,6 @@ export class ModerationTableElement extends HTMLElement {
     const checkLettersToggle = this.querySelector('#chat-check-letters-toggle') as HTMLElement | null;
     const checkLinksToggle = this.querySelector('#chat-check-links-toggle') as HTMLElement | null;
 
-    const touchModerationDirty = (): void => { if (moderationSaveBtn) moderationSaveBtn.disabled = false; };
 
     const saveModerationNow = async (): Promise<void> => {
       if (!maxLenInput || !maxLettersDigitsInput || !timeoutInput) return;
@@ -62,6 +93,7 @@ export class ModerationTableElement extends HTMLElement {
       try {
         const saved = await updateChatModerationConfig({ moderationEnabled, checkSymbols: moderationEnabled ? checkSymbols : false, checkLetters: moderationEnabled ? checkLetters : false, checkLinks: moderationEnabled ? checkLinks : false, maxMessageLength, maxLettersDigits, timeoutMinutes });
         this.lastChatModerationConfig = saved;
+        this.updateModerationSaveButton();
       } catch (error) { if (error instanceof Error) showAlert(`Ошибка: ${error.message}`, 'error'); }
     };
 
@@ -103,9 +135,12 @@ export class ModerationTableElement extends HTMLElement {
       void dialog?.open();
     });
 
-    maxLenInput?.addEventListener('input', touchModerationDirty);
-    maxLettersDigitsInput?.addEventListener('input', touchModerationDirty);
-    timeoutInput?.addEventListener('input', touchModerationDirty);
+    maxLenInput?.addEventListener('input', () => this.updateModerationSaveButton());
+    maxLettersDigitsInput?.addEventListener('input', () => this.updateModerationSaveButton());
+    timeoutInput?.addEventListener('input', () => this.updateModerationSaveButton());
+    maxLenInput?.addEventListener('change', () => this.updateModerationSaveButton());
+    maxLettersDigitsInput?.addEventListener('change', () => this.updateModerationSaveButton());
+    timeoutInput?.addEventListener('change', () => this.updateModerationSaveButton());
 
     moderationSaveBtn?.addEventListener('click', async () => {
       if (!maxLenInput || !maxLettersDigitsInput || !timeoutInput) return;
@@ -119,7 +154,7 @@ export class ModerationTableElement extends HTMLElement {
       try {
         const saved = await updateChatModerationConfig({ moderationEnabled, checkSymbols: moderationEnabled ? checkSymbols : false, checkLetters: moderationEnabled ? checkLetters : false, checkLinks: moderationEnabled ? checkLinks : false, maxMessageLength, maxLettersDigits, timeoutMinutes });
         this.lastChatModerationConfig = saved;
-        if (moderationSaveBtn) moderationSaveBtn.disabled = true;
+        this.updateModerationSaveButton();
         showAlert('Настройки модерации чата сохранены', 'success');
       } catch (error) { if (error instanceof Error) showAlert(`Ошибка: ${error.message}`, 'error'); }
     });
@@ -153,7 +188,7 @@ export class ModerationTableElement extends HTMLElement {
       if (checkSymbolsToggle) this.setModerationToggleState(checkSymbolsToggle, symOn, symOn ? 'ВКЛ' : 'ВЫКЛ');
       if (checkLettersToggle) this.setModerationToggleState(checkLettersToggle, letOn, letOn ? 'ВКЛ' : 'ВЫКЛ');
       if (checkLinksToggle) this.setModerationToggleState(checkLinksToggle, linksOn, linksOn ? 'ВКЛ' : 'ВЫКЛ');
-      if (saveBtn) saveBtn.disabled = true;
+      this.updateModerationSaveButton();
     } catch (error) {
       if (error instanceof Error) showAlert(`Ошибка загрузки настроек модерации: ${error.message}`, 'error');
     }

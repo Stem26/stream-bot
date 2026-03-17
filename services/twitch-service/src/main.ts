@@ -7,7 +7,7 @@ import { clearDuelQueue, resetDuelsOnStreamEnd, clearDuelChallenges, setOnDuelBa
 import { clearActiveUsers } from "./commands/twitch-rat";
 import { log } from './utils/event-logger';
 import { initDatabase, closeDatabase, query, queryOne } from './database/database';
-import { startWebServer, getBroadcastDuelBannedChanged, setOnCommandsChangedCallback, setOnCommandExecuteCallback, setOnLinksSendCallback, setOnEnableDuelsCallback, setOnDisableDuelsCallback, setOnPardonAllCallback, setGetDuelBannedListCallback, setPardonDuelUserCallback, setGetDuelsStatusCallback, setGetDuelCooldownSkipCallback, setSetDuelCooldownSkipCallback, setOnDuelConfigUpdatedCallback, setOnDuelDailyConfigUpdatedCallback, setOnLinksConfigUpdatedCallback, setOnChatModerationConfigUpdatedCallback, setOnPartyConfigUpdatedCallback } from './web/server';
+import { startWebServer, getBroadcastDuelBannedChanged, setOnCommandsChangedCallback, setOnCommandExecuteCallback, setOnLinksSendCallback, setOnEnableDuelsCallback, setOnDisableDuelsCallback, setOnPardonAllCallback, setGetDuelBannedListCallback, setPardonDuelUserCallback, setGetDuelsStatusCallback, setGetDuelCooldownSkipCallback, setSetDuelCooldownSkipCallback, setOnDuelConfigUpdatedCallback, setOnDuelDailyConfigUpdatedCallback, setOnLinksConfigUpdatedCallback, setOnRaidConfigUpdatedCallback, setOnChatModerationConfigUpdatedCallback, setOnPartyConfigUpdatedCallback, getRaidMessageFromDb } from './web/server';
 
 async function main() {
     const config = loadConfig();
@@ -79,6 +79,10 @@ async function main() {
         config.telegram.chatId
     );
 
+    if (config.twitch.broadcastAccessToken) {
+        streamMonitor.setBroadcastAccessToken(config.twitch.broadcastAccessToken);
+    }
+
     streamMonitor.setLinkRotationProvider(
         async () => {
             const rows = await query<{ response: string; color: string }>(
@@ -98,6 +102,8 @@ async function main() {
     setOnLinksConfigUpdatedCallback(() => {
         streamMonitor.reloadLinkRotation();
     });
+
+    streamMonitor.setRaidMessageProvider(getRaidMessageFromDb);
 
     setOnChatModerationConfigUpdatedCallback(() => {
         nightBotMonitor.invalidateSpamConfigCache();

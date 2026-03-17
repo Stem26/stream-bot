@@ -2,6 +2,7 @@ import type {
   CommandsData,
   CustomCommand,
   LinksConfig,
+  RaidConfig,
   CountersData,
   Counter,
   PartyItemsData,
@@ -103,6 +104,20 @@ export async function updateLinksConfig(config: { allLinksText: string; rotation
     ),
   });
   return handleJson<LinksConfig>(response, 'Ошибка сохранения ссылок');
+}
+
+export async function fetchRaidConfig(): Promise<RaidConfig> {
+  const response = await authFetch('/api/raid');
+  return handleJson<RaidConfig>(response, 'Ошибка загрузки настроек рейда');
+}
+
+export async function updateRaidConfig(config: { raidMessage: string }): Promise<RaidConfig> {
+  const response = await authFetch('/api/raid', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(config),
+  });
+  return handleJson<RaidConfig>(response, 'Ошибка сохранения настроек рейда');
 }
 
 // === API для счётчиков ===

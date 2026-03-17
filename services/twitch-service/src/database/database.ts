@@ -322,6 +322,18 @@ export async function initDatabase(): Promise<void> {
       await client.query(`CREATE INDEX IF NOT EXISTS idx_event_journal_created_at ON event_journal(created_at DESC)`);
       await client.query(`CREATE INDEX IF NOT EXISTS idx_event_journal_username ON event_journal(LOWER(username))`);
 
+      // Конфиг сообщения при входящем рейде
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS raid_config (
+          id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+          raid_message TEXT NOT NULL DEFAULT ''
+        )
+      `);
+      await client.query(`
+        INSERT INTO raid_config (id, raid_message) VALUES (1, '')
+        ON CONFLICT (id) DO NOTHING
+      `);
+
       // Добавляем дефолтные элементы партии если таблица пустая (только названия, количество 1–4 генерируется при выдаче)
       const partyCount = await client.query('SELECT COUNT(*)::int AS cnt FROM party_items');
       if (partyCount.rows[0]?.cnt === 0) {

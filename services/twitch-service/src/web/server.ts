@@ -91,6 +91,7 @@ app.use('/api/admin', requireAdmin);
 app.use('/api/commands', requireAdmin);
 app.use('/api/counters', requireAdmin);
 app.use('/api/links', requireAdmin);
+app.use('/api/raid', requireAdmin);
 app.use('/api/party', requireAdmin);
 app.use('/api/journal', requireAdmin);
 
@@ -405,6 +406,36 @@ async function saveLinksToDb(config: LinksConfig): Promise<boolean> {
     }
 }
 
+interface RaidConfig {
+    raidMessage: string;
+}
+
+async function getRaidFromDb(): Promise<RaidConfig> {
+    try {
+        const row = await queryOne<{ raid_message: string }>(
+            'SELECT raid_message FROM raid_config WHERE id = 1'
+        );
+        return { raidMessage: row?.raid_message ?? '' };
+    } catch (error) {
+        console.error('⚠️ Ошибка загрузки raid_config из БД:', error);
+        return { raidMessage: '' };
+    }
+}
+
+async function saveRaidToDb(config: RaidConfig): Promise<boolean> {
+    try {
+        await query(
+            `INSERT INTO raid_config (id, raid_message) VALUES (1, $1)
+             ON CONFLICT (id) DO UPDATE SET raid_message = EXCLUDED.raid_message`,
+            [String(config.raidMessage ?? '').slice(0, 500)]
+        );
+        return true;
+    } catch (error) {
+        console.error('⚠️ Ошибка сохранения raid_config в БД:', error);
+        return false;
+    }
+}
+
 // === API Routes ===
 
 // Получить все команды
@@ -471,6 +502,40 @@ app.put('/api/links', async (req: Request, res: Response) => {
     } catch (error) {
         console.error('❌ Ошибка обновления ссылок:', error);
         res.status(500).json({ error: 'Ошибка обновления ссылок' });
+    }
+});
+
+// === API для блока "Рейд" (хранится в БД raid_config) ===
+
+app.get('/api/raid', async (req: Request, res: Response) => {
+    try {
+        const config = await getRaidFromDb();
+        res.json(config);
+    } catch (error) {
+        res.status(500).json({ error: 'Ошибка загрузки настроек рейда' });
+    }
+});
+
+app.put('/api/raid', async (req: Request, res: Response) => {
+    try {
+        const { raidMessage } = req.body as Partial<RaidConfig>;
+        const safeMessage = typeof raidMessage === 'string' ? raidMessage.slice(0, 500) : '';
+        if (await saveRaidToDb({ raidMessage: safeMessage })) {
+            console.log('✅ Конфиг рейда обновлён (БД)');
+            if (onRaidConfigUpdatedCallback) {
+                try {
+                    onRaidConfigUpdatedCallback({ raidMessage: safeMessage });
+                } catch (cbError) {
+                    console.error('⚠️ Ошибка в onRaidConfigUpdatedCallback:', cbError);
+                }
+            }
+            res.json({ raidMessage: safeMessage });
+        } else {
+            res.status(500).json({ error: 'Ошибка сохранения настроек рейда' });
+        }
+    } catch (error) {
+        console.error('❌ Ошибка обновления настроек рейда:', error);
+        res.status(500).json({ error: 'Ошибка обновления настроек рейда' });
     }
 });
 
@@ -1748,6 +1813,7 @@ let setDuelCooldownSkipCallback: ((skip: boolean) => void) | null = null;
 let onDuelConfigUpdatedCallback: ((config: { timeoutMinutes: number; winPoints: number; lossPoints: number; missPenalty: number }) => void) | null = null;
 let onDuelDailyConfigUpdatedCallback: ((config: { dailyGamesCount: number; dailyRewardPoints: number; streakWinsCount: number; streakRewardPoints: number }) => void) | null = null;
 let onLinksConfigUpdatedCallback: ((config: LinksConfig) => void) | null = null;
+let onRaidConfigUpdatedCallback: ((config: RaidConfig) => void) | null = null;
 let onChatModerationConfigUpdatedCallback: (() => void) | null = null;
 
 export function setOnCommandsChangedCallback(callback: () => void) {
@@ -1764,6 +1830,15 @@ export function setOnLinksSendCallback(callback: () => void | Promise<void>) {
 
 export function setOnLinksConfigUpdatedCallback(callback: (config: LinksConfig) => void) {
     onLinksConfigUpdatedCallback = callback;
+}
+
+export function setOnRaidConfigUpdatedCallback(callback: (config: RaidConfig) => void) {
+    onRaidConfigUpdatedCallback = callback;
+}
+
+export async function getRaidMessageFromDb(): Promise<string> {
+    const config = await getRaidFromDb();
+    return config.raidMessage;
 }
 
 export function setOnChatModerationConfigUpdatedCallback(callback: () => void) {

@@ -1,0 +1,483 @@
+// Глобальная тёмная тема (чёрно-фиолетовая)
+$dark-bg: #0f0f14;
+$dark-card: #1a1a24;
+$dark-hover: #252532;
+$dark-border: rgba(124, 58, 237, 0.35);
+$dark-accent: #8b5cf6;
+$dark-accent-light: #a78bfa;
+$dark-text: #e2e8f0;
+$dark-text-muted: #b8c2cc;
+
+body.theme-dark {
+  // Затемняем только саму картинку фона (градиент поверх изображения)
+  &.page-admin,
+  &.page-public,
+  &.page-public-duel,
+  &.page-public-links {
+    background-image: linear-gradient(rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0.6)), url(/assets/fon.webp) !important;
+    background-position: center;
+    background-size: cover;
+    background-repeat: no-repeat;
+    background-attachment: fixed;
+  }
+
+  // Убираем оверлей — затемнение только в фоне
+  &.page-public::after,
+  &.page-public-duel::after,
+  &.page-public-links::after {
+    background: transparent !important;
+  }
+}
+
+.theme-toggle-global {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 1000;
+  display: flex;
+  gap: 4px;
+  padding: 6px 8px;
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+
+  .theme-toggle-btn {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border: none;
+    border-radius: 8px;
+    font-size: 18px;
+    cursor: pointer;
+    background: transparent;
+    transition: background 0.2s, transform 0.2s;
+
+    &:hover {
+      background: rgba(102, 126, 234, 0.15);
+    }
+
+    &.active {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }
+  }
+}
+
+body.theme-dark .theme-toggle-global {
+  background: $dark-card;
+  border: 1px solid $dark-border;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+
+  .theme-toggle-btn {
+    &:hover { background: rgba(139, 92, 246, 0.2); }
+    &.active { background: linear-gradient(135deg, #6d28d9 0%, #7c3aed 100%); }
+  }
+}
+
+// Админка — тёмная тема
+body.theme-dark {
+  .admin-loading { color: $dark-text-muted; }
+
+  .container .header {
+    color: $dark-text;
+
+    h1 { color: $dark-text; }
+    p { color: $dark-text-muted; }
+  }
+
+  .header-actions .btn-outline {
+    background: transparent;
+    border-color: $dark-accent;
+    color: $dark-accent-light;
+    &:hover { background: rgba(139, 92, 246, 0.15); }
+  }
+
+  .tabs {
+    background: $dark-card;
+    border: 1px solid $dark-border;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+  }
+
+  .tab-btn {
+    color: $dark-text-muted;
+    &:hover { color: $dark-accent-light; }
+    &.active { color: $dark-accent-light; }
+    &::after { background: $dark-accent; }
+  }
+
+  .controls {
+    background: $dark-card;
+    border: 1px solid $dark-border;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+
+    h2 { color: $dark-text; }
+    p { color: $dark-text-muted; }
+    p strong { color: $dark-accent-light; }
+    code.placeholder-accent {
+      background: rgba(139, 92, 246, 0.25);
+      color: $dark-accent-light;
+    }
+    code:not(.placeholder-accent) {
+      background: rgba(139, 92, 246, 0.2);
+      color: $dark-accent-light;
+    }
+    .admin-inline-row input,
+    .admin-inline-row .raid-message-input {
+      background: $dark-bg;
+      border-color: $dark-border;
+      color: $dark-text;
+      &::placeholder { color: $dark-text-muted; opacity: 0.7; }
+
+      &.raid-message-input::-webkit-scrollbar-thumb {
+        background: rgba(255, 255, 255, 0.25);
+      }
+    }
+    .btn-success {
+      background: linear-gradient(135deg, #6d28d9 0%, #7c3aed 100%);
+      &:hover:not(:disabled) { box-shadow: 0 4px 16px rgba(124, 58, 237, 0.5); }
+    }
+    #all-links-btn {
+      border: 1px solid $dark-border;
+      color: $dark-text-muted;
+      background: rgba(139, 92, 246, 0.12);
+
+      &:hover:not(:disabled) {
+        background: rgba(139, 92, 246, 0.2);
+        border-color: $dark-accent;
+        color: $dark-accent-light;
+      }
+    }
+  }
+
+  .admin-section {
+    background: $dark-card;
+    border: 1px solid $dark-border;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+
+    h3, h4 { color: $dark-text !important; }
+    .admin-description { color: $dark-text-muted !important; }
+    label, .admin-duels-label { color: $dark-text-muted !important; }
+    input {
+      background: $dark-bg !important;
+      border-color: $dark-border !important;
+      color: $dark-text !important;
+    }
+    .btn-success {
+      background: linear-gradient(135deg, #6d28d9 0%, #7c3aed 100%);
+      &:hover:not(:disabled) { box-shadow: 0 4px 16px rgba(124, 58, 237, 0.5); }
+    }
+  }
+
+  // Таблицы
+  commands-table .commands-table-card,
+  counters-table .counters-table-card,
+  party-table .party-table-card,
+  journal-table .journal-table-wrap,
+  journal-table .journal-table-card {
+    background: $dark-card !important;
+    border: 1px solid $dark-border !important;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+  }
+
+  commands-table .commands-table-header .btn,
+  counters-table .counters-table-header .btn,
+  party-table .party-table-header .btn,
+  journal-table .journal-table-header .btn {
+    background: linear-gradient(135deg, #6d28d9 0%, #7c3aed 100%) !important;
+    &:hover { box-shadow: 0 4px 16px rgba(124, 58, 237, 0.5); }
+  }
+
+  commands-table {
+    .commands-table-container.loading-state { color: $dark-text-muted; }
+    .commands-table thead th {
+      color: $dark-accent-light;
+      border-bottom-color: $dark-border;
+      background: transparent;
+    }
+    .commands-table tbody tr.command-table-row {
+      background: $dark-bg;
+      &:hover { background: $dark-hover; }
+      td { color: $dark-text; border-color: $dark-border; }
+      td:first-child { border-left-color: $dark-accent; }
+      .col-num { color: $dark-text-muted; }
+      .col-trigger .trigger-text { color: $dark-accent-light; }
+    }
+    .status-badge.on {
+      background: rgba(34, 197, 94, 0.2);
+      color: #4ade80;
+      border-color: rgba(34, 197, 94, 0.4);
+    }
+    .status-badge.off {
+      background: rgba(239, 68, 68, 0.15);
+      color: #f87171;
+      border-color: rgba(239, 68, 68, 0.3);
+    }
+    .btn-icon {
+      background: rgba(139, 92, 246, 0.2);
+      border-color: $dark-accent;
+      color: $dark-accent-light;
+      &:hover { background: rgba(139, 92, 246, 0.35); }
+    }
+  }
+
+  counters-table {
+    .counters-table {
+      background: transparent !important;
+      thead th {
+        color: $dark-accent-light !important;
+        border-color: $dark-border !important;
+        background: $dark-bg !important;
+      }
+    }
+    .counters-table tbody tr td {
+      color: $dark-text !important;
+      border-color: $dark-border !important;
+      background: inherit !important;
+    }
+    .counter-table-row {
+      background: $dark-bg !important;
+      &:hover { background: $dark-hover !important; }
+      td:first-child { border-left-color: $dark-accent !important; }
+      .col-num { color: $dark-text-muted !important; }
+      .col-trigger, .col-value, .col-description { color: $dark-text !important; }
+    }
+    .status-badge.on { background: rgba(34, 197, 94, 0.2); color: #4ade80; }
+    .status-badge.off { background: rgba(239, 68, 68, 0.15); color: #f87171; }
+    .btn-icon {
+      background: rgba(139, 92, 246, 0.2);
+      border-color: $dark-accent;
+      color: $dark-accent-light;
+    }
+  }
+
+  party-table {
+    .party-config-section {
+      .party-config-field label { color: $dark-text !important; }
+      .party-config-field small { color: $dark-text-muted !important; font-size: 0.9em; }
+      .party-config-toggle-label { color: $dark-text-muted !important; }
+      .party-input-text, .party-input {
+        background: $dark-bg !important;
+        border-color: $dark-border !important;
+        color: $dark-text !important;
+      }
+    }
+    .admin-description { color: $dark-text-muted !important; }
+    .party-items-table thead th { color: $dark-accent-light; border-color: $dark-border; background: $dark-bg; }
+    .party-items-table tbody tr td { color: $dark-text; border-color: $dark-border; }
+    .party-table-row { background: $dark-bg; &:hover { background: $dark-hover; } }
+    .status-badge.on { background: rgba(34, 197, 94, 0.2); color: #4ade80; }
+    .status-badge.off { background: rgba(239, 68, 68, 0.15); color: #f87171; }
+  }
+
+  duels-table {
+    .admin-section { background: $dark-card; border: 1px solid $dark-border; }
+    .duels-daily-block {
+      background: $dark-bg !important;
+      border-color: $dark-border !important;
+      .duels-daily-block-title { color: $dark-text !important; }
+      .duels-daily-block-desc { color: $dark-text-muted !important; }
+    }
+    .duels-banned-table {
+      background: transparent !important;
+      thead th {
+        color: $dark-accent-light !important;
+        border-color: $dark-border !important;
+        background: $dark-bg !important;
+      }
+    }
+    .duel-banned-row {
+      background: $dark-bg !important;
+      &:hover { background: $dark-hover !important; }
+      td { color: $dark-text !important; border-color: $dark-border !important; }
+      td:first-child { border-left-color: $dark-accent !important; }
+    }
+    .duels-banned-empty { background: $dark-bg; color: $dark-text-muted; }
+    .status-badge.on { background: rgba(34, 197, 94, 0.2); color: #4ade80; }
+    .status-badge.off { background: rgba(239, 68, 68, 0.15); color: #f87171; }
+  }
+
+  moderation-table {
+    .admin-section { background: $dark-card; border: 1px solid $dark-border; }
+  }
+
+  journal-table {
+    .journal-table-header h3 { color: $dark-text !important; }
+    .journal-description { color: $dark-text-muted !important; }
+
+    .journal-search,
+    .journal-type-filter,
+    .journal-days-filter {
+      background: $dark-bg !important;
+      border: 1px solid $dark-border !important;
+      color: $dark-text !important;
+    }
+    .journal-search::placeholder { color: $dark-text-muted; opacity: 0.8; }
+
+    .journal-table-container.loading-state { color: $dark-text-muted; }
+
+    .journal-table thead th {
+      color: $dark-accent-light !important;
+      border-color: $dark-border !important;
+      background: $dark-bg !important;
+    }
+    .journal-table tbody tr {
+      td { color: $dark-text !important; border-color: $dark-border !important; }
+      &:hover { background: $dark-hover !important; }
+    }
+    @media (max-width: 768px) {
+      .journal-table tbody tr {
+        border-bottom-color: $dark-border !important;
+      }
+      .journal-table tbody td.col-date {
+        color: $dark-text-muted !important;
+      }
+    }
+
+    .journal-pagination {
+      border-top-color: $dark-border;
+      .pagination-info label { color: $dark-text-muted; }
+      .pagination-info select {
+        background: $dark-bg !important;
+        border-color: $dark-border !important;
+        color: $dark-text !important;
+      }
+      .page-info { color: $dark-text-muted; }
+    }
+
+    .empty-state h3 { color: $dark-text; }
+    .empty-state p { color: $dark-text-muted; }
+  }
+
+  duels-table .admin-section,
+  party-table .admin-section,
+  moderation-table .admin-section {
+    background: $dark-card;
+    border: 1px solid $dark-border;
+  }
+
+  .moderation-setting {
+    background: $dark-bg;
+    border: 1px solid $dark-border;
+  }
+  .moderation-setting-title { color: $dark-text; }
+
+  // Тоглы — цвета как у status-badge в таблице команд
+  .status-toggle.on .status-toggle-circle {
+    background: #4ade80 !important;
+  }
+  .status-toggle.off .status-toggle-circle {
+    background: rgba(239, 68, 68, 0.5) !important;
+  }
+  .status-toggle.on .status-toggle-text {
+    background: rgba(34, 197, 94, 0.25) !important;
+    color: #4ade80 !important;
+  }
+  .status-toggle.off .status-toggle-text {
+    background: rgba(239, 68, 68, 0.2) !important;
+    color: #f87171 !important;
+  }
+
+  // Модалки
+  .auth-modal .auth-content {
+    background: $dark-card;
+    border: 1px solid $dark-border;
+
+    h2 { color: $dark-text; }
+    .auth-hint { color: $dark-text-muted; }
+    input {
+      background: $dark-bg;
+      border-color: $dark-border;
+      color: $dark-text;
+    }
+    .btn-outline {
+      border: 1px solid $dark-border;
+      color: $dark-text-muted;
+      background: rgba(139, 92, 246, 0.12);
+
+      &:hover:not(:disabled) {
+        background: rgba(139, 92, 246, 0.2);
+        border-color: $dark-accent;
+        color: $dark-accent-light;
+      }
+    }
+  }
+
+  command-dialog .modal-content,
+  link-dialog .modal-content,
+  counter-dialog .modal-content,
+  party-dialog .modal-content,
+  moderation-rules-dialog .modal-content,
+  link-whitelist-dialog .modal-content {
+    background: $dark-card !important;
+    border: 1px solid $dark-border !important;
+
+    .modal-header h2,
+    .modal-body h4 { color: $dark-text !important; }
+    .modal-body { color: $dark-text-muted; }
+    .form-group label { color: $dark-text !important; }
+    .form-group small,
+    .form-group small.hint-time { color: $dark-text-muted !important; }
+    code.placeholder-accent {
+      color: $dark-accent-light !important;
+      background: rgba(139, 92, 246, 0.25) !important;
+    }
+    .modal-close-btn { color: $dark-text-muted !important; &:hover { color: $dark-text !important; } }
+    input, select, textarea {
+      background: $dark-bg !important;
+      border-color: $dark-border !important;
+      color: $dark-text !important;
+    }
+  }
+
+  .btn-back-fixed {
+    background: rgba(26, 26, 36, 0.9);
+    border-color: $dark-accent;
+    color: $dark-accent-light;
+    &:hover { background: rgba(139, 92, 246, 0.2); }
+  }
+
+  // Публичные страницы
+  public-home .public-home-container,
+  public-links .public-links-container,
+  public-duel .public-duel-container {
+    .header .username,
+    .header .bio,
+    .section-title,
+    .link-text,
+    .menu-btn-title,
+    .menu-btn-subtitle { color: $dark-text !important; }
+    .menu-btn,
+    .link-btn {
+      background: $dark-card !important;
+      border: 1px solid $dark-border !important;
+      &:hover { background: $dark-hover !important; }
+    }
+    .footer { color: $dark-text-muted; }
+    .admin-link { color: $dark-accent-light; }
+  }
+
+  public-duel .leaderboard-table {
+    background: $dark-card;
+    th, td { color: $dark-text; border-color: $dark-border; }
+    th { color: #ffffff !important; }
+
+    tbody tr:hover {
+      background: rgba(255, 255, 255, 0.08) !important;
+    }
+  }
+  public-duel .back-btn,
+  public-links .back-btn {
+    background: rgba(255, 255, 255, 0.95) !important;
+    border: 2px solid $dark-accent !important;
+    box-shadow: 0 4px 16px rgba(124, 58, 237, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.1) !important;
+    color: $dark-accent !important;
+
+    img, svg {
+      filter: none;
+    }
+
+    &:hover {
+      background: #ffffff !important;
+      box-shadow: 0 6px 20px rgba(124, 58, 237, 0.6) !important;
+    }
+  }
+}

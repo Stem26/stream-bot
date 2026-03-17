@@ -116,6 +116,8 @@ export class TwitchEventSubNative {
 
     private getLinkRotationItems: (() => Promise<LinkRotationItem[]>) | null = null;
     private getRotationIntervalMinutes: (() => Promise<number>) | null = null;
+    private getRaidMessage: (() => Promise<string>) | null = null;
+    private broadcastAccessToken: string | null = null;
 
     private keepAliveInterval: NodeJS.Timeout | null = null;
     private reconnectAttempts: number = 0;
@@ -335,6 +337,7 @@ export class TwitchEventSubNative {
 
         await this.subscribe('stream.online', { broadcaster_user_id: this.broadcasterId });
         await this.subscribe('stream.offline', { broadcaster_user_id: this.broadcasterId });
+        await this.subscribe('channel.raid', { to_broadcaster_user_id: this.broadcasterId });
         
         // channel.follow требует scope: moderator:read:followers
         // Если токен не имеет этого scope, подписка будет пропущена
@@ -346,6 +349,7 @@ export class TwitchEventSubNative {
             console.log('📋 Подписки EventSub зарегистрированы:');
             console.log('   • stream.online');
             console.log('   • stream.offline');
+            console.log('   • channel.raid');
             console.log('   • channel.follow');
         } catch (error: any) {
             console.warn('⚠️ Не удалось подписаться на channel.follow (возможно нет scope: moderator:read:followers)');
@@ -353,6 +357,7 @@ export class TwitchEventSubNative {
             console.log('📋 Подписки EventSub зарегистрированы:');
             console.log('   • stream.online');
             console.log('   • stream.offline');
+            console.log('   • channel.raid');
         }
     }
 
@@ -406,6 +411,10 @@ export class TwitchEventSubNative {
 
             case 'channel.follow':
                 await this.handleFollow(event);
+                break;
+
+            case 'channel.raid':
+                await this.handleRaid(event);
                 break;
 
             default:
@@ -504,6 +513,73 @@ export class TwitchEventSubNative {
                 console.log(`✅ Отправлена благодарность за Follow: ${event.user_name}`);
             } catch (error) {
                 console.error('❌ Ошибка отправки благодарности за Follow:', error);
+            }
+        }
+    }
+
+    private async handleRaid(event: any): Promise<void> {
+        const fromName = event.from_broadcaster_user_name || event.from_broadcaster_user_login || 'Кто-то';
+        const viewers = event.viewers ?? 0;
+        console.log(`⚔️ Входящий рейд: ${fromName} с ${viewers} зрителями`);
+
+        if (!ENABLE_BOT_FEATURES) {
+            console.log('🔇 Сообщение при рейде отключено (ENABLE_BOT_FEATURES=false)');
+            return;
+        }
+
+        const { ALLOW_LOCAL_COMMANDS } = require('../config/features');
+        if (IS_LOCAL && !ALLOW_LOCAL_COMMANDS) {
+            console.log('🔒 Локально сообщения при рейде заблокированы');
+            return;
+        }
+
+        const template = this.getRaidMessage ? await this.getRaidMessage() : '';
+        if (template && this.chatSender && this.channelName) {
+            const message = template
+                .replace(/\{from\}/gi, fromName)
+                .replace(/\{viewers\}/gi, String(viewers));
+            try {
+                await this.chatSender(this.channelName, message);
+                console.log(`✅ Отправлено сообщение при рейде: ${message.slice(0, 50)}...`);
+            } catch (error) {
+                console.error('❌ Ошибка отправки сообщения при рейде:', error);
+            }
+        } else if (!template) {
+            console.log('ℹ️ Сообщение при рейде не настроено');
+        }
+
+        if (this.broadcastAccessToken && this.broadcasterId && this.clientId) {
+            try {
+                const toBroadcasterId = event.from_broadcaster_user_id;
+                if (!toBroadcasterId) {
+                    console.warn('⚠️ Нет from_broadcaster_user_id в событии рейда');
+                    return;
+                }
+                const url = new URL('https://api.twitch.tv/helix/chat/shoutouts');
+                url.searchParams.set('from_broadcaster_id', this.broadcasterId);
+                url.searchParams.set('to_broadcaster_id', toBroadcasterId);
+                url.searchParams.set('moderator_id', this.broadcasterId);
+
+                const res = await fetch(url.toString(), {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${this.broadcastAccessToken}`,
+                        'Client-Id': this.clientId,
+                    },
+                });
+
+                if (res.ok) {
+                    console.log(`✅ Авто-шатаут отправлен: ${fromName}`);
+                } else {
+                    const errText = await res.text();
+                    console.warn(`⚠️ Ошибка авто-шатаута (${res.status}):`, errText);
+                }
+            } catch (error: any) {
+                console.error('❌ Ошибка отправки авто-шатаута:', error?.message || error);
+            }
+        } else {
+            if (!this.broadcastAccessToken) {
+                console.log('ℹ️ Авто-шатаут пропущен: нет BROADCAST_TWITCH_ACCESS_TOKEN');
             }
         }
     }
@@ -1063,6 +1139,14 @@ export class TwitchEventSubNative {
     setChatSender(sender: (channel: string, message: string) => Promise<void>, channelName: string): void {
         this.chatSender = sender;
         this.channelName = channelName;
+    }
+
+    setRaidMessageProvider(provider: () => Promise<string>): void {
+        this.getRaidMessage = provider;
+    }
+
+    setBroadcastAccessToken(token: string): void {
+        this.broadcastAccessToken = token?.trim() || null;
     }
 
     setOnStreamOfflineCallback(cb: () => void): void {

@@ -8,13 +8,13 @@ commands-table {
   .commands-table-card {
     background: #fff;
     border-radius: 15px;
-    overflow: hidden;
+    overflow: visible;
   }
 
   .commands-table-header {
     display: flex;
     justify-content: flex-end;
-    padding: 14px 16px 0;
+    padding: 10px 12px 0;
   }
 
   .commands-table-card .commands-table {
@@ -23,9 +23,8 @@ commands-table {
   }
 
   .commands-table-container {
-    padding: 0 10px;
     box-sizing: border-box;
-    overflow-x: auto;
+    overflow: visible;
     min-width: 0;
 
     &.loading-state {
@@ -38,7 +37,7 @@ commands-table {
     width: 100%;
     table-layout: fixed;
     border-collapse: separate;
-    border-spacing: 0 10px;
+    border-spacing: 0 6px;
     background: #fff;
     box-sizing: border-box;
     padding: 0 10px;
@@ -46,7 +45,7 @@ commands-table {
 
     thead th {
       text-align: left;
-      padding: 14px 16px;
+      padding: 8px 12px;
       font-weight: 600;
       color: #333;
       font-size: 0.9em;
@@ -54,10 +53,10 @@ commands-table {
       background: #fff;
 
       &:first-child {
-        padding-left: 16px;
+        padding-left: 12px;
       }
       &:last-child {
-        padding-right: 16px;
+        padding-right: 12px;
       }
 
       &.col-num {
@@ -73,16 +72,16 @@ commands-table {
         min-width: 180px;
       }
       &.col-status {
+        width: 72px;
+        min-width: 72px;
+      }
+      &.col-rotation {
         width: 70px;
         min-width: 70px;
       }
-      &.col-rotation {
-        width: 90px;
-        min-width: 90px;
-      }
       &.col-actions {
-        width: 88px;
-        min-width: 88px;
+        width: 64px;
+        min-width: 64px;
         padding-left: 8px;
         padding-right: 12px;
       }
@@ -101,7 +100,7 @@ commands-table {
       }
 
       td {
-        padding: 14px 16px;
+        padding: 8px 12px;
         vertical-align: middle;
         border-color: transparent;
         border-top-color: #28619a;
@@ -112,12 +111,12 @@ commands-table {
         box-sizing: border-box;
 
         &:first-child {
-          padding-left: 16px;
+          padding-left: 12px;
           border-left: 0.5rem solid hsl(210, 59%, 38%);
           border-radius: 0.5rem 0 0 0.5rem;
         }
         &:last-child {
-          padding-right: 16px;
+          padding-right: 12px;
           border-color: transparent;
           border-right: 1px solid #28619a;
           border-top-color: #28619a;
@@ -160,21 +159,21 @@ commands-table {
       }
 
       .col-status {
+        width: 72px;
+        min-width: 72px;
+      }
+
+      .col-rotation {
         width: 70px;
         min-width: 70px;
       }
 
-      .col-rotation {
-        width: 90px;
-        min-width: 90px;
-      }
-
       .col-actions {
-        width: 88px;
-        min-width: 88px;
+        width: 64px;
+        min-width: 64px;
         padding-left: 8px;
         padding-right: 8px;
-        text-align: right;
+        text-align: center;
         white-space: nowrap;
         box-sizing: border-box;
 
@@ -198,33 +197,32 @@ commands-table {
     }
 
     .commands-table-container {
-      overflow-x: auto;
-      -webkit-overflow-scrolling: touch;
-
       &.loading-state {
         padding: 16px 12px;
       }
     }
 
     .commands-table {
-      border-spacing: 0 8px;
+      border-spacing: 0 6px;
       min-width: 200px;
 
       thead th {
-        padding: 10px 12px;
+        padding: 6px 10px;
         font-size: 0.85em;
 
         &.col-num,
-        &.col-response {
+        &.col-response,
+        &.col-rotation {
           display: none;
         }
       }
 
       tbody tr.command-table-row td {
-        padding: 12px;
+        padding: 8px 10px;
 
         &.col-num,
-        &.col-response {
+        &.col-response,
+        &.col-rotation {
           display: none;
         }
 

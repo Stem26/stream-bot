@@ -2,7 +2,7 @@
 import template from './admin-panel.html?raw';
 import './admin-panel.scss';
 import { showAlert } from '../../../alerts';
-import { authFetch, fetchLinksConfig, login, updateLinksConfig } from '../../../api';
+import { authFetch, fetchLinksConfig, fetchRaidConfig, login, updateLinksConfig, updateRaidConfig } from '../../../api';
 import type { LinkDialogElement } from '../dialog/link-dialog/link-dialog';
 import type { LinkDialogSaveDetail } from '../../../interfaces/link-dialog';
 import { clearAdminAuth, getAdminPassword, setAdminPassword } from '../../../admin-auth';
@@ -23,6 +23,7 @@ function updateAdminHash(tab: string): void {
 export class AdminPanelElement extends HTMLElement {
   private initialized = false;
   private lastLinksRotationMinutes: number | null = null;
+  private lastRaidMessage: string | null = null;
   private hashChangeHandler: (() => void) | null = null;
 
   connectedCallback(): void {
@@ -161,7 +162,15 @@ export class AdminPanelElement extends HTMLElement {
     const linkDialog = document.querySelector<LinkDialogElement>('link-dialog');
     if (!allLinksBtn || !linkDialog) return;
 
-    void this.initLinks(linkDialog);
+    const raidMessageInput = this.querySelector<HTMLTextAreaElement>('#raid-message');
+    const raidSaveBtn = this.querySelector<HTMLButtonElement>('#raid-save-btn');
+    const updateRaidSaveButton = (): void => {
+      if (!raidMessageInput || !raidSaveBtn) return;
+      const current = raidMessageInput.value;
+      raidSaveBtn.disabled = this.lastRaidMessage === null || this.lastRaidMessage === current;
+    };
+
+    void this.initLinks(linkDialog, updateRaidSaveButton);
 
     allLinksBtn.addEventListener('click', async () => {
       try {
@@ -222,19 +231,55 @@ export class AdminPanelElement extends HTMLElement {
         if (error instanceof Error) showAlert(`Ошибка сохранения интервала ротации: ${error.message}`, 'error');
       }
     });
+
+    const resizeRaidInput = (): void => {
+      if (!raidMessageInput) return;
+      raidMessageInput.style.height = '1px';
+      const raw = raidMessageInput.scrollHeight;
+      raidMessageInput.style.height = `${Math.min(Math.max(raw + 4, 40), 160)}px`;
+    };
+    raidMessageInput?.addEventListener('input', () => {
+      updateRaidSaveButton();
+      resizeRaidInput();
+    });
+    raidMessageInput?.addEventListener('change', updateRaidSaveButton);
+
+    raidSaveBtn?.addEventListener('click', async () => {
+      const message = raidMessageInput?.value ?? '';
+      try {
+        await updateRaidConfig({ raidMessage: message });
+        this.lastRaidMessage = message;
+        updateRaidSaveButton();
+        showAlert('Сообщение при рейде сохранено', 'success');
+      } catch (error) {
+        if (error instanceof Error) showAlert(`Ошибка сохранения: ${error.message}`, 'error');
+      }
+    });
   }
 
-  private async initLinks(linkDialog: LinkDialogElement): Promise<void> {
+  private async initLinks(linkDialog: LinkDialogElement, onLoaded?: () => void): Promise<void> {
     try {
-      const config = await fetchLinksConfig();
-      this.lastLinksRotationMinutes = config.rotationIntervalMinutes ?? 13;
+      const [linksConfig, raidConfig] = await Promise.all([
+        fetchLinksConfig(),
+        fetchRaidConfig(),
+      ]);
+      this.lastLinksRotationMinutes = linksConfig.rotationIntervalMinutes ?? 13;
       const linksIntervalInput = this.querySelector<HTMLInputElement>('#links-rotation-interval-min');
       if (linksIntervalInput) linksIntervalInput.value = String(this.lastLinksRotationMinutes);
-      linkDialog.open({ allLinksText: config.allLinksText ?? '' });
+      const raidMessageInput = this.querySelector<HTMLTextAreaElement>('#raid-message');
+      if (raidMessageInput) {
+        raidMessageInput.value = raidConfig.raidMessage ?? '';
+        this.lastRaidMessage = raidConfig.raidMessage ?? '';
+        raidMessageInput.style.height = '1px';
+        const raw = raidMessageInput.scrollHeight;
+        raidMessageInput.style.height = `${Math.min(Math.max(raw + 4, 40), 160)}px`;
+      }
+      linkDialog.open({ allLinksText: linksConfig.allLinksText ?? '' });
       linkDialog.close();
+      onLoaded?.();
     } catch (error) {
       if (error instanceof Error) {
-        showAlert(`Ошибка загрузки ссылок: ${error.message}`, 'error');
+        showAlert(`Ошибка загрузки: ${error.message}`, 'error');
       }
     }
   }

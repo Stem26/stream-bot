@@ -24,6 +24,10 @@ export interface LinksConfig {
   rotationIntervalMinutes: number;
 }
 
+export interface RaidConfig {
+  raidMessage: string;
+}
+
 export interface Counter {
   id: string;
   trigger: string;

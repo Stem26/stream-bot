@@ -1,5 +1,8 @@
 import './public-base.scss';
 import './styles.scss';
+import './theme-dark.scss';
+import type { Theme } from './theme';
+import { getTheme, initTheme, setTheme } from './theme';
 import './components/public/public-home/public-home';
 import './components/public/public-duel/public-duel';
 import './components/public/public-links/public-links';
@@ -21,6 +24,27 @@ function getRoute(): string {
   return 'public';
 }
 
+function renderThemeToggle(): void {
+  const root = document.getElementById('theme-toggle-root');
+  if (!root) return;
+  const theme = getTheme();
+  root.innerHTML = `
+    <div class="theme-toggle-global" title="Переключить тему">
+      <button type="button" class="theme-toggle-btn ${theme === 'light' ? 'active' : ''}" data-theme="light" aria-label="Светлая тема">☀️</button>
+      <button type="button" class="theme-toggle-btn ${theme === 'dark' ? 'active' : ''}" data-theme="dark" aria-label="Тёмная тема">🌙</button>
+    </div>
+  `;
+  root.querySelectorAll('.theme-toggle-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const t = (btn as HTMLElement).dataset.theme as Theme;
+      if (t) setTheme(t);
+      renderThemeToggle();
+    });
+  });
+}
+
+document.addEventListener('theme-changed', () => renderThemeToggle());
+
 function render(): void {
   const app = document.getElementById('app');
   if (!app) {
@@ -29,7 +53,10 @@ function render(): void {
 
   const route = getRoute();
   document.title = TITLES[route] ?? TITLES.public;
-  document.body.className = 'page-' + route.replace('/', '-');
+  initTheme();
+  const theme = getTheme();
+  document.body.className = 'page-' + route.replace('/', '-') + (theme === 'dark' ? ' theme-dark' : '');
+  renderThemeToggle();
 
   document.querySelector('.btn-back-fixed')?.remove();
   app.innerHTML = '';

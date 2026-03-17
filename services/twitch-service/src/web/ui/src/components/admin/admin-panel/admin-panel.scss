@@ -39,6 +39,58 @@ admin-panel .controls {
     font-size: 0.9em;
     color: #555;
   }
+
+  .admin-inline-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin-top: 8px;
+
+    input {
+      flex: 1;
+      min-width: 0;
+      max-width: 400px;
+      padding: 8px 12px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      font-size: 0.95em;
+    }
+
+    .raid-message-input {
+      flex: 1;
+      min-width: 0;
+      width: 100%;
+      max-width: 560px;
+      min-height: 2.5em;
+      max-height: 160px;
+      padding: 8px 12px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      font-size: 0.95em;
+      font-family: inherit;
+      resize: vertical;
+      line-height: 1.4;
+      scrollbar-width: thin;
+
+      &::-webkit-scrollbar {
+        width: 6px;
+      }
+      &::-webkit-scrollbar-button {
+        display: none;
+      }
+      &::-webkit-scrollbar-thumb {
+        background: rgba(0, 0, 0, 0.25);
+        border-radius: 3px;
+      }
+      &::-webkit-scrollbar-track {
+        background: transparent;
+      }
+    }
+
+    .btn-small {
+      flex-shrink: 0;
+    }
+  }
 }
 
 admin-panel .empty-state {

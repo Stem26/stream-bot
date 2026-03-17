@@ -4,6 +4,18 @@
   box-sizing: border-box;
 }
 
+// Убираем стрелки у input type="number"
+input[type='number']::-webkit-inner-spin-button,
+input[type='number']::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type='number'] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+  text-align: center;
+}
+
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -99,6 +111,18 @@ body.modal-open {
   padding: 25px;
   margin-bottom: 20px;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+
+  #all-links-btn.btn-outline {
+    border: 1px solid #adb5bd;
+    color: #495057;
+    background: rgba(255, 255, 255, 0.5);
+
+    &:hover:not(:disabled) {
+      background: rgba(0, 0, 0, 0.06);
+      border-color: #868e96;
+      color: #212529;
+    }
+  }
 }
 
 .btn {
@@ -1119,12 +1143,14 @@ body.modal-open {
 }
 
 .auth-content .btn-outline {
-  border-color: #ccc;
-  color: #555;
-  background: transparent;
+  border: 1px solid #adb5bd;
+  color: #495057;
+  background: rgba(255, 255, 255, 0.5);
 
   &:hover:not(:disabled) {
-    background: #f0f0f0;
+    background: rgba(0, 0, 0, 0.06);
+    border-color: #868e96;
+    color: #212529;
   }
 }
 
@@ -1275,6 +1301,23 @@ body.modal-open {
 
   .container {
     max-width: 100%;
+    min-width: 0;
+    overflow-x: hidden;
+  }
+
+  .tab-content {
+    min-width: 0;
+  }
+
+  .header-with-logout {
+    flex-direction: column;
+    align-items: stretch;
+
+    .header-actions {
+      order: -1;
+      align-self: flex-end;
+      margin-bottom: 8px;
+    }
   }
 
   .header {
@@ -1397,14 +1440,42 @@ body.modal-open {
   // Кнопки управления
   .controls {
     padding: 15px 10px;
+    flex-wrap: wrap;
+    min-width: 0;
+    overflow-wrap: break-word;
+
+    & > div {
+      min-width: 0;
+      flex: 1 1 100%;
+    }
 
     h2 {
       font-size: 1.1em;
       margin-bottom: 4px;
     }
 
-    p {
+    p, .admin-hint {
       font-size: 0.8em;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
+    }
+
+    .admin-inline-row {
+      flex-direction: column;
+      align-items: stretch;
+
+      input,
+      .raid-message-input {
+        max-width: none;
+      }
+
+      .raid-message-input {
+        min-height: 2.25em;
+      }
+
+      .btn-small {
+        align-self: flex-start;
+      }
     }
   }
 
@@ -1529,6 +1600,13 @@ body.modal-open {
     flex-direction: column;
     align-items: flex-start;
     gap: 12px;
+  }
+
+  .party-config-section .party-config-header .party-config-toggles {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    margin-left: 0;
   }
 
   .party-config-section .party-config-header .party-config-toggle {

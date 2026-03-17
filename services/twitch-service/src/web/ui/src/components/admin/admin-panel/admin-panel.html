@@ -44,7 +44,7 @@
     <button class="tab-btn" data-tab="moderation">🛡️ Модерация чата</button>
     <button class="tab-btn" data-tab="logs">📜 Журналы</button>
   </div>
-  <div class="tab-content active" id="tab-commands">
+  <div class="tab-content" id="tab-commands">
     <div class="controls">
       <div>
         <h2>Инфо</h2>
@@ -53,8 +53,17 @@
         <p class="admin-hint">Команды для стримера и модераторов:</p>
         <p class="admin-hint"><strong>!title</strong> &lt;название&gt; — смена названия трансляции</p>
         <p class="admin-hint"><strong>!game</strong> &lt;категория&gt; — смена категории/игры (например: !game Just Chatting)</p>
+        <p class="admin-hint"><strong>Рейд</strong> — при входящем рейде бот отправит сообщение в чат и сделает шатаут. Плейсхолдеры: <code class="placeholder-accent">{from}</code>, <code class="placeholder-accent">{viewers}</code></p>
+        <div class="admin-inline-row">
+          <textarea id="raid-message"
+                    class="raid-message-input"
+                    placeholder="Спасибо за рейд, {from}! 🎉 {viewers} зрителей"
+                    maxlength="500"
+                    rows="2"></textarea>
+          <button type="button" class="btn btn-success btn-small" id="raid-save-btn" disabled>Сохранить</button>
+        </div>
       </div>
-      <button class="btn btn-small" id="all-links-btn">Все ссылки</button>
+      <button class="btn btn-small btn-outline" id="all-links-btn">Все ссылки</button>
     </div>
     <div class="admin-section admin-links-rotation-section">
       <h3>Ротация ссылок</h3>
