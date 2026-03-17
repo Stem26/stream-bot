@@ -21,7 +21,6 @@ import {
     jumpOverlayPlayer,
 } from './overlay-api';
 
-// Файл для хранения кастомных команд (если понадобится fallback)
 const DATA_DIR = (() => {
     const fromModule = path.resolve(__dirname, '..', 'data');
     if (fs.existsSync(fromModule)) return fromModule;
@@ -129,7 +128,7 @@ const BOT_BLACKLIST = new Set([
 export class NightBotMonitor {
     private chatClient: ChatClient | null = null;
     private channelName: string = '';
-    private botUsername: string = ''; // логин аккаунта бота (из токена), для пропуска своих сообщений
+    private botUsername: string = '';
     private broadcasterId: string = '';
     private moderatorId: string = '';
     private accessToken: string = '';
@@ -254,8 +253,6 @@ export class NightBotMonitor {
         register(['!points', '!очки'], (ch, u, m, msg) => void this.handlePointsCommand(ch, u, m, msg));
         register(['!horny', '!хорни'], (ch, u, m, msg) => void this.handleHornyCommand(ch, u));
         register(['!furry', '!фурри', '!фури'], (ch, u, m, msg) => void this.handleFurryCommand(ch, u));
-        // Удалены хардкодные команды !fetta, !boosty, !donation, !fp, !discord, !tg
-        // Они теперь загружаются из custom-commands.json
         register(['!top_points', '!toppoints', '!топ_очки'], (ch, u, m, msg) => void this.handleTopPointsCommand(ch, u, m, msg));
         register(['!дуэль'], (ch, u, m, msg) => void this.handleDuelCommand(ch, u, m, msg));
         register(['!принять'], (ch, u, m, msg) => void this.handleAcceptDuelCommand(ch, u, msg));
@@ -266,7 +263,7 @@ export class NightBotMonitor {
         register(['!крыса'], (ch, u, m, msg) => void this.handleRatCommand(ch, u, m, msg));
         register(['!милашка'], (ch, u, m, msg) => void this.handleCutieCommand(ch, u, m, msg));
         register(['!vanish'], (ch, u, m, msg) => void this.handleVanishCommand(ch, u, msg));
-        register(['!jump', '!j', '!прыжок'], (ch, u, m, msg) => void this.handleJumpCommand(ch, u, msg));
+        register(['!jump', '!j', '!о'], (ch, u, m, msg) => void this.handleJumpCommand(ch, u, msg));
         register(['!скины'], (ch, u, m, msg) => void this.handleCharactersListCommand(ch, u, msg));
         register(['!игры', '!help'], (ch, u, m, msg) => void this.handleGamesCommand(ch, u, msg));
         register(['!ссылки', '!links'], (ch, u, m, msg) => void this.handleLinksCommand(ch, u, msg));
