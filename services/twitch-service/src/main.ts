@@ -183,7 +183,8 @@ async function main() {
     await nightBotMonitor.connect(
         config.twitch.channel,
         config.twitch.accessToken,
-        config.twitch.clientId
+        config.twitch.clientId,
+        config.twitch.broadcastAccessToken
     );
 
     // Связываем streamMonitor с chatClient для отправки приветственных сообщений

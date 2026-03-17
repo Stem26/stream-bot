@@ -12,6 +12,7 @@ export interface AppConfig {
     clientId: string;
     accessToken: string;
     refreshToken?: string;
+    broadcastAccessToken?: string;
   };
   allowedAdmins: number[];
   streamerUsername?: string;

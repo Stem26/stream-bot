@@ -169,6 +169,8 @@ export class NightBotMonitor {
     private moderatorId: string = '';
     private accessToken: string = '';
     private clientId: string = '';
+    /** Токен стримера (broadcaster) — для Helix moderation/moderators (scope: moderation:read) */
+    private broadcastAccessToken: string | null = null;
     private isStreamOnlineCheck: () => boolean = () => true;
     private syncViewersCallback: ((chattersCount?: number) => Promise<void>) | null = null;
 
@@ -572,6 +574,58 @@ export class NightBotMonitor {
     }
 
     /**
+     * Helix API запрос с кастомным токеном (например, токен стримера для moderation endpoints)
+     */
+    private async helixWithToken<T>(url: string, token: string): Promise<T> {
+        const res = await fetch(url, {
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Client-Id': this.clientId,
+            }
+        });
+        if (!res.ok) {
+            const text = await res.text();
+            throw new Error(`Helix HTTP ${res.status}: ${text}`);
+        }
+        if (res.status === 204 || res.headers.get('content-length') === '0') {
+            return undefined as T;
+        }
+        return (await res.json()) as T;
+    }
+
+    /**
+     * Получить список модераторов канала через Helix API (требуется токен стримера с scope moderation:read)
+     * Возвращает массив user_login (нижний регистр)
+     */
+    private async fetchModeratorsFromApi(): Promise<string[]> {
+        if (!this.broadcastAccessToken || !this.broadcasterId) {
+            return [];
+        }
+        const moderators: string[] = [];
+        let cursor: string | undefined;
+        do {
+            const url = new URL('https://api.twitch.tv/helix/moderation/moderators');
+            url.searchParams.set('broadcaster_id', this.broadcasterId);
+            url.searchParams.set('first', '100');
+            if (cursor) url.searchParams.set('after', cursor);
+
+            const response = await this.helixWithToken<{
+                data: Array<{ user_login: string }>;
+                pagination?: { cursor?: string };
+            }>(url.toString(), this.broadcastAccessToken);
+
+            for (const m of response.data || []) {
+                if (m.user_login) {
+                    moderators.push(m.user_login.toLowerCase());
+                }
+            }
+            cursor = response.pagination?.cursor;
+        } while (cursor);
+
+        return moderators;
+    }
+
+    /**
      * Получить список всех зрителей подключенных к чату
      * Обрабатывает пагинацию для получения всех пользователей (API лимит: 1000 за запрос)
      * Использует кеширование для снижения нагрузки на Twitch API
@@ -689,10 +743,11 @@ export class NightBotMonitor {
     /**
      * Подключение к Twitch чату для мониторинга сообщений
      * @param channelName - имя канала
-     * @param accessToken - OAuth токен для Twitch
+     * @param accessToken - OAuth токен для Twitch (токен бота)
      * @param clientId - Client ID приложения Twitch
+     * @param broadcastAccessToken - опционально, токен стримера для получения списка модераторов (Helix moderation/moderators)
      */
-    async connect(channelName: string, accessToken: string, clientId: string) {
+    async connect(channelName: string, accessToken: string, clientId: string, broadcastAccessToken?: string) {
         try {
             // Если уже подключены, не подключаемся повторно
             if (this.chatClient) {
@@ -704,6 +759,7 @@ export class NightBotMonitor {
             this.channelName = channelName.replace(/^#/, '').toLowerCase();
             this.accessToken = accessToken;
             this.clientId = clientId;
+            this.broadcastAccessToken = broadcastAccessToken?.trim() || null;
 
             await this.loadPartyConfigFromDb();
             this.commands = this.buildCommandsMap(this.partyTrigger);
@@ -779,6 +835,27 @@ export class NightBotMonitor {
 
             await new Promise(resolve => setTimeout(resolve, 2000));
             console.log('✅ Чат готов к работе!');
+
+            // Загружаем список модераторов через API (если есть токен стримера)
+            try {
+                const apiModerators = await this.fetchModeratorsFromApi();
+                if (apiModerators.length > 0) {
+                    // Добавляем стримера и модераторов в detectedModerators
+                    this.detectedModerators.add(this.channelName);
+                    for (const login of apiModerators) {
+                        this.detectedModerators.add(login);
+                    }
+                    setDuelAdminsFromModerators(Array.from(this.detectedModerators));
+                    console.log(`🛡️ Загружено ${apiModerators.length} модераторов из API: ${apiModerators.join(', ')}`);
+                } else if (this.broadcastAccessToken) {
+                    console.warn('⚠️ Токен стримера задан, но список модераторов пуст (проверь scope moderation:read)');
+                }
+            } catch (err: any) {
+                if (this.broadcastAccessToken) {
+                    console.error('❌ Ошибка загрузки модераторов из API:', err?.message || err);
+                }
+            }
+
             if (!ENABLE_BOT_FEATURES) {
                 console.log('🔇 Все функции бота отключены (ENABLE_BOT_FEATURES=false) - только мониторинг');
             } else if (IS_LOCAL && !ALLOW_LOCAL_COMMANDS) {

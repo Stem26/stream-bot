@@ -61,6 +61,7 @@ export function loadConfig(): AppConfig {
       clientId: twitchClientId,
       accessToken: twitchAccessToken,
       refreshToken: process.env.TWITCH_REFRESH_TOKEN,
+      broadcastAccessToken: process.env.BROADCAST_TWITCH_ACCESS_TOKEN || undefined,
     },
     allowedAdmins: process.env.ALLOWED_ADMINS 
       ? process.env.ALLOWED_ADMINS.split(',').map(id => parseInt(id.trim())) 
