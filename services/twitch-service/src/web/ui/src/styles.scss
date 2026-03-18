@@ -31,6 +31,16 @@ body.modal-open {
   }
 }
 
+// Отступ от скроллбара во всех диалогах
+command-dialog .modal-body,
+link-dialog .modal-body,
+counter-dialog .modal-body,
+party-dialog .modal-body,
+moderation-rules-dialog .modal-body,
+link-whitelist-dialog .modal-body {
+  padding-right: 10px;
+}
+
 .admin-loading {
   display: flex;
   align-items: center;

@@ -323,12 +323,13 @@ body.theme-dark {
       td { color: $dark-text !important; border-color: $dark-border !important; }
       &:hover { background: $dark-hover !important; }
     }
+    .journal-table .user-timestamp {
+      color: $dark-text-muted !important;
+    }
+
     @media (max-width: 768px) {
       .journal-table tbody tr {
         border-bottom-color: $dark-border !important;
-      }
-      .journal-table tbody td.col-date {
-        color: $dark-text-muted !important;
       }
     }
 

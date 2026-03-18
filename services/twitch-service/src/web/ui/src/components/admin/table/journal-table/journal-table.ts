@@ -9,7 +9,7 @@ import { getAdminPassword } from '../../../../admin-auth';
 function formatJournalDate(iso: string): string {
   const d = new Date(iso);
   const day = d.getDate();
-  const month = d.toLocaleString('ru-RU', { month: 'long' });
+  const month = d.toLocaleString('ru-RU', { month: 'short' });
   const time = d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
   const hours = d.getHours();
   const isNight = hours >= 0 && hours < 5;
@@ -73,9 +73,15 @@ export class JournalTableElement extends HTMLElement {
     data.items.forEach((entry: JournalEntry) => {
       const tr = document.createElement('tr');
       tr.innerHTML = `
-        <td class="col-date">${escapeHtml(formatJournalDate(entry.createdAt))}</td>
-        <td class="col-user">${escapeHtml(entry.username)}</td>
-        <td class="col-message">${escapeHtml(entry.message)}</td>
+        <td class="col-message">
+          <div class="message-stack">
+            <p class="message-stack-row">
+              <span class="user-name" data-truncate="end">${escapeHtml(entry.username)}</span>
+              <span class="user-timestamp">${escapeHtml(formatJournalDate(entry.createdAt))}</span>
+            </p>
+            <p class="user-message">${escapeHtml(entry.message)}</p>
+          </div>
+        </td>
       `;
       tbody.appendChild(tr);
     });
