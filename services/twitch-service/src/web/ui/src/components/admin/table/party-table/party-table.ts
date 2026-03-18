@@ -54,7 +54,7 @@ export class PartyTableElement extends HTMLElement {
         partySkipCooldownToggle.classList.toggle('on', newVal);
         partySkipCooldownToggle.classList.toggle('off', !newVal);
         const textEl = partySkipCooldownToggle.querySelector('.status-toggle-text');
-        if (textEl) textEl.textContent = newVal ? 'Ограничение ВЫКЛ' : 'Ограничение ВКЛ';
+        if (textEl) textEl.textContent = newVal ? 'ВЫКЛ' : 'ВКЛ';
       } catch (error) {
         if (error instanceof Error) showAlert(`Ошибка: ${error.message}`, 'error');
       }

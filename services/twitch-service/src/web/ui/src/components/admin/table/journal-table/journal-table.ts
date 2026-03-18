@@ -109,9 +109,6 @@ export class JournalTableElement extends HTMLElement {
     }
 
     const desc = this.querySelector<HTMLElement>('.journal-description');
-    if (desc) {
-      desc.textContent = `Просмотрите журналы за последние ${this.currentDays} дней.`;
-    }
   }
 
   async loadJournal(): Promise<void> {
