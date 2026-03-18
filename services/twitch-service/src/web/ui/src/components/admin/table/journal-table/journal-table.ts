@@ -25,6 +25,7 @@ export class JournalTableElement extends HTMLElement {
   private currentType = '';
   private currentDays = 7;
   private lastResponse: JournalResponse | null = null;
+  private isLoading = false;
 
   connectedCallback(): void {
     if (this.initialized) return;
@@ -33,13 +34,22 @@ export class JournalTableElement extends HTMLElement {
     this.setupHandlers();
     if (getAdminPassword()) void this.loadJournal();
     window.addEventListener('admin-auth-success', this.handleAuthSuccess);
+    window.addEventListener('admin-logs-open', this.handleLogsOpen);
   }
 
   disconnectedCallback(): void {
     window.removeEventListener('admin-auth-success', this.handleAuthSuccess);
+    window.removeEventListener('admin-logs-open', this.handleLogsOpen);
   }
 
   private handleAuthSuccess = (): void => {
+    void this.loadJournal();
+  };
+
+  private handleLogsOpen = (): void => {
+    if (!getAdminPassword()) return;
+    // При каждом заходе на вкладку логов хотим видеть новые записи первыми.
+    this.currentPage = 1;
     void this.loadJournal();
   };
 
@@ -112,6 +122,8 @@ export class JournalTableElement extends HTMLElement {
   }
 
   async loadJournal(): Promise<void> {
+    if (this.isLoading) return;
+    this.isLoading = true;
     const container = this.querySelector<HTMLElement>('#journal-container');
     const loadingEl = container?.querySelector<HTMLElement>('.loading');
     if (container) container.classList.add('loading-state');
@@ -132,6 +144,8 @@ export class JournalTableElement extends HTMLElement {
       }
       if (container) container.classList.remove('loading-state');
       if (loadingEl) loadingEl.style.display = 'none';
+    } finally {
+      this.isLoading = false;
     }
   }
 

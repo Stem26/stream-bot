@@ -124,6 +124,12 @@ export class AdminPanelElement extends HTMLElement {
         targetContent.classList.add('active');
         (targetContent as HTMLElement).style.display = 'block';
       }
+
+      // Чтобы в "Журналах" всегда появлялись новые сообщения,
+      // инициируем принудительную загрузку при каждом заходе на вкладку.
+      if (targetTab === 'logs') {
+        window.dispatchEvent(new CustomEvent('admin-logs-open'));
+      }
       if (tabsContainer) {
         btn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
       }

@@ -28,10 +28,13 @@
 
         <div class="form-group form-group-textarea">
           <div class="label-row">
-            <label for="counter-template">Шаблон ответа *</label>
+            <label for="counter-template">Шаблон ответа</label>
             <span class="char-counter" id="counter-template-counter">0 / 500</span>
           </div>
-          <textarea id="counter-template" required placeholder="Смертей: {value}"></textarea>
+          <textarea id="counter-template"
+                    required
+                    maxlength="500"
+                    placeholder="Смертей: {value}"></textarea>
           <small>Используйте <code class="placeholder-accent">{value}</code> для подстановки. Время: <code class="placeholder-accent">{time:Europe/Moscow}</code>. Макс. 500 символов.</small>
         </div>
 
