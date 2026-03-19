@@ -14,6 +14,13 @@ admin-panel .admin-page-section {
   }
 }
 
+admin-panel .admin-info {
+  padding: 0 0 10px 0;
+  background: none;
+  border-radius: 8px;
+  border-left: none;
+}
+
 admin-panel .admin-page-section-title {
   font-size: 1.25rem;
   font-weight: 600;

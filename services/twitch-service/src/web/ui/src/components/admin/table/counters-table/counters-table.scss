@@ -52,12 +52,35 @@ counters-table {
       border-bottom: 2px solid #e0e8f0;
       background: #fff;
 
-      &.col-num { width: 2.25em; min-width: 2.25em; max-width: 2.25em; }
-      &.col-trigger { width: 100px; min-width: 80px; }
-      &.col-value { width: 56px; min-width: 48px; }
-      &.col-description { min-width: 180px; }
-      &.col-status { width: 90px; min-width: 90px; }
-      &.col-actions { width: 88px; min-width: 88px; padding-left: 8px; padding-right: 12px; }
+      &.col-num {
+        width: 50px
+      }
+
+      &.col-trigger {
+        width: 100px;
+        min-width: 80px;
+      }
+
+      &.col-value {
+        width: 56px;
+        min-width: 48px;
+      }
+
+      &.col-description {
+        min-width: 180px;
+      }
+
+      &.col-status {
+        width: 90px;
+        min-width: 90px;
+      }
+
+      &.col-actions {
+        width: 88px;
+        min-width: 88px;
+        padding-left: 8px;
+        padding-right: 12px;
+      }
     }
 
     tbody tr.counter-table-row {
@@ -65,8 +88,13 @@ counters-table {
       background: #fafbfc;
       transition: border-left-color 0.3s ease, background-color 0.3s ease;
 
-      &:hover { background: #e8f0fa; }
-      &.disabled { opacity: 0.75; }
+      &:hover {
+        background: #e8f0fa;
+      }
+
+      &.disabled {
+        opacity: 0.75;
+      }
 
       td {
         padding: 14px 16px;
@@ -84,6 +112,7 @@ counters-table {
           border-left: 0.5rem solid hsl(210, 59%, 38%);
           border-radius: 0.5rem 0 0 0.5rem;
         }
+
         &:last-child {
           padding-right: 16px;
           border-color: transparent;
@@ -94,12 +123,44 @@ counters-table {
         }
       }
 
-      .col-num { width: 2.25em; min-width: 2.25em; color: #6c757d; font-size: 0.9em; white-space: nowrap; }
-      .col-trigger { min-width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-      .col-value { width: 56px; min-width: 48px; white-space: nowrap; }
-      .col-description { min-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-      .col-status { width: 90px; min-width: 90px; }
-      .col-actions { width: 52px; min-width: 52px; white-space: nowrap; }
+      .col-num {
+        width: 2.25em;
+        min-width: 2.25em;
+        color: #6c757d;
+        font-size: 0.9em;
+        white-space: nowrap;
+      }
+
+      .col-trigger {
+        min-width: 80px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .col-value {
+        width: 56px;
+        min-width: 48px;
+        white-space: nowrap;
+      }
+
+      .col-description {
+        min-width: 120px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .col-status {
+        width: 90px;
+        min-width: 90px;
+      }
+
+      .col-actions {
+        width: 52px;
+        min-width: 52px;
+        white-space: nowrap;
+      }
     }
   }
 
@@ -108,27 +169,47 @@ counters-table {
   }
 
   @media (max-width: 768px) {
-    .counters-table-wrap { margin-top: 16px; }
+    .counters-table-wrap {
+      margin-top: 16px;
+    }
+
     .counters-table-container {
       overflow-x: auto;
       -webkit-overflow-scrolling: touch;
-      &.loading-state { padding: 16px 12px; }
+
+      &.loading-state {
+        padding: 16px 12px;
+      }
     }
     .counters-table {
       border-spacing: 0 8px;
       min-width: 200px;
+
       thead th {
         padding: 10px 12px;
         font-size: 0.85em;
-        &.col-num, &.col-description, &.col-actions { display: none; }
+
+        &.col-num,
+        &.col-description,
+        &.col-actions {
+          display: none;
+        }
       }
+
       tbody tr.counter-table-row td {
         padding: 12px;
-        &.col-num, &.col-description, &.col-actions { display: none; }
+
+        &.col-num,
+        &.col-description,
+        &.col-actions {
+          display: none;
+        }
+
         &.col-trigger {
           border-left: 0.5rem solid hsl(210, 59%, 38%);
           border-radius: 0.5rem 0 0 0.5rem;
         }
+
         &.col-status {
           padding-right: 16px;
           border-color: transparent;
@@ -138,9 +219,19 @@ counters-table {
           border-radius: 0 0.5rem 0.5rem 0;
         }
       }
-      .col-trigger { min-width: 0; }
-      .col-status { width: 56px; min-width: 56px; }
-      .col-actions { display: none; }
+
+      .col-trigger {
+        min-width: 0;
+      }
+
+      .col-status {
+        width: 56px;
+        min-width: 56px;
+      }
+
+      .col-actions {
+        display: none;
+      }
     }
   }
 }

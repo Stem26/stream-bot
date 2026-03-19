@@ -190,8 +190,14 @@
 
   .journal-table {
     display: block;
-    thead { display: none; }
-    tbody { display: block; }
+
+    thead {
+      display: none;
+    }
+
+    tbody {
+      display: block;
+    }
 
     tbody tr {
       display: block;

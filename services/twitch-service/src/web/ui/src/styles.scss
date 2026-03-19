@@ -880,15 +880,6 @@ link-whitelist-dialog .modal-body {
         border-left: 0.5rem solid hsl(210, 59%, 38%);
         border-radius: 0.5rem 0 0 0.5rem;
       }
-
-      &:last-child {
-        padding-right: 16px;
-        border-color: transparent;
-        border-right: 1px solid #28619a;
-        border-top-color: #28619a;
-        border-bottom-color: #28619a;
-        border-radius: 0 0.5rem 0.5rem 0;
-      }
     }
   }
 

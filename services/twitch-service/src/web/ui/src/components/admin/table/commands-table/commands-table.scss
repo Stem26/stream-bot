@@ -55,30 +55,34 @@ commands-table {
       &:first-child {
         padding-left: 12px;
       }
+
       &:last-child {
         padding-right: 12px;
       }
 
       &.col-num {
-        width: 2.25em;
-        min-width: 2.25em;
-        max-width: 2.25em;
+        width: 50px;
       }
+
       &.col-trigger {
         width: 120px;
         min-width: 100px;
       }
+
       &.col-response {
         min-width: 180px;
       }
+
       &.col-status {
         width: 72px;
         min-width: 72px;
       }
+
       &.col-rotation {
         width: 70px;
         min-width: 70px;
       }
+
       &.col-actions {
         width: 80px;
         min-width: 80px;
@@ -95,6 +99,7 @@ commands-table {
       &:hover {
         background: #e8f0fa;
       }
+
       &.disabled {
         opacity: 0.75;
       }
@@ -115,6 +120,7 @@ commands-table {
           border-left: 0.5rem solid hsl(210, 59%, 38%);
           border-radius: 0.5rem 0 0 0.5rem;
         }
+
         &:last-child {
           padding-right: 12px;
           border-color: transparent;
@@ -179,6 +185,7 @@ commands-table {
 
         .btn-icon {
           margin-left: 4px;
+
           &:first-child {
             margin-left: 0;
           }
@@ -212,6 +219,7 @@ commands-table {
 
         &.col-num,
         &.col-response,
+        &.col-actions,
         &.col-rotation {
           display: none;
         }
@@ -222,6 +230,7 @@ commands-table {
 
         &.col-num,
         &.col-response,
+        &.col-actions,
         &.col-rotation {
           display: none;
         }
@@ -235,10 +244,12 @@ commands-table {
       .col-trigger {
         min-width: 0;
       }
+
       .col-status {
         width: 56px;
         min-width: 56px;
       }
+
       .col-actions {
         width: 76px;
         min-width: 76px;

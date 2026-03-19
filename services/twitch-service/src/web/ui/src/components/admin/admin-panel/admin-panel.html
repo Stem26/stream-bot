@@ -47,14 +47,24 @@
   <div class="tab-content" id="tab-commands">
     <div class="controls">
       <div>
-        <h2>Инфо</h2>
-        <p class="admin-hint"><strong>!ссылки</strong> — редактировать общий текст, который отправляется при этой команде</p>
-        <p class="admin-hint"><strong>!команды</strong> (или !команда, !commands) — выводит список всех включённых команд из таблицы ниже (триггеры и алиасы)</p>
-        <p class="admin-hint">Команды для стримера и модераторов:</p>
+        <div class="admin-info">
+          <h2>Инфо</h2>
+          <p class="admin-hint"><strong>!ссылки</strong> — редактировать общий текст, который отправляется при этой
+            команде</p>
+          <p class="admin-hint"><strong>!команды</strong> (или !команда, !commands) — выводит список всех включённых
+            команд из таблицы ниже (триггеры и алиасы)</p>
+        </div>
+        <h2>Команды для стримера и модераторов:</h2>
         <p class="admin-hint"><strong>!title</strong> &lt;название&gt; — смена названия трансляции</p>
-        <p class="admin-hint"><strong>!game</strong> &lt;категория&gt; — смена категории/игры (например: !game Just Chatting)</p>
-        <p class="admin-hint"><strong>!tags</strong> [теги] — управление тегами стрима: <code>!tags</code> — показать, <code>!tags tag1, tag2</code> — задать, <code>!tags clear</code> — очистить</p>
-        <p class="admin-hint"><strong>Рейд</strong> — при входящем рейде бот отправит сообщение в чат и сделает шатаут. Плейсхолдеры: <code class="placeholder-accent">{from}</code>, <code class="placeholder-accent">{viewers}</code></p>
+        <p class="admin-hint"><strong>!title</strong> &lt;название&gt; | <strong>tags:</strong> tag1, tag2 — смена
+          названия и тегов</p>
+        <p class="admin-hint"><strong>!game</strong> &lt;категория&gt; — смена категории/игры (например: !game Just
+          Chatting)</p>
+        <p class="admin-hint"><strong>!tags</strong> [теги] — управление тегами стрима: <code>!tags</code> — показать,
+          <code>!tags tag1, tag2</code> — задать, <code>!tags clear</code> — очистить</p>
+        <p class="admin-hint"><strong>Рейд</strong> — при входящем рейде бот отправит сообщение в чат и сделает шатаут.
+          Плейсхолдеры: <code class="placeholder-accent">{from}</code>, <code
+              class="placeholder-accent">{viewers}</code></p>
         <div class="admin-inline-row">
           <textarea id="raid-message"
                     class="raid-message-input"
