@@ -90,6 +90,8 @@ export class TwitchEventSubNative {
     private ws: WebSocket | null = null;
     private sessionId: string | null = null;
     private subscriptionsCreated: boolean = false;
+    /** Session id, для которого мы реально создали подписки EventSub (нужно пересоздавать при новом session_id). */
+    private subscriptionsSessionId: string | null = null;
     private telegram: Telegram;
     private accessToken: string = '';
     private clientId: string = '';
@@ -295,12 +297,17 @@ export class TwitchEventSubNative {
 
         this.startKeepAliveMonitor(keepaliveTimeout);
 
-        // Защита от повторного создания подписок
-        if (!this.subscriptionsCreated) {
+        // Подписки привязаны к session_id. При новом session_id их нужно создавать заново,
+        // иначе Twitch закрывает соединение как "connection unused".
+        if (!this.sessionId) {
+            console.warn('⚠️ session_id пустой — пропускаем создание подписок');
+        } else if (this.subscriptionsSessionId !== this.sessionId) {
+            this.subscriptionsCreated = false;
             await this.subscribeToEvents();
             this.subscriptionsCreated = true;
+            this.subscriptionsSessionId = this.sessionId;
         } else {
-            console.log('ℹ️ Подписки уже созданы, пропускаем');
+            console.log('ℹ️ Подписки уже созданы для текущей сессии, пропускаем');
         }
 
         await this.checkCurrentStreamStatus();

@@ -70,11 +70,20 @@
                     class="raid-message-input"
                     placeholder="Спасибо за рейд, {from}! 🎉 {viewers} зрителей"
                     maxlength="500"
-                    rows="2"></textarea>
-          <button type="button" class="btn btn-success btn-small" id="raid-save-btn" disabled>Сохранить</button>
+                    rows="2">
+          </textarea>
+          <button type="button"
+                  class="btn btn-success btn-small"
+                  id="raid-save-btn"
+                  disabled>
+            Сохранить
+          </button>
         </div>
       </div>
-      <button class="btn btn-small btn-outline" id="all-links-btn">Все ссылки</button>
+      <button class="btn btn-small btn-outline"
+              id="all-links-btn">
+        Все ссылки
+      </button>
     </div>
     <div class="admin-section admin-links-rotation-section">
       <h3>Ротация команд</h3>
@@ -83,9 +92,18 @@
         <div class="admin-duels-config-row">
           <label for="links-rotation-interval-min">Интервал ротации ссылок (мин)</label>
           <input type="number"
-                 id="links-rotation-interval-min" min="1" max="120" step="1" value="13"/>
+                 id="links-rotation-interval-min"
+                 min="1"
+                 max="120"
+                 step="1"
+                 value="13">
         </div>
-        <button type="button" class="btn btn-success" id="links-rotation-save-btn" disabled>Сохранить</button>
+        <button type="button"
+                class="btn btn-success"
+                id="links-rotation-save-btn"
+                disabled>
+          Сохранить
+        </button>
       </div>
     </div>
     <commands-table></commands-table>
