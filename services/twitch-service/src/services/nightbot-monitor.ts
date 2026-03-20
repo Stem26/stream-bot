@@ -955,7 +955,6 @@ export class NightBotMonitor {
                 }
 
                 // !title <новое название> — смена названия трансляции (стример, модераторы, EXTRA_DUEL_ADMINS)
-                // Расширение: !title <название> | tags: tag1, tag2  (обновляет и теги)
                 if (trimmedMessage.startsWith('!title ')) {
                     const titleArgs = message.slice(7).trim();
                     this.handleTitleCommand(channel, user, titleArgs, msg);
@@ -1914,62 +1913,11 @@ export class NightBotMonitor {
             return;
         }
         try {
-            // Поддержка синтаксиса: "!title <название> | tags: tag1, tag2"
-            // Где title — до первого "|", а дальше — директивы вида "tags:"/"теги:".
-            const parts = titleArgs
-                .split('|')
-                .map(p => p.trim())
-                .filter(Boolean);
-
-            const newTitle = (parts[0] ?? '').trim();
+            const newTitle = titleArgs.trim();
             if (!newTitle || newTitle.length > 140) {
                 await this.sendMessage(channel, 'Название должно быть от 1 до 140 символов');
                 return;
             }
-
-            let tags: string[] | undefined = undefined;
-            for (const directive of parts.slice(1)) {
-                const m = directive.match(/^(tags|теги)\s*:\s*(.*)$/i);
-                if (!m) continue;
-                const raw = (m[2] ?? '').trim();
-                if (!raw) {
-                    tags = [];
-                    continue;
-                }
-                const parsed = raw
-                    .split(/[, ]+/)
-                    .map(t => t.trim())
-                    .filter(Boolean)
-                    .map(t => t.replace(/^#/, ''));
-                // Уникализируем, сохраняя порядок
-                const uniq: string[] = [];
-                const seen = new Set<string>();
-                for (const t of parsed) {
-                    const key = t.toLowerCase();
-                    if (seen.has(key)) continue;
-                    seen.add(key);
-                    uniq.push(t);
-                }
-                tags = uniq;
-            }
-
-            if (tags) {
-                const invalid = tags.find(t => !t || t.length > 25 || /\s/.test(t));
-                if (invalid) {
-                    await this.sendMessage(
-                        channel,
-                        'Теги: до 10 шт, каждый до 25 символов и без пробелов. Пример: !title Новый тайтл | tags: JustChatting, RU'
-                    );
-                    return;
-                }
-                if (tags.length > 10) {
-                    await this.sendMessage(channel, 'Теги: максимум 10. Пример: !title Новый тайтл | tags: JustChatting, RU');
-                    return;
-                }
-            }
-
-            const body: any = { title: newTitle };
-            if (tags !== undefined) body.tags = tags;
 
             const res = await fetch(
                 `https://api.twitch.tv/helix/channels?broadcaster_id=${this.broadcasterId}`,
@@ -1980,7 +1928,7 @@ export class NightBotMonitor {
                         'Client-Id': this.clientId,
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify(body),
+                    body: JSON.stringify({ title: newTitle }),
                 }
             );
             if (!res.ok) {
@@ -1989,20 +1937,9 @@ export class NightBotMonitor {
                 await this.sendMessage(channel, `Ошибка обновления (${res.status})`);
                 return;
             }
-            log('COMMAND', { command: '!title', username: user, channel, newTitle, tags });
-            logJournalEvent(
-                user,
-                tags !== undefined
-                    ? `Название изменено на: ${newTitle} (теги: ${tags.length ? tags.join(', ') : 'очищены'})`
-                    : `Название изменено на: ${newTitle}`,
-                'system'
-            );
-            await this.sendMessage(
-                channel,
-                tags !== undefined
-                    ? `📺 Название: ${newTitle} • 🏷️ Теги: ${tags.length ? tags.join(', ') : 'очищены'}`
-                    : `📺 Название изменено на: ${newTitle}`
-            );
+            log('COMMAND', { command: '!title', username: user, channel, newTitle });
+            logJournalEvent(user, `Название изменено на: ${newTitle}`, 'system');
+            await this.sendMessage(channel, `📺 Название изменено на: ${newTitle}`);
         } catch (error: any) {
             console.error('❌ Ошибка !title:', error?.message || error);
             await this.sendMessage(channel, 'Ошибка при смене названия');
