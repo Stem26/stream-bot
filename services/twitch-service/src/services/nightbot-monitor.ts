@@ -968,6 +968,13 @@ export class NightBotMonitor {
                     return;
                 }
 
+                // !tags [tag1, tag2] | !tags clear — показать/обновить/очистить теги
+                if (trimmedMessage === '!tags' || trimmedMessage.startsWith('!tags ')) {
+                    const tagsArgs = message.length > 5 ? message.slice(5).trim() : '';
+                    this.handleTagsCommand(channel, user, tagsArgs, msg);
+                    return;
+                }
+
                 // Проверяем, есть ли команда в мапе
                 const commandHandler = this.commands.get(trimmedMessage);
                 if (commandHandler) {
@@ -2010,6 +2017,125 @@ export class NightBotMonitor {
         } catch (error: any) {
             console.error('❌ Ошибка !game:', error?.message || error);
             await this.sendMessage(channel, 'Ошибка при смене категории');
+        }
+    }
+
+    /**
+     * Обработка команды !tags [tag1, tag2] | !tags clear — управление тегами
+     * Доступна: стример, модераторы, EXTRA_DUEL_ADMINS. Требует BROADCAST_TWITCH_ACCESS_TOKEN с scope channel:manage:broadcast
+     */
+    private async handleTagsCommand(channel: string, user: string, tagsArgs: string, msg: any) {
+        if (!this.isBroadcaster(user) && !canManageDuels(user)) {
+            return;
+        }
+        if (!this.broadcastAccessToken || !this.broadcasterId) {
+            console.error('❌ !tags: нет токена стримера (BROADCAST_TWITCH_ACCESS_TOKEN) или broadcasterId');
+            await this.sendMessage(channel, 'Команда недоступна (нет токена стримера)');
+            return;
+        }
+
+        try {
+            const normalized = tagsArgs.trim();
+
+            // Показать текущие теги
+            if (!normalized) {
+                const res = await fetch(
+                    `https://api.twitch.tv/helix/channels?broadcaster_id=${this.broadcasterId}`,
+                    {
+                        headers: {
+                            'Authorization': `Bearer ${this.broadcastAccessToken}`,
+                            'Client-Id': this.clientId,
+                        },
+                    }
+                );
+                if (!res.ok) {
+                    const text = await res.text();
+                    console.error(`❌ !tags get API error ${res.status}:`, text);
+                    await this.sendMessage(channel, `Ошибка получения тегов (${res.status})`);
+                    return;
+                }
+                const data = await res.json() as { data?: Array<{ tags?: string[] }> };
+                const tags = data.data?.[0]?.tags ?? [];
+                await this.sendMessage(channel, tags.length ? `🏷️ Теги: ${tags.join(', ')}` : '🏷️ Теги не установлены');
+                return;
+            }
+
+            // Очистка: !tags clear
+            if (normalized.toLowerCase() === 'clear') {
+                const clearRes = await fetch(
+                    `https://api.twitch.tv/helix/channels?broadcaster_id=${this.broadcasterId}`,
+                    {
+                        method: 'PATCH',
+                        headers: {
+                            'Authorization': `Bearer ${this.broadcastAccessToken}`,
+                            'Client-Id': this.clientId,
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ tags: [] }),
+                    }
+                );
+                if (!clearRes.ok) {
+                    const text = await clearRes.text();
+                    console.error(`❌ !tags clear API error ${clearRes.status}:`, text);
+                    await this.sendMessage(channel, `Ошибка очистки тегов (${clearRes.status})`);
+                    return;
+                }
+                log('COMMAND', { command: '!tags', username: user, channel, action: 'clear' });
+                logJournalEvent(user, 'Теги очищены', 'system');
+                await this.sendMessage(channel, '🏷️ Теги очищены');
+                return;
+            }
+
+            const parsed = normalized
+                .split(',')
+                .map((t) => t.trim())
+                .filter(Boolean)
+                .map((t) => t.replace(/^#/, ''));
+
+            const uniq: string[] = [];
+            const seen = new Set<string>();
+            for (const tag of parsed) {
+                const key = tag.toLowerCase();
+                if (seen.has(key)) continue;
+                seen.add(key);
+                uniq.push(tag);
+            }
+
+            const invalid = uniq.find((t) => !t || t.length > 25 || /\s/.test(t));
+            if (invalid) {
+                await this.sendMessage(channel, 'Теги: до 10 шт, каждый до 25 символов и без пробелов. Пример: !tags JustChatting, RU');
+                return;
+            }
+            if (uniq.length > 10) {
+                await this.sendMessage(channel, 'Теги: максимум 10. Пример: !tags JustChatting, RU');
+                return;
+            }
+
+            const patchRes = await fetch(
+                `https://api.twitch.tv/helix/channels?broadcaster_id=${this.broadcasterId}`,
+                {
+                    method: 'PATCH',
+                    headers: {
+                        'Authorization': `Bearer ${this.broadcastAccessToken}`,
+                        'Client-Id': this.clientId,
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ tags: uniq }),
+                }
+            );
+            if (!patchRes.ok) {
+                const text = await patchRes.text();
+                console.error(`❌ !tags set API error ${patchRes.status}:`, text);
+                await this.sendMessage(channel, `Ошибка установки тегов (${patchRes.status})`);
+                return;
+            }
+
+            log('COMMAND', { command: '!tags', username: user, channel, tags: uniq });
+            logJournalEvent(user, `Теги обновлены: ${uniq.join(', ')}`, 'system');
+            await this.sendMessage(channel, `🏷️ Теги обновлены: ${uniq.join(', ')}`);
+        } catch (error: any) {
+            console.error('❌ Ошибка !tags:', error?.message || error);
+            await this.sendMessage(channel, 'Ошибка при обновлении тегов');
         }
     }
 
