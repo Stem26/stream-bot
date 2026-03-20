@@ -968,7 +968,7 @@ export class NightBotMonitor {
                     return;
                 }
 
-                // !tags [tag1, tag2] | !tags clear — показать/обновить/очистить теги
+                // !tags [tag1, tag2] — показать/обновить теги
                 if (trimmedMessage === '!tags' || trimmedMessage.startsWith('!tags ')) {
                     const tagsArgs = message.length > 5 ? message.slice(5).trim() : '';
                     this.handleTagsCommand(channel, user, tagsArgs, msg);
@@ -2021,7 +2021,7 @@ export class NightBotMonitor {
     }
 
     /**
-     * Обработка команды !tags [tag1, tag2] | !tags clear — управление тегами
+     * Обработка команды !tags [tag1, tag2] — управление тегами
      * Доступна: стример, модераторы, EXTRA_DUEL_ADMINS. Требует BROADCAST_TWITCH_ACCESS_TOKEN с scope channel:manage:broadcast
      */
     private async handleTagsCommand(channel: string, user: string, tagsArgs: string, msg: any) {
@@ -2037,7 +2037,6 @@ export class NightBotMonitor {
         try {
             const normalized = tagsArgs.trim();
 
-            // Показать текущие теги
             if (!normalized) {
                 const res = await fetch(
                     `https://api.twitch.tv/helix/channels?broadcaster_id=${this.broadcasterId}`,
@@ -2057,32 +2056,6 @@ export class NightBotMonitor {
                 const data = await res.json() as { data?: Array<{ tags?: string[] }> };
                 const tags = data.data?.[0]?.tags ?? [];
                 await this.sendMessage(channel, tags.length ? `🏷️ Теги: ${tags.join(', ')}` : '🏷️ Теги не установлены');
-                return;
-            }
-
-            // Очистка: !tags clear
-            if (normalized.toLowerCase() === 'clear') {
-                const clearRes = await fetch(
-                    `https://api.twitch.tv/helix/channels?broadcaster_id=${this.broadcasterId}`,
-                    {
-                        method: 'PATCH',
-                        headers: {
-                            'Authorization': `Bearer ${this.broadcastAccessToken}`,
-                            'Client-Id': this.clientId,
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({ tags: [] }),
-                    }
-                );
-                if (!clearRes.ok) {
-                    const text = await clearRes.text();
-                    console.error(`❌ !tags clear API error ${clearRes.status}:`, text);
-                    await this.sendMessage(channel, `Ошибка очистки тегов (${clearRes.status})`);
-                    return;
-                }
-                log('COMMAND', { command: '!tags', username: user, channel, action: 'clear' });
-                logJournalEvent(user, 'Теги очищены', 'system');
-                await this.sendMessage(channel, '🏷️ Теги очищены');
                 return;
             }
 
