@@ -72,6 +72,8 @@ services/*/twitch-players.json
 announcement-state.json
 stream-history.json
 future_history.json
+twitch-oauth-tokens.json
+services/twitch-service/src/data/twitch-oauth-tokens.json
 
 # SQLite databases
 *.db

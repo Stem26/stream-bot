@@ -185,6 +185,15 @@
             </div>
         </div>
 
+        <div class="warning" id="oauthDebug" style="display: none;">
+            <strong>⚙️ OAuth DEBUG:</strong>
+            <div style="margin-top: 6px; font-family: Courier New, monospace;">
+                <div><span style="color:#856404;">REDIRECT_URI:</span> <span id="redirectUriText"></span></div>
+                <div><span style="color:#856404;">SCOPES:</span> <span id="scopesText"></span></div>
+                <div><span style="color:#856404;">CLIENT_ID:</span> <span id="clientIdText"></span></div>
+            </div>
+        </div>
+
         <button class="btn" id="authBtn">
             <svg viewBox="0 0 24 24" fill="currentColor">
                 <path d="M11.571 4.714h1.715v5.143H11.57zm4.715 0H18v5.143h-1.714zM6 0L1.714 4.286v15.428h5.143V24l4.286-4.286h3.428L22.286 12V0zm14.571 11.143l-3.428 3.428h-3.429l-3 3v-3H6.857V1.714h13.714Z"/>
@@ -206,6 +215,14 @@
                     <div><code>TWITCH_ACCESS_TOKEN</code></div>
                     <div><code>BROADCAST_TWITCH_ACCESS_TOKEN</code></div>
                 </div>
+                <div style="margin-top: 14px; color: #555; font-size: 13px; line-height: 1.6;">
+                    <div><strong>Выданные scope’ы:</strong></div>
+                    <div id="grantedScopes" class="token-value" style="margin-top: 8px;"></div>
+                    <div id="missingScopesBox" class="warning" style="display: none;">
+                        <strong>⚠️ Не выданы запрошенные scope’ы:</strong>
+                        <div id="missingScopes" style="margin-top: 6px; font-family: Courier New, monospace;"></div>
+                    </div>
+                </div>
             </div>
 
             <div class="warning">
@@ -218,44 +235,95 @@
     </div>
 
     <script>
-        const CLIENT_ID = 'gp762nuuoqcoxypju8c569th9wz7q5';
-        const REDIRECT_URI = window.location.origin + window.location.pathname;
+        let CLIENT_ID = '';
+        // Redirect должен вести на backend-роут, который сможет обменять code -> access/refresh tokens.
+        const REDIRECT_URI = window.location.origin + '/api/twitch-oauth/callback';
         // Запрашиваем сразу все нужные scope, чтобы не приходилось повторно "дотыкать" галочки на стороне Twitch.
-        const SCOPES = 'chat:read chat:edit channel:manage:broadcast moderation:read channel:manage:redemptions';
+        // Важно: Twitch может выдать только то, с чем пользователь согласился в диалоге.
+        const REQUIRED_SCOPES = [
+            'analytics:read:extensions',
+            'analytics:read:games',
+            'channel:manage:broadcast',
+            'channel:manage:polls',
+            'channel:manage:predictions',
+            'channel:moderate',
+            'channel:read:guest_star',
+            'channel:read:polls',
+            'chat:edit',
+            'chat:read',
+            'moderation:read',
+            'moderator:manage:announcements',
+            'moderator:manage:banned_users',
+            'moderator:manage:chat_messages',
+            'moderator:manage:chat_settings',
+            'moderator:manage:shoutouts',
+            'moderator:manage:unban_requests',
+            'moderator:manage:warnings',
+            'moderator:read:chat_settings',
+            'moderator:read:chatters',
+            'moderator:read:followers',
+            'moderator:read:shoutouts',
+            'moderator:read:unban_requests',
+            'user:edit:broadcast',
+            'user:manage:blocked_users',
+            'user:read:blocked_users',
+            'user:read:broadcast',
+            'user:write:chat',
+            'channel:manage:redemptions'
+        ];
+        const SCOPES = REQUIRED_SCOPES.join(' ');
 
-        document.getElementById('authBtn').addEventListener('click', () => {
-            const authUrl = `https://id.twitch.tv/oauth2/authorize?client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=token&scope=${encodeURIComponent(SCOPES)}`;
-            window.location.href = authUrl;
-        });
+        function showOauthDebug() {
+            const dbg = document.getElementById('oauthDebug');
+            const redirectEl = document.getElementById('redirectUriText');
+            const scopesEl = document.getElementById('scopesText');
+            const clientIdEl = document.getElementById('clientIdText');
+            if (dbg && redirectEl && scopesEl && clientIdEl) {
+                dbg.style.display = 'block';
+                redirectEl.textContent = REDIRECT_URI;
+                scopesEl.textContent = SCOPES;
+                clientIdEl.textContent = CLIENT_ID || '(не загружен)';
+            }
+        }
 
-        // Проверяем, есть ли токен в URL после редиректа
-        window.addEventListener('load', async () => {
-            const hash = window.location.hash.substring(1);
-            const params = new URLSearchParams(hash);
-            const accessToken = params.get('access_token');
-
-            if (accessToken) {
-                // Получаем информацию о пользователе
-                try {
-                    const response = await fetch('https://id.twitch.tv/oauth2/validate', {
-                        headers: {
-                            'Authorization': `Bearer ${accessToken}`
-                        }
-                    });
-                    const data = await response.json();
-
-                    document.getElementById('accessToken').textContent = accessToken;
-                    document.getElementById('streamerName').textContent = data.login;
-                    document.getElementById('result').style.display = 'block';
-                    document.getElementById('authBtn').style.display = 'none';
-
-                    // Очищаем URL от токена
-                    history.replaceState(null, '', window.location.pathname);
-                } catch (error) {
-                    console.error('Ошибка проверки токена:', error);
+        // Загружаем CLIENT_ID с бэкенда (из .env), чтобы OAuth был от твоего приложения.
+        async function initOauth() {
+            try {
+                const resp = await fetch('/api/twitch-oauth/config');
+                const cfg = await resp.json();
+                CLIENT_ID = String(cfg.clientId || '');
+            } catch (e) {
+                console.error('OAuth config load error:', e);
+            } finally {
+                showOauthDebug();
+                const authBtn = document.getElementById('authBtn');
+                if (authBtn) {
+                    authBtn.disabled = !CLIENT_ID;
+                    authBtn.style.opacity = authBtn.disabled ? '0.6' : '1';
                 }
             }
+        }
+
+        void initOauth();
+
+        document.getElementById('authBtn').addEventListener('click', () => {
+            if (!CLIENT_ID) {
+                alert('Не удалось загрузить CLIENT_ID. Проверь TWITCH_CLIENT_ID в .env/.env.local');
+                return;
+            }
+            // force_verify=true заставляет Twitch заново спросить подтверждение/согласие,
+            // чтобы не возвращать старый токен с неполным набором scope’ов.
+            const authUrl =
+                `https://id.twitch.tv/oauth2/authorize` +
+                `?client_id=${CLIENT_ID}` +
+                `&redirect_uri=${encodeURIComponent(REDIRECT_URI)}` +
+                `&response_type=code` +
+                `&scope=${encodeURIComponent(SCOPES)}` +
+                `&force_verify=true`;
+            window.location.href = authUrl;
         });
+        // Токены обмениваются на backend.
+        // После авторизации Twitch перенаправит на /api/twitch-oauth/callback, где будет показан доступ/refresh token и создан JSON файл.
 
         function copyToken(elementId) {
             const text = document.getElementById(elementId).textContent;

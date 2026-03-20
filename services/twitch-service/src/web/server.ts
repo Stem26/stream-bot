@@ -73,6 +73,211 @@ app.use(express.json());
 // Статика с долгим кешем — фон и ассеты не перезапрашиваются при переходах
 app.use(express.static(path.join(__dirname, 'public'), { maxAge: '1y', immutable: true }));
 
+// OAuth-страница (twitch-oauth.html) отдаётся как отдельный маршрут,
+// чтобы можно было открыть её по http/https (а не file://) и получить корректный redirect_uri.
+app.get('/twitch-oauth.html', (req, res) => {
+  const candidates = [
+    path.resolve(process.cwd(), 'twitch-oauth.html'),
+    path.resolve(__dirname, '..', '..', 'twitch-oauth.html'),
+  ];
+  const filePath = candidates.find((p) => fs.existsSync(p));
+  if (!filePath) {
+    res.status(404).send('twitch-oauth.html not found');
+    return;
+  }
+  res.sendFile(filePath);
+});
+
+function computeOAuthRedirectUri(req: Request): string {
+  const protoHeader = req.headers['x-forwarded-proto'];
+  const proto = typeof protoHeader === 'string' && protoHeader ? protoHeader : req.protocol;
+  return `${proto}://${req.get('host')}/api/twitch-oauth/callback`;
+}
+
+function maskSecret(value: string, head: number = 6, tail: number = 4): string {
+  if (!value) return '';
+  const v = String(value);
+  if (v.length <= head + tail) return `${v.slice(0, head)}...`;
+  return `${v.slice(0, head)}...${v.slice(-tail)}`;
+}
+
+// Конфиг OAuth для фронта (чтобы не хардкодить CLIENT_ID в twitch-oauth.html)
+app.get('/api/twitch-oauth/config', (req, res) => {
+  const clientId = process.env.TWITCH_CLIENT_ID;
+  if (!clientId) {
+    res.status(500).json({ error: 'TWITCH_CLIENT_ID не задан в .env/.env.local' });
+    return;
+  }
+  const redirectUri = computeOAuthRedirectUri(req);
+  console.log('[OAUTH][config]', {
+    clientId,
+    redirectUri,
+    hasClientSecret: Boolean(process.env.TWITCH_CLIENT_SECRET),
+  });
+  res.json({
+    clientId,
+    redirectUri,
+  });
+});
+
+const TWITCH_TOKEN_FILE = path.resolve(process.cwd(), 'src', 'data', 'twitch-oauth-tokens.json');
+
+// Callback для OAuth Authorization Code flow.
+// Обменивает code -> access_token + refresh_token и сохраняет в JSON файл.
+app.get('/api/twitch-oauth/callback', async (req, res) => {
+  const code = typeof req.query.code === 'string' ? req.query.code : '';
+  if (!code) {
+    res.status(400).send('Missing "code" in query');
+    return;
+  }
+
+  try {
+    console.log('[OAUTH][callback] start', {
+      codeLength: code.length,
+      hasClientSecret: Boolean(process.env.TWITCH_CLIENT_SECRET),
+    });
+
+    const clientId = process.env.TWITCH_CLIENT_ID;
+    const clientSecret = process.env.TWITCH_CLIENT_SECRET;
+    if (!clientId || !clientSecret) {
+      res.status(500).send('Set TWITCH_CLIENT_ID and TWITCH_CLIENT_SECRET in .env/.env.local');
+      return;
+    }
+
+    const redirectUri = computeOAuthRedirectUri(req);
+    console.log('[OAUTH][callback] computed redirectUri', { redirectUri });
+
+    const tokenRes = await fetch('https://id.twitch.tv/oauth2/token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({
+        client_id: clientId,
+        client_secret: clientSecret,
+        code,
+        grant_type: 'authorization_code',
+        redirect_uri: redirectUri,
+      }).toString(),
+    });
+
+    console.log('[OAUTH][callback] tokenRes status', { status: tokenRes.status, ok: tokenRes.ok });
+
+    const tokenData = await tokenRes.json() as {
+      access_token?: string;
+      refresh_token?: string;
+      expires_in?: number;
+      scope?: string;
+      error?: string;
+      error_description?: string;
+    };
+
+    if (!tokenRes.ok) {
+      console.error('[OAUTH][callback] token exchange failed', {
+        error: tokenData.error || null,
+        error_description: tokenData.error_description || null,
+      });
+    }
+
+    if (!tokenRes.ok || !tokenData.access_token || !tokenData.refresh_token) {
+      res.status(400).send(
+        `OAuth exchange failed: ${tokenData.error || 'unknown'}${tokenData.error_description ? `: ${tokenData.error_description}` : ''}`,
+      );
+      return;
+    }
+
+    const accessToken = tokenData.access_token;
+    const refreshToken = tokenData.refresh_token;
+
+    console.log('[OAUTH][callback] tokens received', {
+      accessToken: maskSecret(accessToken),
+      refreshToken: maskSecret(refreshToken),
+      expiresIn: tokenData.expires_in ?? null,
+    });
+
+    // Получаем реальные выданные scope'ы + логин/юзер id для удобства
+    const validateRes = await fetch('https://id.twitch.tv/oauth2/validate', {
+      headers: {
+        Authorization: `OAuth ${accessToken}`,
+      },
+    });
+    const validateJson = await validateRes.json() as { scopes?: string[]; login?: string; user_id?: string; client_id?: string };
+
+    console.log('[OAUTH][callback] validateRes', {
+      status: validateRes.status,
+      ok: validateRes.ok,
+      grantedScopesCount: Array.isArray(validateJson.scopes) ? validateJson.scopes.length : null,
+      login: validateJson.login || null,
+      userId: validateJson.user_id || null,
+    });
+
+    const payload = {
+      createdAt: new Date().toISOString(),
+      accessToken,
+      refreshToken,
+      expiresIn: tokenData.expires_in ?? null,
+      grantedScopes: Array.isArray(validateJson.scopes) ? validateJson.scopes : [],
+      login: validateJson.login ?? null,
+      userId: validateJson.user_id ?? null,
+      clientId: validateJson.client_id ?? clientId,
+      redirectUri,
+    };
+
+    fs.mkdirSync(path.dirname(TWITCH_TOKEN_FILE), { recursive: true });
+    fs.writeFileSync(TWITCH_TOKEN_FILE, JSON.stringify(payload, null, 2), 'utf-8');
+    console.log('[OAUTH][callback] saved JSON', { file: TWITCH_TOKEN_FILE });
+
+    const scopesLine = payload.grantedScopes.length ? payload.grantedScopes.join(', ') : '(пусто)';
+    res.send(`
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Twitch OAuth tokens saved</title>
+  <style>
+    body { font-family: Segoe UI, Tahoma, Geneva, Verdana, sans-serif; margin: 24px; }
+    .ok { background: #d4edda; border: 1px solid #c3e6cb; padding: 14px 16px; border-radius: 8px; margin-bottom: 16px; }
+    .warn { background: #fff3cd; border: 1px solid #ffeaa7; padding: 14px 16px; border-radius: 8px; margin-bottom: 16px; }
+    .box { margin: 12px 0; padding: 14px 16px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e9ecef; }
+    code { font-family: Menlo, Consolas, monospace; word-break: break-all; }
+    .row { margin-top: 8px; }
+    .small { color: #666; font-size: 13px; line-height: 1.6; }
+  </style>
+</head>
+<body>
+  <div class="ok"><strong>Готово:</strong> токены успешно обменялись и сохранены в JSON файл.</div>
+  <div class="warn"><strong>Важно:</strong> не публикуй этот экран/файл. refresh_token — секрет.</div>
+
+  <div class="box">
+    <div><strong>JSON файл:</strong> <code>${TWITCH_TOKEN_FILE}</code></div>
+    <div class="row"><strong>Login:</strong> <code>${payload.login ?? ''}</code></div>
+    <div class="row"><strong>User ID:</strong> <code>${payload.userId ?? ''}</code></div>
+    <div class="row"><strong>Granted scopes:</strong> <div class="small"><code>${scopesLine}</code></div></div>
+  </div>
+
+  <div class="box">
+    <div><strong>TWITCH_ACCESS_TOKEN (access_token):</strong></div>
+    <div class="row"><code>${accessToken}</code></div>
+  </div>
+
+  <div class="box">
+    <div><strong>TWITCH_REFRESH_TOKEN (refresh_token):</strong></div>
+    <div class="row"><code>${refreshToken}</code></div>
+  </div>
+
+  <div class="box">
+    <div><strong>Expires in:</strong> <code>${payload.expiresIn ?? ''}</code></div>
+    <div class="small">После вставки в .env перезапусти twitch-service.</div>
+  </div>
+</body>
+</html>
+    `);
+  } catch (err: any) {
+    res.status(500).send(`OAuth callback error: ${err?.message || String(err)}`);
+  }
+});
+
 // Лимиты для защиты от злоупотреблений
 const MAX_ID_LENGTH = 80;
 const MAX_TRIGGER_LENGTH = 80;
