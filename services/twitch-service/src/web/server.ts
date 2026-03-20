@@ -452,16 +452,16 @@ function describeAdminAction(req: Request, context?: AdminAuditContext): { actio
     const prevPart = pathParts[pathParts.length - 2] || '';
 
     if (method === 'POST' && pathOnly === '/api/admin/duels/disable') {
-        return { action: 'Админ выключил дуэли' };
+        return { action: 'выключил дуэли' };
     }
     if (method === 'POST' && pathOnly === '/api/admin/duels/enable') {
-        return { action: 'Админ включил дуэли' };
+        return { action: 'включил дуэли' };
     }
     if (method === 'POST' && pathOnly === '/api/admin/duels/set-cooldown-skip') {
         const skip = Boolean(body.skip);
         const before = getDuelCooldownSkipCallback ? getDuelCooldownSkipCallback() : false;
         return {
-            action: skip ? 'Админ выключил КД дуэлей' : 'Админ включил КД дуэлей',
+            action: skip ? 'выключил КД дуэлей' : 'включил КД дуэлей',
             details: `КД: ${before ? 'выкл' : 'вкл'} -> ${skip ? 'выкл' : 'вкл'}`,
         };
     }
@@ -473,7 +473,7 @@ function describeAdminAction(req: Request, context?: AdminAuditContext): { actio
         const rotationChanged = hasRotation && (!prev || prev.rotation_interval_minutes !== Number(body.rotationIntervalMinutes));
         if (textChanged && rotationChanged) {
             return {
-                action: 'Админ обновил ссылки и интервал ротации',
+                action: 'обновил ссылки и интервал ротации',
                 details: prev
                     ? `Интервал: ${prev.rotation_interval_minutes} -> ${Number(body.rotationIntervalMinutes)} мин; текст ссылок: изменён`
                     : `Интервал: ${Number(body.rotationIntervalMinutes)} мин; текст ссылок: изменён`,
@@ -481,29 +481,29 @@ function describeAdminAction(req: Request, context?: AdminAuditContext): { actio
         }
         if (rotationChanged) {
             return {
-                action: 'Админ поменял время ротации ссылок',
+                action: 'поменял время ротации ссылок',
                 details: prev
                     ? `Интервал: ${prev.rotation_interval_minutes} -> ${Number(body.rotationIntervalMinutes)} мин`
                     : `Интервал: ${Number(body.rotationIntervalMinutes)} мин`,
             };
         }
         if (textChanged) {
-            return { action: 'Админ обновил текст команды !ссылки', details: prev ? 'Текст: изменён' : undefined };
+            return { action: 'обновил текст команды !ссылки', details: prev ? 'Текст: изменён' : undefined };
         }
-        return { action: 'Админ сохранил ссылки без изменений' };
+        return { action: 'сохранил ссылки без изменений' };
     }
     if (method === 'PUT' && pathOnly === '/api/raid') {
         const prev = context?.previousRaidConfig;
         if (typeof body.raidMessage === 'string') {
             if (!prev || prev.raid_message !== body.raidMessage) {
-                return { action: 'Админ обновил сообщение при рейде', details: prev ? 'Сообщение: изменено' : undefined };
+                return { action: 'обновил сообщение при рейде', details: prev ? 'Сообщение: изменено' : undefined };
             }
-            return { action: 'Админ сохранил сообщение рейда без изменений' };
+            return { action: 'сохранил сообщение рейда без изменений' };
         }
-        return { action: 'Админ обновил сообщение при рейде' };
+        return { action: 'обновил сообщение при рейде' };
     }
     if (method === 'POST' && pathOnly === '/api/commands') {
-        return { action: 'Админ создал команду', details: `ID: ${String(body.id ?? '').slice(0, 80)}` };
+        return { action: 'создал команду', details: `ID: ${String(body.id ?? '').slice(0, 80)}` };
     }
     if (method === 'PUT' && pathOnly.startsWith('/api/commands/')) {
         const prev = context?.previousCommand;
@@ -519,40 +519,40 @@ function describeAdminAction(req: Request, context?: AdminAuditContext): { actio
             if (body.description != null && String(body.description) !== prev.description) changes.push('изменено описание');
             if (body.inRotation != null && Boolean(body.inRotation) !== prev.in_rotation) changes.push(`ротация: ${prev.in_rotation ? 'вкл' : 'выкл'} -> ${Boolean(body.inRotation) ? 'вкл' : 'выкл'}`);
         }
-        if (changes.length === 0) return { action: 'Админ сохранил команду без изменений', details: `ID: ${decodeURIComponent(lastPart)}` };
-        return { action: 'Админ обновил команду', details: `ID: ${decodeURIComponent(lastPart)}; ${changes.join(', ')}` };
+        if (changes.length === 0) return { action: 'сохранил команду без изменений', details: `ID: ${decodeURIComponent(lastPart)}` };
+        return { action: 'обновил команду', details: `ID: ${decodeURIComponent(lastPart)}; ${changes.join(', ')}` };
     }
     if (method === 'DELETE' && pathOnly.startsWith('/api/commands/')) {
-        return { action: 'Админ удалил команду', details: `ID: ${decodeURIComponent(lastPart)}` };
+        return { action: 'удалил команду', details: `ID: ${decodeURIComponent(lastPart)}` };
     }
     if (method === 'PATCH' && pathOnly.endsWith('/toggle') && pathOnly.startsWith('/api/commands/')) {
         const prev = context?.previousCommand;
         if (prev) {
             return {
-                action: 'Админ переключил команду',
+                action: 'переключил команду',
                 details: `ID: ${decodeURIComponent(prevPart)}; статус: ${prev.enabled ? 'вкл' : 'выкл'} -> ${prev.enabled ? 'выкл' : 'вкл'}`,
             };
         }
-        return { action: 'Админ переключил команду', details: `ID: ${decodeURIComponent(prevPart)}` };
+        return { action: 'переключил команду', details: `ID: ${decodeURIComponent(prevPart)}` };
     }
     if (method === 'PATCH' && pathOnly.endsWith('/rotation-toggle') && pathOnly.startsWith('/api/commands/')) {
         const prev = context?.previousCommand;
         if (prev) {
             return {
-                action: 'Админ переключил ротацию команды',
+                action: 'переключил ротацию команды',
                 details: `ID: ${decodeURIComponent(prevPart)}; ротация: ${prev.in_rotation ? 'вкл' : 'выкл'} -> ${prev.in_rotation ? 'выкл' : 'вкл'}`,
             };
         }
-        return { action: 'Админ переключил ротацию команды', details: `ID: ${decodeURIComponent(prevPart)}` };
+        return { action: 'переключил ротацию команды', details: `ID: ${decodeURIComponent(prevPart)}` };
     }
     if (method === 'POST' && pathOnly.endsWith('/send') && pathOnly.startsWith('/api/commands/')) {
-        return { action: 'Админ отправил команду в чат', details: `ID: ${decodeURIComponent(prevPart)}` };
+        return { action: 'отправил команду в чат', details: `ID: ${decodeURIComponent(prevPart)}` };
     }
     if (method === 'POST' && pathOnly === '/api/links/send') {
-        return { action: 'Админ отправил !ссылки в чат' };
+        return { action: 'отправил !ссылки в чат' };
     }
     if (method === 'POST' && pathOnly === '/api/counters') {
-        return { action: 'Админ создал счётчик', details: `ID: ${String(body.id ?? '').slice(0, 80)}` };
+        return { action: 'создал счётчик', details: `ID: ${String(body.id ?? '').slice(0, 80)}` };
     }
     if (method === 'PUT' && pathOnly.startsWith('/api/counters/')) {
         const prev = context?.previousCounter;
@@ -565,24 +565,24 @@ function describeAdminAction(req: Request, context?: AdminAuditContext): { actio
             if (body.accessLevel != null && String(body.accessLevel) !== prev.access_level) changes.push(`доступ: ${prev.access_level} -> ${String(body.accessLevel)}`);
             if (body.description != null && String(body.description) !== prev.description) changes.push('изменено описание');
         }
-        if (changes.length === 0) return { action: 'Админ сохранил счётчик без изменений', details: `ID: ${decodeURIComponent(lastPart)}` };
-        return { action: 'Админ обновил счётчик', details: `ID: ${decodeURIComponent(lastPart)}; ${changes.join(', ')}` };
+        if (changes.length === 0) return { action: 'сохранил счётчик без изменений', details: `ID: ${decodeURIComponent(lastPart)}` };
+        return { action: 'обновил счётчик', details: `ID: ${decodeURIComponent(lastPart)}; ${changes.join(', ')}` };
     }
     if (method === 'DELETE' && pathOnly.startsWith('/api/counters/')) {
-        return { action: 'Админ удалил счётчик', details: `ID: ${decodeURIComponent(lastPart)}` };
+        return { action: 'удалил счётчик', details: `ID: ${decodeURIComponent(lastPart)}` };
     }
     if (method === 'PATCH' && pathOnly.endsWith('/toggle') && pathOnly.startsWith('/api/counters/')) {
         const prev = context?.previousCounter;
         if (prev) {
             return {
-                action: 'Админ переключил счётчик',
+                action: 'переключил счётчик',
                 details: `ID: ${decodeURIComponent(prevPart)}; статус: ${prev.enabled ? 'вкл' : 'выкл'} -> ${prev.enabled ? 'выкл' : 'вкл'}`,
             };
         }
-        return { action: 'Админ переключил счётчик', details: `ID: ${decodeURIComponent(prevPart)}` };
+        return { action: 'переключил счётчик', details: `ID: ${decodeURIComponent(prevPart)}` };
     }
     if (method === 'PATCH' && pathOnly.endsWith('/increment') && pathOnly.startsWith('/api/counters/')) {
-        return { action: 'Админ увеличил счётчик', details: `ID: ${decodeURIComponent(prevPart)}` };
+        return { action: 'увеличил счётчик', details: `ID: ${decodeURIComponent(prevPart)}` };
     }
     if (method === 'PUT' && pathOnly === '/api/party/config') {
         const changes: string[] = [];
@@ -624,22 +624,22 @@ function describeAdminAction(req: Request, context?: AdminAuditContext): { actio
             }
         }
         if (changes.length === 0) {
-            return { action: 'Админ открыл/сохранил настройки партии без изменений' };
+            return { action: 'открыл/сохранил настройки партии без изменений' };
         }
-        return { action: 'Админ обновил настройки партии', details: changes.join(', ') };
+        return { action: 'обновил настройки партии', details: changes.join(', ') };
     }
     if (method === 'PATCH' && pathOnly === '/api/party/config/skip-cooldown') {
         const skip = Boolean(body.skipCooldown);
-        return { action: skip ? 'Админ выключил КД партии' : 'Админ включил КД партии' };
+        return { action: skip ? 'выключил КД партии' : 'включил КД партии' };
     }
     if (method === 'POST' && pathOnly === '/api/party/items') {
-        return { action: 'Админ добавил элемент партии' };
+        return { action: 'добавил элемент партии' };
     }
     if (method === 'PUT' && pathOnly.startsWith('/api/party/items/')) {
-        return { action: 'Админ обновил элемент партии', details: `ID: ${decodeURIComponent(lastPart)}` };
+        return { action: 'обновил элемент партии', details: `ID: ${decodeURIComponent(lastPart)}` };
     }
     if (method === 'DELETE' && pathOnly.startsWith('/api/party/items/')) {
-        return { action: 'Админ удалил элемент партии', details: `ID: ${decodeURIComponent(lastPart)}` };
+        return { action: 'удалил элемент партии', details: `ID: ${decodeURIComponent(lastPart)}` };
     }
     if (method === 'POST' && pathOnly === '/api/admin/duels/config') {
         const changes: string[] = [];
@@ -648,9 +648,9 @@ function describeAdminAction(req: Request, context?: AdminAuditContext): { actio
         if (body.winPoints != null && (!prev || Number(body.winPoints) !== prev.win_points)) changes.push(prev ? `очки за победу: ${prev.win_points} -> ${Number(body.winPoints)}` : `очки за победу: ${Number(body.winPoints)}`);
         if (body.lossPoints != null && (!prev || Number(body.lossPoints) !== prev.loss_points)) changes.push(prev ? `очки за поражение: ${prev.loss_points} -> ${Number(body.lossPoints)}` : `очки за поражение: ${Number(body.lossPoints)}`);
         if (body.missPenalty != null && (!prev || Number(body.missPenalty) !== prev.miss_penalty)) changes.push(prev ? `штраф за промах: ${prev.miss_penalty} -> ${Number(body.missPenalty)}` : `штраф за промах: ${Number(body.missPenalty)}`);
-        if (changes.length === 0) return { action: 'Админ сохранил настройки дуэлей без изменений' };
+        if (changes.length === 0) return { action: 'сохранил настройки дуэлей без изменений' };
         return {
-            action: 'Админ обновил настройки дуэлей',
+            action: 'обновил настройки дуэлей',
             details: changes.join(', '),
         };
     }
@@ -661,9 +661,9 @@ function describeAdminAction(req: Request, context?: AdminAuditContext): { actio
         if (body.dailyRewardPoints != null && (!prev || Number(body.dailyRewardPoints) !== prev.daily_reward_points)) changes.push(prev ? `награда за дейлик: ${prev.daily_reward_points} -> ${Number(body.dailyRewardPoints)}` : `награда за дейлик: ${Number(body.dailyRewardPoints)}`);
         if (body.streakWinsCount != null && (!prev || Number(body.streakWinsCount) !== prev.streak_wins_count)) changes.push(prev ? `побед для серии: ${prev.streak_wins_count} -> ${Number(body.streakWinsCount)}` : `побед для серии: ${Number(body.streakWinsCount)}`);
         if (body.streakRewardPoints != null && (!prev || Number(body.streakRewardPoints) !== prev.streak_reward_points)) changes.push(prev ? `награда за серию: ${prev.streak_reward_points} -> ${Number(body.streakRewardPoints)}` : `награда за серию: ${Number(body.streakRewardPoints)}`);
-        if (changes.length === 0) return { action: 'Админ сохранил дейлики дуэлей без изменений' };
+        if (changes.length === 0) return { action: 'сохранил дейлики дуэлей без изменений' };
         return {
-            action: 'Админ обновил дейлики дуэлей',
+            action: 'обновил дейлики дуэлей',
             details: changes.join(', '),
         };
     }
@@ -677,28 +677,28 @@ function describeAdminAction(req: Request, context?: AdminAuditContext): { actio
         if (body.maxMessageLength != null && (!prev || Number(body.maxMessageLength) !== prev.max_message_length)) changes.push(prev ? `лимит сообщения: ${prev.max_message_length} -> ${Number(body.maxMessageLength)}` : `лимит сообщения: ${Number(body.maxMessageLength)}`);
         if (body.maxLettersDigits != null && (!prev || Number(body.maxLettersDigits) !== prev.max_letters_digits)) changes.push(prev ? `лимит букв/цифр: ${prev.max_letters_digits} -> ${Number(body.maxLettersDigits)}` : `лимит букв/цифр: ${Number(body.maxLettersDigits)}`);
         if (body.timeoutMinutes != null && (!prev || Number(body.timeoutMinutes) !== prev.timeout_minutes)) changes.push(prev ? `таймаут: ${prev.timeout_minutes} -> ${Number(body.timeoutMinutes)} мин` : `таймаут: ${Number(body.timeoutMinutes)} мин`);
-        if (changes.length === 0) return { action: 'Админ сохранил модерацию чата без изменений' };
-        return { action: 'Админ обновил модерацию чата', details: changes.join(', ') };
+        if (changes.length === 0) return { action: 'сохранил модерацию чата без изменений' };
+        return { action: 'обновил модерацию чата', details: changes.join(', ') };
     }
     if (method === 'POST' && pathOnly === '/api/admin/link-whitelist') {
         const count = Array.isArray(body.patterns) ? body.patterns.length : 0;
         const prev = context?.previousWhitelistCount;
         return {
-            action: 'Админ обновил whitelist ссылок',
+            action: 'обновил whitelist ссылок',
             details: prev != null ? `Паттернов: ${prev} -> ${count}` : `Паттернов: ${count}`,
         };
     }
     if (method === 'POST' && pathOnly === '/api/admin/duels/reset-reward-flags') {
-        return { action: 'Админ сбросил флаги наград дуэлей' };
+        return { action: 'сбросил флаги наград дуэлей' };
     }
     if (method === 'POST' && pathOnly === '/api/admin/duels/reset-points') {
-        return { action: 'Админ сбросил очки дуэлей' };
+        return { action: 'сбросил очки дуэлей' };
     }
     if (method === 'POST' && pathOnly === '/api/admin/pardon-all') {
-        return { action: 'Админ запустил амнистию дуэлей' };
+        return { action: 'запустил амнистию дуэлей' };
     }
     if (method === 'POST' && pathOnly.startsWith('/api/admin/duels/pardon/')) {
-        return { action: 'Админ амнистировал игрока', details: `Пользователь: ${decodeURIComponent(lastPart)}` };
+        return { action: 'амнистировал игрока', details: `Пользователь: ${decodeURIComponent(lastPart)}` };
     }
 
     return { action: `${method} ${pathOnly}` };
