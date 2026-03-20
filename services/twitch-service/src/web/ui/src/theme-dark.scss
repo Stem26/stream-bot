@@ -421,6 +421,17 @@ body.theme-dark {
     .modal-header h2,
     .modal-body h4 { color: $dark-text !important; }
     .modal-body { color: $dark-text-muted; }
+    /* Правила бана: в компоненте список с #333 — на тёмной карточке нечитаем */
+    .moderation-rules-list,
+    .moderation-rules-list li,
+    .moderation-rules-list ul,
+    .moderation-rules-list strong {
+      color: #ffffff !important;
+    }
+    .moderation-rules-list code {
+      background: rgba(255, 255, 255, 0.12) !important;
+      color: #f1f5f9 !important;
+    }
     .form-group label { color: $dark-text !important; }
     .form-group small,
     .form-group small.hint-time { color: $dark-text-muted !important; }
