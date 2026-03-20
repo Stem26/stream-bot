@@ -112,6 +112,7 @@ body.theme-dark {
     h2 { color: $dark-text; }
     p { color: $dark-text-muted; }
     p strong { color: $dark-accent-light; }
+    .admin-hint strong.raid-label { color: $dark-text; }
     code.placeholder-accent {
       background: rgba(139, 92, 246, 0.25);
       color: $dark-accent-light;
