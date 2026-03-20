@@ -1,3 +1,13 @@
 party-table {
   display: block;
+
+  .party-items-table tbody tr.party-table-row td:first-child {
+    border-left-color: hsl(210, 59%, 38%);
+  }
+}
+
+body.theme-dark party-table {
+  .party-items-table tbody tr.party-table-row td:first-child {
+    border-left-color: #8b5cf6 !important;
+  }
 }
