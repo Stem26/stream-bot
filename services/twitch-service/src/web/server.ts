@@ -107,6 +107,7 @@ interface CustomCommand {
     color: 'primary' | 'blue' | 'green' | 'orange' | 'purple';
     description: string;
     inRotation: boolean;
+    accessLevel: 'everyone' | 'moderators';
 }
 
 interface CommandsData {
@@ -126,6 +127,7 @@ interface Counter {
     value: number;
     enabled: boolean;
     description: string;
+    accessLevel: 'everyone' | 'moderators';
 }
 
 interface CountersData {
@@ -145,6 +147,7 @@ type DbCommandRow = {
     color: string;
     description: string;
     in_rotation: boolean;
+    access_level: string;
 };
 
 function mapDbRowToCommand(row: DbCommandRow): CustomCommand {
@@ -159,19 +162,20 @@ function mapDbRowToCommand(row: DbCommandRow): CustomCommand {
         color: (row.color as CustomCommand['color']) ?? 'primary',
         description: row.description ?? '',
         inRotation: row.in_rotation ?? false,
+        accessLevel: (row.access_level as CustomCommand['accessLevel']) ?? 'everyone',
     };
 }
 
 async function getAllCommandsFromDb(): Promise<CommandsData> {
     const rows = await query<DbCommandRow>(
-        'SELECT id, trigger, aliases, response, enabled, cooldown, message_type, color, description, in_rotation FROM custom_commands ORDER BY id',
+        'SELECT id, trigger, aliases, response, enabled, cooldown, message_type, color, description, in_rotation, access_level FROM custom_commands ORDER BY id',
     );
     return { commands: rows.map(mapDbRowToCommand) };
 }
 
 async function getCommandByIdFromDb(id: string): Promise<CustomCommand | null> {
     const row = await queryOne<DbCommandRow>(
-        'SELECT id, trigger, aliases, response, enabled, cooldown, message_type, color, description, in_rotation FROM custom_commands WHERE id = $1',
+        'SELECT id, trigger, aliases, response, enabled, cooldown, message_type, color, description, in_rotation, access_level FROM custom_commands WHERE id = $1',
         [id],
     );
     return row ? mapDbRowToCommand(row) : null;
@@ -180,8 +184,8 @@ async function getCommandByIdFromDb(id: string): Promise<CustomCommand | null> {
 async function createCommandInDb(cmd: CustomCommand): Promise<void> {
     await query(
         `INSERT INTO custom_commands
-          (id, trigger, aliases, response, enabled, cooldown, message_type, color, description, in_rotation)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+          (id, trigger, aliases, response, enabled, cooldown, message_type, color, description, in_rotation, access_level)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
         [
             cmd.id,
             cmd.trigger,
@@ -193,6 +197,7 @@ async function createCommandInDb(cmd: CustomCommand): Promise<void> {
             cmd.color ?? 'primary',
             cmd.description ?? '',
             cmd.inRotation ?? false,
+            cmd.accessLevel ?? 'everyone',
         ],
     );
 }
@@ -220,7 +225,8 @@ async function updateCommandInDb(id: string, partial: Partial<CustomCommand>): P
              message_type = $7,
              color = $8,
              description = $9,
-             in_rotation = $10
+             in_rotation = $10,
+             access_level = $11
          WHERE id = $1`,
         [
             mergedWithRotation.id,
@@ -233,6 +239,7 @@ async function updateCommandInDb(id: string, partial: Partial<CustomCommand>): P
             mergedWithRotation.color,
             mergedWithRotation.description ?? '',
             mergedWithRotation.inRotation,
+            mergedWithRotation.accessLevel ?? 'everyone',
         ],
     );
     return mergedWithRotation;
@@ -272,6 +279,7 @@ type DbCounterRow = {
     value: number;
     enabled: boolean;
     description: string;
+    access_level: string;
 };
 
 function mapDbRowToCounter(row: DbCounterRow): Counter {
@@ -283,19 +291,20 @@ function mapDbRowToCounter(row: DbCounterRow): Counter {
         value: row.value,
         enabled: row.enabled,
         description: row.description ?? '',
+        accessLevel: (row.access_level as Counter['accessLevel']) ?? 'everyone',
     };
 }
 
 async function getAllCountersFromDb(): Promise<CountersData> {
     const rows = await query<DbCounterRow>(
-        'SELECT id, trigger, aliases, response_template, value, enabled, description FROM counters ORDER BY id',
+        'SELECT id, trigger, aliases, response_template, value, enabled, description, access_level FROM counters ORDER BY id',
     );
     return { counters: rows.map(mapDbRowToCounter) };
 }
 
 async function getCounterByIdFromDb(id: string): Promise<Counter | null> {
     const row = await queryOne<DbCounterRow>(
-        'SELECT id, trigger, aliases, response_template, value, enabled, description FROM counters WHERE id = $1',
+        'SELECT id, trigger, aliases, response_template, value, enabled, description, access_level FROM counters WHERE id = $1',
         [id],
     );
     return row ? mapDbRowToCounter(row) : null;
@@ -304,8 +313,8 @@ async function getCounterByIdFromDb(id: string): Promise<Counter | null> {
 async function createCounterInDb(counter: Counter): Promise<void> {
     await query(
         `INSERT INTO counters
-          (id, trigger, aliases, response_template, value, enabled, description)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          (id, trigger, aliases, response_template, value, enabled, description, access_level)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
         [
             counter.id,
             counter.trigger,
@@ -314,6 +323,7 @@ async function createCounterInDb(counter: Counter): Promise<void> {
             counter.value ?? 0,
             counter.enabled ?? true,
             counter.description ?? '',
+            counter.accessLevel ?? 'everyone',
         ],
     );
 }
@@ -337,7 +347,8 @@ async function updateCounterInDb(id: string, partial: Partial<Counter>): Promise
              response_template = $4,
              value = $5,
              enabled = $6,
-             description = $7
+             description = $7,
+             access_level = $8
          WHERE id = $1`,
         [
             merged.id,
@@ -347,6 +358,7 @@ async function updateCounterInDb(id: string, partial: Partial<Counter>): Promise
             merged.value,
             merged.enabled,
             merged.description ?? '',
+            merged.accessLevel ?? 'everyone',
         ],
     );
 
@@ -577,6 +589,7 @@ app.post('/api/commands', async (req: Request, res: Response) => {
         if (!Number.isNaN(cooldown) && (cooldown < 0 || cooldown > 3600)) {
             return res.status(400).json({ error: 'Кулдаун должен быть от 0 до 3600 сек' });
         }
+        const accessLevel = newCommand.accessLevel === 'moderators' ? 'moderators' : 'everyone';
 
         // Проверка на дубликат ID
         const existingById = await getCommandByIdFromDb(safeId);
@@ -614,6 +627,7 @@ app.post('/api/commands', async (req: Request, res: Response) => {
             cooldown: Number.isNaN(cooldown) ? 10 : Math.max(0, Math.min(3600, cooldown)),
             messageType: newCommand.messageType || 'announcement',
             color: newCommand.color || 'primary',
+            accessLevel,
         };
 
         await createCommandInDb(toSave);
@@ -662,6 +676,13 @@ app.put('/api/commands/:id', async (req: Request, res: Response) => {
                 return res.status(400).json({ error: 'Кулдаун должен быть от 0 до 3600 сек' });
             }
             sanitized.cooldown = Number.isNaN(cd) ? existing.cooldown : Math.max(0, Math.min(3600, cd));
+        }
+        if (updatedCommand.accessLevel !== undefined) {
+            const al = updatedCommand.accessLevel;
+            if (al !== 'everyone' && al !== 'moderators') {
+                return res.status(400).json({ error: 'accessLevel должен быть "everyone" или "moderators"' });
+            }
+            sanitized.accessLevel = al;
         }
 
         // Если меняется trigger, проверяем на дубликаты
@@ -849,12 +870,14 @@ app.post('/api/counters', async (req: Request, res: Response) => {
                 error: `Триггер "${newCounter.trigger}" уже используется счётчиком "${triggerCheck.id}"`,
             });
         }
+        const accessLevel = newCounter.accessLevel === 'moderators' ? 'moderators' : 'everyone';
 
         const toSave: Counter = {
             ...newCounter,
             aliases: newCounter.aliases || [],
             enabled: newCounter.enabled !== false,
             value: newCounter.value || 0,
+            accessLevel,
         };
 
         await createCounterInDb(toSave);
@@ -875,6 +898,13 @@ app.put('/api/counters/:id', async (req: Request, res: Response) => {
         const existing = await getCounterByIdFromDb(id);
         if (!existing) {
             return res.status(404).json({ error: 'Счётчик не найден' });
+        }
+
+        if (updatedCounter.accessLevel !== undefined) {
+            const al = updatedCounter.accessLevel;
+            if (al !== 'everyone' && al !== 'moderators') {
+                return res.status(400).json({ error: 'accessLevel должен быть "everyone" или "moderators"' });
+            }
         }
 
         const merged = await updateCounterInDb(id, updatedCounter);

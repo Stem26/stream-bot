@@ -61,6 +61,11 @@ counters-table {
         min-width: 80px;
       }
 
+      &.col-access {
+        width: 120px;
+        min-width: 110px;
+      }
+
       &.col-value {
         width: 56px;
         min-width: 48px;
@@ -190,6 +195,7 @@ counters-table {
         font-size: 0.85em;
 
         &.col-num,
+        &.col-access,
         &.col-description,
         &.col-actions {
           display: none;
@@ -200,6 +206,7 @@ counters-table {
         padding: 12px;
 
         &.col-num,
+        &.col-access,
         &.col-description,
         &.col-actions {
           display: none;

@@ -144,10 +144,12 @@ export async function initDatabase(): Promise<void> {
           message_type TEXT NOT NULL DEFAULT 'announcement',
           color TEXT NOT NULL DEFAULT 'primary',
           description TEXT NOT NULL DEFAULT '',
+          access_level TEXT NOT NULL DEFAULT 'everyone',
           in_rotation BOOLEAN NOT NULL DEFAULT FALSE
         )
       `);
       await client.query(`ALTER TABLE custom_commands ADD COLUMN IF NOT EXISTS in_rotation BOOLEAN NOT NULL DEFAULT FALSE`);
+      await client.query(`ALTER TABLE custom_commands ADD COLUMN IF NOT EXISTS access_level TEXT NOT NULL DEFAULT 'everyone'`);
 
       await client.query(`CREATE INDEX IF NOT EXISTS idx_custom_commands_enabled ON custom_commands(enabled)`);
 
@@ -160,11 +162,13 @@ export async function initDatabase(): Promise<void> {
           response_template TEXT NOT NULL,
           value INTEGER NOT NULL DEFAULT 0,
           enabled BOOLEAN NOT NULL DEFAULT TRUE,
-          description TEXT NOT NULL DEFAULT ''
+          description TEXT NOT NULL DEFAULT '',
+          access_level TEXT NOT NULL DEFAULT 'everyone'
         )
       `);
 
       await client.query(`CREATE INDEX IF NOT EXISTS idx_counters_enabled ON counters(enabled)`);
+      await client.query(`ALTER TABLE counters ADD COLUMN IF NOT EXISTS access_level TEXT NOT NULL DEFAULT 'everyone'`);
 
       // Таблица элементов партии (список на выдачу)
       await client.query(`

@@ -48,6 +48,16 @@
           <label for="counter-description">Описание</label>
           <input type="text" id="counter-description" placeholder="Краткое описание счётчика" />
         </div>
+        <div class="form-group">
+          <label for="counter-access-level">Кому доступен счётчик</label>
+          <select id="counter-access-level">
+            <option value="everyone">Всем</option>
+            <option value="moderators">Только модераторам</option>
+          </select>
+          <small>
+            Если выбрано «Только модераторам» — счётчик сработает только у модераторов и стримера.
+          </small>
+        </div>
       </div>
 
       <div class="form-actions">

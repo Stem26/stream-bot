@@ -114,6 +114,7 @@ export class CommandDialogElement extends HTMLElement {
     const form = this.querySelector<HTMLFormElement>('#command-form');
     const messageTypeSelect = this.querySelector<HTMLSelectElement>('#command-message-type');
     const colorSelect = this.querySelector<HTMLSelectElement>('#command-color');
+    const accessLevelSelect = this.querySelector<HTMLSelectElement>('#command-access-level');
 
     modalTitle && (modalTitle.textContent = 'Добавить команду');
     form?.reset();
@@ -134,6 +135,10 @@ export class CommandDialogElement extends HTMLElement {
 
     if (colorSelect) {
       colorSelect.value = 'primary';
+    }
+
+    if (accessLevelSelect) {
+      accessLevelSelect.value = 'everyone';
     }
 
     const cooldown = this.querySelector<HTMLInputElement>('#command-cooldown');
@@ -161,6 +166,7 @@ export class CommandDialogElement extends HTMLElement {
     const descriptionInput = this.querySelector<HTMLInputElement>('#command-description');
     const messageTypeSelect = this.querySelector<HTMLSelectElement>('#command-message-type');
     const colorSelect = this.querySelector<HTMLSelectElement>('#command-color');
+    const accessLevelSelect = this.querySelector<HTMLSelectElement>('#command-access-level');
     const cooldownInput = this.querySelector<HTMLInputElement>('#command-cooldown');
 
     if (modalTitle) modalTitle.textContent = 'Редактировать команду';
@@ -175,6 +181,7 @@ export class CommandDialogElement extends HTMLElement {
     if (descriptionInput) descriptionInput.value = command.description ?? '';
     if (messageTypeSelect) messageTypeSelect.value = command.messageType ?? 'announcement';
     if (colorSelect) colorSelect.value = command.color ?? 'primary';
+    if (accessLevelSelect) accessLevelSelect.value = command.accessLevel ?? 'everyone';
     if (cooldownInput) cooldownInput.value = String(command.cooldown ?? 10);
     const inRotationCheckbox = this.querySelector<HTMLInputElement>('#command-in-rotation');
     if (inRotationCheckbox) inRotationCheckbox.checked = command.inRotation ?? false;
@@ -253,9 +260,10 @@ export class CommandDialogElement extends HTMLElement {
     const descriptionInput = this.querySelector<HTMLInputElement>('#command-description');
     const messageTypeSelect = this.querySelector<HTMLSelectElement>('#command-message-type');
     const colorSelect = this.querySelector<HTMLSelectElement>('#command-color');
+    const accessLevelSelect = this.querySelector<HTMLSelectElement>('#command-access-level');
     const cooldownInput = this.querySelector<HTMLInputElement>('#command-cooldown');
 
-    if (!idInput || !triggerInput || !responseInput || !messageTypeSelect || !colorSelect || !cooldownInput) {
+    if (!idInput || !triggerInput || !responseInput || !messageTypeSelect || !colorSelect || !accessLevelSelect || !cooldownInput) {
       return null;
     }
 
@@ -293,6 +301,7 @@ export class CommandDialogElement extends HTMLElement {
       cooldown,
       enabled: true,
       inRotation: false,
+      accessLevel: accessLevelSelect.value as CustomCommand['accessLevel'],
     };
 
     return {

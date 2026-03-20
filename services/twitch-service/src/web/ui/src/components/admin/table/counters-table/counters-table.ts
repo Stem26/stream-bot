@@ -68,12 +68,16 @@ export class CountersTableElement extends HTMLElement {
 
       const numCell = row.querySelector('.col-num');
       const triggerCell = row.querySelector('.col-trigger .trigger-text');
+      const accessCell = row.querySelector('.col-access .access-text');
       const valueCell = row.querySelector('.col-value');
       const descCell = row.querySelector('.col-description');
       const statusBtn = row.querySelector<HTMLButtonElement>('.col-status .status-badge');
 
       if (numCell) numCell.textContent = String(index + 1);
       if (triggerCell) triggerCell.textContent = counter.trigger;
+      if (accessCell) {
+        accessCell.textContent = counter.accessLevel === 'moderators' ? 'Модераторам' : 'Всем';
+      }
       if (valueCell) valueCell.textContent = String(counter.value);
       if (descCell) {
         const tpl = counter.responseTemplate || '';

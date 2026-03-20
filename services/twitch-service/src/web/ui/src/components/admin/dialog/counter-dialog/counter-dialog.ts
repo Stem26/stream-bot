@@ -97,6 +97,7 @@ export class CounterDialogElement extends HTMLElement {
     const idInput = this.querySelector<HTMLInputElement>('#counter-id');
     const form = this.querySelector<HTMLFormElement>('#counter-form');
     const deleteBtn = this.querySelector<HTMLButtonElement>('#counter-delete-btn');
+    const accessLevelSelect = this.querySelector<HTMLSelectElement>('#counter-access-level');
 
     modalTitle && (modalTitle.textContent = 'Добавить счётчик');
     form?.reset();
@@ -110,6 +111,10 @@ export class CounterDialogElement extends HTMLElement {
     if (valueInput) valueInput.value = '0';
 
     if (deleteBtn) deleteBtn.style.display = 'none';
+
+    if (accessLevelSelect) {
+      accessLevelSelect.value = 'everyone';
+    }
 
     this.updateCounterTemplateCounter();
     this.validateForm();
@@ -126,6 +131,7 @@ export class CounterDialogElement extends HTMLElement {
     const templateInput = this.querySelector<HTMLTextAreaElement>('#counter-template');
     const valueInput = this.querySelector<HTMLInputElement>('#counter-value');
     const descriptionInput = this.querySelector<HTMLInputElement>('#counter-description');
+    const accessLevelSelect = this.querySelector<HTMLSelectElement>('#counter-access-level');
     const deleteBtn = this.querySelector<HTMLButtonElement>('#counter-delete-btn');
 
     if (modalTitle) modalTitle.textContent = 'Редактировать счётчик';
@@ -139,6 +145,7 @@ export class CounterDialogElement extends HTMLElement {
     if (templateInput) templateInput.value = counter.responseTemplate;
     if (valueInput) valueInput.value = String(counter.value ?? 0);
     if (descriptionInput) descriptionInput.value = counter.description ?? '';
+    if (accessLevelSelect) accessLevelSelect.value = counter.accessLevel ?? 'everyone';
 
     ['#counter-id', '#counter-trigger', '#counter-template'].forEach((sel) => {
       this.querySelector<HTMLInputElement | HTMLTextAreaElement>(sel)?.classList.remove('is-invalid');
@@ -192,8 +199,9 @@ export class CounterDialogElement extends HTMLElement {
     const templateInput = this.querySelector<HTMLTextAreaElement>('#counter-template');
     const valueInput = this.querySelector<HTMLInputElement>('#counter-value');
     const descriptionInput = this.querySelector<HTMLInputElement>('#counter-description');
+    const accessLevelSelect = this.querySelector<HTMLSelectElement>('#counter-access-level');
 
-    if (!idInput || !triggerInput || !templateInput || !valueInput) {
+    if (!idInput || !triggerInput || !templateInput || !valueInput || !accessLevelSelect) {
       return null;
     }
 
@@ -222,6 +230,7 @@ export class CounterDialogElement extends HTMLElement {
       value,
       enabled: true,
       description: descriptionInput?.value.trim() ?? '',
+      accessLevel: accessLevelSelect.value as Counter['accessLevel'],
     };
 
     return {

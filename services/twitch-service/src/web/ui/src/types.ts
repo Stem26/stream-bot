@@ -2,6 +2,8 @@ export type MessageType = 'announcement' | 'message';
 
 export type CommandColor = 'primary' | 'blue' | 'green' | 'orange' | 'purple';
 
+export type AccessLevel = 'everyone' | 'moderators';
+
 export interface CustomCommand {
   id: string;
   trigger: string;
@@ -13,6 +15,7 @@ export interface CustomCommand {
   color: CommandColor;
   description: string;
   inRotation: boolean;
+  accessLevel: AccessLevel;
 }
 
 export interface CommandsData {
@@ -36,6 +39,7 @@ export interface Counter {
   value: number;
   enabled: boolean;
   description: string;
+  accessLevel: AccessLevel;
 }
 
 export interface CountersData {

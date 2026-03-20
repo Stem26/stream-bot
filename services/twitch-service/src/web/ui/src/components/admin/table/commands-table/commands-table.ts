@@ -72,6 +72,7 @@ export class CommandsTableElement extends HTMLElement {
 
       const numCell = tr.querySelector('.col-num');
       const triggerCell = tr.querySelector('.col-trigger');
+      const accessCell = tr.querySelector('.col-access .access-text');
       const responseCell = tr.querySelector('.col-response');
       const statusBtn = tr.querySelector<HTMLButtonElement>('.col-status [data-action="toggle"]');
       const rotationBtn = tr.querySelector<HTMLButtonElement>('.col-rotation [data-action="toggle-rotation"]');
@@ -82,6 +83,9 @@ export class CommandsTableElement extends HTMLElement {
       if (triggerText) {
         triggerText.textContent = cmd.trigger;
         triggerCell!.setAttribute('title', cmd.trigger);
+      }
+      if (accessCell) {
+        accessCell.textContent = cmd.accessLevel === 'moderators' ? 'Модераторам' : 'Всем';
       }
       if (responseCell) {
         responseCell.textContent = cmd.response;

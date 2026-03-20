@@ -42,6 +42,7 @@ interface CustomCommand {
     messageType: 'announcement' | 'message';
     color: 'primary' | 'blue' | 'green' | 'orange' | 'purple';
     description: string;
+    accessLevel: 'everyone' | 'moderators';
 }
 
 async function loadLinksConfigFromDb(): Promise<LinksConfig> {
@@ -66,6 +67,7 @@ async function loadCustomCommandsFromDb(): Promise<CustomCommand[]> {
             message_type: string;
             color: string;
             description: string;
+            access_level: string;
         }>(
             `SELECT id,
                     trigger,
@@ -75,7 +77,8 @@ async function loadCustomCommandsFromDb(): Promise<CustomCommand[]> {
                     cooldown,
                     message_type,
                     color,
-                    description
+                    description,
+                    access_level
              FROM custom_commands`,
         );
 
@@ -89,6 +92,7 @@ async function loadCustomCommandsFromDb(): Promise<CustomCommand[]> {
             messageType: (row.message_type as CustomCommand['messageType']) ?? 'announcement',
             color: (row.color as CustomCommand['color']) ?? 'primary',
             description: row.description ?? '',
+            accessLevel: (row.access_level as CustomCommand['accessLevel']) ?? 'everyone',
         }));
 
         console.log(`📋 Загружено ${mapped.length} кастомных команд из БД`);
@@ -279,6 +283,23 @@ export class NightBotMonitor {
         return user.trim().toLowerCase() === this.channelName;
     }
 
+    private isAccessAllowed(
+        accessLevel: 'everyone' | 'moderators',
+        username: string,
+        msg: any,
+    ): boolean {
+        if (accessLevel === 'everyone') return true;
+
+        // Ручной запуск из UI передаёт msg=null — не блокируем админский вызов.
+        if (!msg) return true;
+
+        const isMod = Boolean(msg.userInfo?.isMod);
+        const isBroadcaster = Boolean(msg.userInfo?.isBroadcaster);
+
+        // EXTRA_DUEL_ADMINS должен иметь доступ, даже если он не Twitch-mod.
+        return isMod || isBroadcaster || canManageDuels(username);
+    }
+
     private async getUserIdCached(username: string): Promise<string | null> {
         const normalizedUsername = username.trim().toLowerCase();
 
@@ -343,7 +364,7 @@ export class NightBotMonitor {
      * Перезагружает счётчики из БД
      */
     public reloadCounters(): void {
-        query('SELECT id, trigger, aliases, response_template, value, enabled, description FROM counters')
+        query('SELECT id, trigger, aliases, response_template, value, enabled, description, access_level FROM counters')
             .then((rows: any[]) => {
                 this.counters.clear();
 
@@ -357,6 +378,7 @@ export class NightBotMonitor {
                         responseTemplate: row.response_template,
                         value: row.value || 0,
                         description: row.description || '',
+                        accessLevel: row.access_level ?? 'everyone',
                     };
 
                     const triggerLower = counter.trigger.toLowerCase();
@@ -1327,6 +1349,11 @@ export class NightBotMonitor {
             const cooldownKey = command.id;
             const rawCooldownSec = command.cooldown ?? 0;
             const skipCooldown = options?.skipCooldown ?? false;
+            const accessLevel = command.accessLevel ?? 'everyone';
+
+            if (!this.isAccessAllowed(accessLevel, user, msg)) {
+                return;
+            }
             const response = this.substituteTimePlaceholders(command.response);
 
             if (command.messageType === 'announcement') {
@@ -1387,6 +1414,10 @@ export class NightBotMonitor {
      */
     private async handleCounterCommand(channel: string, user: string, counter: any, msg: any) {
         try {
+            const accessLevel = counter.accessLevel ?? 'everyone';
+            if (!this.isAccessAllowed(accessLevel, user, msg)) {
+                return;
+            }
             // Инкрементируем счётчик в БД
             await query('UPDATE counters SET value = value + 1 WHERE id = $1', [counter.id]);
             
@@ -1415,6 +1446,10 @@ export class NightBotMonitor {
     /** !{trigger}инфо — показать текущее значение кастомного счётчика */
     private async handleCounterInfoCommand(channel: string, user: string, counter: any, msg: any) {
         try {
+            const accessLevel = counter.accessLevel ?? 'everyone';
+            if (!this.isAccessAllowed(accessLevel, user, msg)) {
+                return;
+            }
             const result = await query('SELECT value, response_template FROM counters WHERE id = $1', [counter.id]);
             const currentValue = result[0]?.value ?? 0;
             const template = result[0]?.response_template ?? '{value}';
@@ -1430,6 +1465,10 @@ export class NightBotMonitor {
     /** !{trigger}сброс — сбросить кастомный счётчик в 0 */
     private async handleCounterResetCommand(channel: string, user: string, counter: any, msg: any) {
         try {
+            const accessLevel = counter.accessLevel ?? 'everyone';
+            if (!this.isAccessAllowed(accessLevel, user, msg)) {
+                return;
+            }
             await query('UPDATE counters SET value = 0 WHERE id = $1', [counter.id]);
             await this.sendMessage(channel, `Счётчик ${counter.trigger} сброшен`);
             this.reloadCounters();
@@ -1441,6 +1480,10 @@ export class NightBotMonitor {
     /** !{trigger}откат — откатить на 1 (уменьшить значение) */
     private async handleCounterRollbackCommand(channel: string, user: string, counter: any, msg: any) {
         try {
+            const accessLevel = counter.accessLevel ?? 'everyone';
+            if (!this.isAccessAllowed(accessLevel, user, msg)) {
+                return;
+            }
             const result = await query('SELECT value FROM counters WHERE id = $1', [counter.id]);
             const currentValue = result[0]?.value ?? 0;
             if (currentValue <= 0) {
@@ -1463,6 +1506,10 @@ export class NightBotMonitor {
     /** !{trigger}[число] — установить значение кастомного счётчика */
     private async handleCounterSetCommand(channel: string, user: string, counter: any, targetValue: number, msg: any) {
         try {
+            const accessLevel = counter.accessLevel ?? 'everyone';
+            if (!this.isAccessAllowed(accessLevel, user, msg)) {
+                return;
+            }
             await query('UPDATE counters SET value = $1 WHERE id = $2', [targetValue, counter.id]);
             const result = await query('SELECT response_template FROM counters WHERE id = $1', [counter.id]);
             const template = result[0]?.response_template ?? '{value}';
@@ -2596,7 +2643,7 @@ export class NightBotMonitor {
 
         try {
             const allCommands = await loadCustomCommandsFromDb();
-            const enabled = allCommands.filter((c) => c.enabled);
+            const enabled = allCommands.filter((c) => c.enabled && this.isAccessAllowed(c.accessLevel ?? 'everyone', user, msg));
             const partyRow = await queryOne<{ enabled: boolean; trigger: string }>('SELECT enabled, trigger FROM party_config WHERE id = 1');
             const partyEnabled = partyRow && typeof partyRow.enabled === 'boolean' ? partyRow.enabled : this.partyEnabled;
             const partyTrig = partyRow?.trigger?.trim()
