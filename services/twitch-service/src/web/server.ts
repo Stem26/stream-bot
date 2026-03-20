@@ -371,6 +371,7 @@ type AdminAuditContext = {
     previousChatModerationConfig?: ChatModerationAuditSnapshot | null;
     previousCommand?: CommandAuditSnapshot | null;
     previousCounter?: CounterAuditSnapshot | null;
+    previousWhitelistCount?: number;
 };
 
 async function loadAdminAuditContext(req: Request): Promise<AdminAuditContext> {
@@ -378,6 +379,7 @@ async function loadAdminAuditContext(req: Request): Promise<AdminAuditContext> {
     const pathOnly = req.originalUrl.split('?')[0];
     const pathParts = pathOnly.split('/').filter(Boolean);
     const lastPart = pathParts[pathParts.length - 1] || '';
+    const prevPart = pathParts[pathParts.length - 2] || '';
 
     const ctx: AdminAuditContext = {};
     if (method === 'PUT' && pathOnly === '/api/party/config') {
@@ -410,16 +412,32 @@ async function loadAdminAuditContext(req: Request): Promise<AdminAuditContext> {
             'SELECT moderation_enabled, check_symbols, check_letters, check_links, max_message_length, max_letters_digits, timeout_minutes FROM chat_moderation_config WHERE id = 1'
         );
     }
+    if (method === 'POST' && pathOnly === '/api/admin/link-whitelist') {
+        const row = await queryOne<{ count: number }>('SELECT COUNT(*)::int AS count FROM link_whitelist');
+        ctx.previousWhitelistCount = row?.count ?? 0;
+    }
     if (method === 'PUT' && pathOnly.startsWith('/api/commands/')) {
         ctx.previousCommand = await queryOne<CommandAuditSnapshot>(
             'SELECT id, trigger, response, enabled, cooldown, message_type, color, description, in_rotation, access_level FROM custom_commands WHERE id = $1',
             [decodeURIComponent(lastPart)]
         );
     }
+    if (method === 'PATCH' && pathOnly.startsWith('/api/commands/') && (pathOnly.endsWith('/toggle') || pathOnly.endsWith('/rotation-toggle'))) {
+        ctx.previousCommand = await queryOne<CommandAuditSnapshot>(
+            'SELECT id, trigger, response, enabled, cooldown, message_type, color, description, in_rotation, access_level FROM custom_commands WHERE id = $1',
+            [decodeURIComponent(prevPart)]
+        );
+    }
     if (method === 'PUT' && pathOnly.startsWith('/api/counters/')) {
         ctx.previousCounter = await queryOne<CounterAuditSnapshot>(
             'SELECT id, trigger, response_template, enabled, value, description, access_level FROM counters WHERE id = $1',
             [decodeURIComponent(lastPart)]
+        );
+    }
+    if (method === 'PATCH' && pathOnly.startsWith('/api/counters/') && pathOnly.endsWith('/toggle')) {
+        ctx.previousCounter = await queryOne<CounterAuditSnapshot>(
+            'SELECT id, trigger, response_template, enabled, value, description, access_level FROM counters WHERE id = $1',
+            [decodeURIComponent(prevPart)]
         );
     }
     return ctx;
@@ -441,7 +459,11 @@ function describeAdminAction(req: Request, context?: AdminAuditContext): { actio
     }
     if (method === 'POST' && pathOnly === '/api/admin/duels/set-cooldown-skip') {
         const skip = Boolean(body.skip);
-        return { action: skip ? 'Админ выключил КД дуэлей' : 'Админ включил КД дуэлей' };
+        const before = getDuelCooldownSkip();
+        return {
+            action: skip ? 'Админ выключил КД дуэлей' : 'Админ включил КД дуэлей',
+            details: `КД: ${before ? 'выкл' : 'вкл'} -> ${skip ? 'выкл' : 'вкл'}`,
+        };
     }
     if (method === 'PUT' && pathOnly === '/api/links') {
         const prev = context?.previousLinksConfig;
@@ -504,9 +526,23 @@ function describeAdminAction(req: Request, context?: AdminAuditContext): { actio
         return { action: 'Админ удалил команду', details: `ID: ${decodeURIComponent(lastPart)}` };
     }
     if (method === 'PATCH' && pathOnly.endsWith('/toggle') && pathOnly.startsWith('/api/commands/')) {
+        const prev = context?.previousCommand;
+        if (prev) {
+            return {
+                action: 'Админ переключил команду',
+                details: `ID: ${decodeURIComponent(prevPart)}; статус: ${prev.enabled ? 'вкл' : 'выкл'} -> ${prev.enabled ? 'выкл' : 'вкл'}`,
+            };
+        }
         return { action: 'Админ переключил команду', details: `ID: ${decodeURIComponent(prevPart)}` };
     }
     if (method === 'PATCH' && pathOnly.endsWith('/rotation-toggle') && pathOnly.startsWith('/api/commands/')) {
+        const prev = context?.previousCommand;
+        if (prev) {
+            return {
+                action: 'Админ переключил ротацию команды',
+                details: `ID: ${decodeURIComponent(prevPart)}; ротация: ${prev.in_rotation ? 'вкл' : 'выкл'} -> ${prev.in_rotation ? 'выкл' : 'вкл'}`,
+            };
+        }
         return { action: 'Админ переключил ротацию команды', details: `ID: ${decodeURIComponent(prevPart)}` };
     }
     if (method === 'POST' && pathOnly.endsWith('/send') && pathOnly.startsWith('/api/commands/')) {
@@ -536,6 +572,13 @@ function describeAdminAction(req: Request, context?: AdminAuditContext): { actio
         return { action: 'Админ удалил счётчик', details: `ID: ${decodeURIComponent(lastPart)}` };
     }
     if (method === 'PATCH' && pathOnly.endsWith('/toggle') && pathOnly.startsWith('/api/counters/')) {
+        const prev = context?.previousCounter;
+        if (prev) {
+            return {
+                action: 'Админ переключил счётчик',
+                details: `ID: ${decodeURIComponent(prevPart)}; статус: ${prev.enabled ? 'вкл' : 'выкл'} -> ${prev.enabled ? 'выкл' : 'вкл'}`,
+            };
+        }
         return { action: 'Админ переключил счётчик', details: `ID: ${decodeURIComponent(prevPart)}` };
     }
     if (method === 'PATCH' && pathOnly.endsWith('/increment') && pathOnly.startsWith('/api/counters/')) {
@@ -639,7 +682,11 @@ function describeAdminAction(req: Request, context?: AdminAuditContext): { actio
     }
     if (method === 'POST' && pathOnly === '/api/admin/link-whitelist') {
         const count = Array.isArray(body.patterns) ? body.patterns.length : 0;
-        return { action: 'Админ обновил whitelist ссылок', details: `Паттернов: ${count}` };
+        const prev = context?.previousWhitelistCount;
+        return {
+            action: 'Админ обновил whitelist ссылок',
+            details: prev != null ? `Паттернов: ${prev} -> ${count}` : `Паттернов: ${count}`,
+        };
     }
     if (method === 'POST' && pathOnly === '/api/admin/duels/reset-reward-flags') {
         return { action: 'Админ сбросил флаги наград дуэлей' };
