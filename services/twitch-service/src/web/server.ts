@@ -459,7 +459,7 @@ function describeAdminAction(req: Request, context?: AdminAuditContext): { actio
     }
     if (method === 'POST' && pathOnly === '/api/admin/duels/set-cooldown-skip') {
         const skip = Boolean(body.skip);
-        const before = getDuelCooldownSkip();
+        const before = getDuelCooldownSkipCallback ? getDuelCooldownSkipCallback() : false;
         return {
             action: skip ? 'Админ выключил КД дуэлей' : 'Админ включил КД дуэлей',
             details: `КД: ${before ? 'выкл' : 'вкл'} -> ${skip ? 'выкл' : 'вкл'}`,
