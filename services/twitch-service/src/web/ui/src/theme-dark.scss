@@ -171,9 +171,7 @@ body.theme-dark {
   // Таблицы
   commands-table .commands-table-card,
   counters-table .counters-table-card,
-  party-table .party-table-card,
-  journal-table .journal-table-wrap,
-  journal-table .journal-table-card {
+  party-table .party-table-card {
     background: $dark-card !important;
     border: 1px solid $dark-border !important;
     box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
@@ -302,6 +300,12 @@ body.theme-dark {
   }
 
   journal-table {
+    .journal-table-card {
+      background: $dark-card !important;
+      border: 1px solid $dark-border !important;
+      box-shadow: none !important;
+    }
+
     .journal-table-header h3 { color: $dark-text !important; }
     .journal-description { color: $dark-text-muted !important; }
 
@@ -321,6 +325,7 @@ body.theme-dark {
       border-color: $dark-border !important;
       background: $dark-bg !important;
     }
+    .journal-table tbody tr { border-bottom: none !important; }
     .journal-table tbody tr {
       td { color: $dark-text !important; border-color: $dark-border !important; }
       &:hover { background: $dark-hover !important; }
@@ -331,7 +336,7 @@ body.theme-dark {
 
     @media (max-width: 768px) {
       .journal-table tbody tr {
-        border-bottom-color: $dark-border !important;
+        border-bottom: none !important;
       }
     }
 
