@@ -76,7 +76,7 @@ export class CountersTableElement extends HTMLElement {
       if (numCell) numCell.textContent = String(index + 1);
       if (triggerCell) triggerCell.textContent = counter.trigger;
       if (accessCell) {
-        accessCell.textContent = counter.accessLevel === 'moderators' ? 'Модераторам' : 'Всем';
+        accessCell.textContent = counter.accessLevel === 'moderators' ? 'Модератор' : 'Все';
       }
       if (valueCell) valueCell.textContent = String(counter.value);
       if (descCell) {

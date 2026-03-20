@@ -85,7 +85,7 @@ export class CommandsTableElement extends HTMLElement {
         triggerCell!.setAttribute('title', cmd.trigger);
       }
       if (accessCell) {
-        accessCell.textContent = cmd.accessLevel === 'moderators' ? 'Модераторам' : 'Всем';
+        accessCell.textContent = cmd.accessLevel === 'moderators' ? 'Модератор' : 'Все';
       }
       if (responseCell) {
         responseCell.textContent = cmd.response;
