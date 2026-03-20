@@ -418,25 +418,25 @@ async function loadAdminAuditContext(req: Request): Promise<AdminAuditContext> {
     }
     if (method === 'PUT' && pathOnly.startsWith('/api/commands/')) {
         ctx.previousCommand = await queryOne<CommandAuditSnapshot>(
-            'SELECT id, trigger, response, enabled, cooldown, message_type, color, description, in_rotation, access_level FROM custom_commands WHERE id = $1',
+            'SELECT id, trigger, response, enabled, cooldown, message_type, color, description, in_rotation, access_level FROM custom_commands WHERE LOWER(id) = LOWER($1)',
             [decodeURIComponent(lastPart)]
         );
     }
     if (method === 'PATCH' && pathOnly.startsWith('/api/commands/') && (pathOnly.endsWith('/toggle') || pathOnly.endsWith('/rotation-toggle'))) {
         ctx.previousCommand = await queryOne<CommandAuditSnapshot>(
-            'SELECT id, trigger, response, enabled, cooldown, message_type, color, description, in_rotation, access_level FROM custom_commands WHERE id = $1',
+            'SELECT id, trigger, response, enabled, cooldown, message_type, color, description, in_rotation, access_level FROM custom_commands WHERE LOWER(id) = LOWER($1)',
             [decodeURIComponent(prevPart)]
         );
     }
     if (method === 'PUT' && pathOnly.startsWith('/api/counters/')) {
         ctx.previousCounter = await queryOne<CounterAuditSnapshot>(
-            'SELECT id, trigger, response_template, enabled, value, description, access_level FROM counters WHERE id = $1',
+            'SELECT id, trigger, response_template, enabled, value, description, access_level FROM counters WHERE LOWER(id) = LOWER($1)',
             [decodeURIComponent(lastPart)]
         );
     }
     if (method === 'PATCH' && pathOnly.startsWith('/api/counters/') && pathOnly.endsWith('/toggle')) {
         ctx.previousCounter = await queryOne<CounterAuditSnapshot>(
-            'SELECT id, trigger, response_template, enabled, value, description, access_level FROM counters WHERE id = $1',
+            'SELECT id, trigger, response_template, enabled, value, description, access_level FROM counters WHERE LOWER(id) = LOWER($1)',
             [decodeURIComponent(prevPart)]
         );
     }
