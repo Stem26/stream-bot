@@ -303,7 +303,8 @@ app.use('/api/admin-journal', requireAdmin);
 
 function logAdminAction(adminUsername: string, action: string, details: string = ''): void {
     const safeAdmin = String(adminUsername ?? '').slice(0, 255).trim() || 'unknown';
-    const safeAction = String(action ?? '').slice(0, 255).trim();
+    const rawAction = String(action ?? '').slice(0, 255).trim();
+    const safeAction = rawAction ? rawAction.slice(0, 1).toUpperCase() + rawAction.slice(1) : '';
     const safeDetails = String(details ?? '').slice(0, 2000).trim();
     if (!safeAction) return;
     void query(
