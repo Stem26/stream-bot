@@ -315,6 +315,12 @@ function logAdminAction(adminUsername: string, action: string, details: string =
     });
 }
 
+function shortAuditText(value: unknown, maxLen: number = 60): string {
+    const text = String(value ?? '');
+    if (text.length <= maxLen) return text;
+    return `${text.slice(0, maxLen)}...`;
+}
+
 type PartyConfigAuditSnapshot = {
     enabled: boolean;
     trigger: string;
@@ -373,6 +379,7 @@ type AdminAuditContext = {
     previousCommand?: CommandAuditSnapshot | null;
     previousCounter?: CounterAuditSnapshot | null;
     previousWhitelistCount?: number;
+    previousPartyItem?: { id: number; text: string } | null;
 };
 
 async function loadAdminAuditContext(req: Request): Promise<AdminAuditContext> {
@@ -416,6 +423,15 @@ async function loadAdminAuditContext(req: Request): Promise<AdminAuditContext> {
     if (method === 'POST' && pathOnly === '/api/admin/link-whitelist') {
         const row = await queryOne<{ count: number }>('SELECT COUNT(*)::int AS count FROM link_whitelist');
         ctx.previousWhitelistCount = row?.count ?? 0;
+    }
+    if ((method === 'PUT' || method === 'DELETE') && pathOnly.startsWith('/api/party/items/')) {
+        const itemId = Number.parseInt(decodeURIComponent(lastPart), 10);
+        if (!Number.isNaN(itemId)) {
+            ctx.previousPartyItem = await queryOne<{ id: number; text: string }>(
+                'SELECT id, text FROM party_items WHERE id = $1',
+                [itemId]
+            );
+        }
     }
     if (method === 'PUT' && pathOnly.startsWith('/api/commands/')) {
         ctx.previousCommand = await queryOne<CommandAuditSnapshot>(
@@ -476,8 +492,8 @@ function describeAdminAction(req: Request, context?: AdminAuditContext): { actio
             return {
                 action: 'обновил ссылки и интервал ротации',
                 details: prev
-                    ? `Интервал: ${prev.rotation_interval_minutes} -> ${Number(body.rotationIntervalMinutes)} мин; текст ссылок: изменён`
-                    : `Интервал: ${Number(body.rotationIntervalMinutes)} мин; текст ссылок: изменён`,
+                    ? `Интервал: ${prev.rotation_interval_minutes} -> ${Number(body.rotationIntervalMinutes)} мин; текст ссылок: "${shortAuditText(prev.all_links_text)}" -> "${shortAuditText(body.allLinksText)}"`
+                    : `Интервал: ${Number(body.rotationIntervalMinutes)} мин; текст ссылок: "${shortAuditText(body.allLinksText)}"`,
             };
         }
         if (rotationChanged) {
@@ -489,7 +505,12 @@ function describeAdminAction(req: Request, context?: AdminAuditContext): { actio
             };
         }
         if (textChanged) {
-            return { action: 'обновил текст команды !ссылки', details: prev ? 'Текст: изменён' : undefined };
+            return {
+                action: 'обновил текст команды !ссылки',
+                details: prev
+                    ? `Текст: "${shortAuditText(prev.all_links_text)}" -> "${shortAuditText(body.allLinksText)}"`
+                    : `Текст: "${shortAuditText(body.allLinksText)}"`,
+            };
         }
         return { action: 'сохранил ссылки без изменений' };
     }
@@ -497,7 +518,12 @@ function describeAdminAction(req: Request, context?: AdminAuditContext): { actio
         const prev = context?.previousRaidConfig;
         if (typeof body.raidMessage === 'string') {
             if (!prev || prev.raid_message !== body.raidMessage) {
-                return { action: 'обновил сообщение при рейде', details: prev ? 'Сообщение: изменено' : undefined };
+                return {
+                    action: 'обновил сообщение при рейде',
+                    details: prev
+                        ? `Сообщение: "${shortAuditText(prev.raid_message)}" -> "${shortAuditText(body.raidMessage)}"`
+                        : `Сообщение: "${shortAuditText(body.raidMessage)}"`,
+                };
             }
             return { action: 'сохранил сообщение рейда без изменений' };
         }
@@ -511,13 +537,17 @@ function describeAdminAction(req: Request, context?: AdminAuditContext): { actio
         const changes: string[] = [];
         if (prev) {
             if (body.trigger != null && String(body.trigger) !== prev.trigger) changes.push(`триггер: ${prev.trigger} -> ${String(body.trigger)}`);
-            if (body.response != null && String(body.response) !== prev.response) changes.push('изменён ответ');
+            if (body.response != null && String(body.response) !== prev.response) {
+                changes.push(`ответ: "${shortAuditText(prev.response)}" -> "${shortAuditText(body.response)}"`);
+            }
             if (body.enabled != null && Boolean(body.enabled) !== prev.enabled) changes.push(`статус: ${prev.enabled ? 'вкл' : 'выкл'} -> ${Boolean(body.enabled) ? 'вкл' : 'выкл'}`);
             if (body.cooldown != null && Number(body.cooldown) !== prev.cooldown) changes.push(`кд: ${prev.cooldown}с -> ${Number(body.cooldown)}с`);
             if (body.accessLevel != null && String(body.accessLevel) !== prev.access_level) changes.push(`доступ: ${prev.access_level} -> ${String(body.accessLevel)}`);
             if (body.messageType != null && String(body.messageType) !== prev.message_type) changes.push(`тип: ${prev.message_type} -> ${String(body.messageType)}`);
             if (body.color != null && String(body.color) !== prev.color) changes.push(`цвет: ${prev.color} -> ${String(body.color)}`);
-            if (body.description != null && String(body.description) !== prev.description) changes.push('изменено описание');
+            if (body.description != null && String(body.description) !== prev.description) {
+                changes.push(`описание: "${shortAuditText(prev.description)}" -> "${shortAuditText(body.description)}"`);
+            }
             if (body.inRotation != null && Boolean(body.inRotation) !== prev.in_rotation) changes.push(`ротация: ${prev.in_rotation ? 'вкл' : 'выкл'} -> ${Boolean(body.inRotation) ? 'вкл' : 'выкл'}`);
         }
         if (changes.length === 0) return { action: 'сохранил команду без изменений', details: `ID: ${decodeURIComponent(lastPart)}` };
@@ -560,11 +590,15 @@ function describeAdminAction(req: Request, context?: AdminAuditContext): { actio
         const changes: string[] = [];
         if (prev) {
             if (body.trigger != null && String(body.trigger) !== prev.trigger) changes.push(`триггер: ${prev.trigger} -> ${String(body.trigger)}`);
-            if (body.responseTemplate != null && String(body.responseTemplate) !== prev.response_template) changes.push('изменён шаблон');
+            if (body.responseTemplate != null && String(body.responseTemplate) !== prev.response_template) {
+                changes.push(`шаблон: "${shortAuditText(prev.response_template)}" -> "${shortAuditText(body.responseTemplate)}"`);
+            }
             if (body.enabled != null && Boolean(body.enabled) !== prev.enabled) changes.push(`статус: ${prev.enabled ? 'вкл' : 'выкл'} -> ${Boolean(body.enabled) ? 'вкл' : 'выкл'}`);
             if (body.value != null && Number(body.value) !== prev.value) changes.push(`значение: ${prev.value} -> ${Number(body.value)}`);
             if (body.accessLevel != null && String(body.accessLevel) !== prev.access_level) changes.push(`доступ: ${prev.access_level} -> ${String(body.accessLevel)}`);
-            if (body.description != null && String(body.description) !== prev.description) changes.push('изменено описание');
+            if (body.description != null && String(body.description) !== prev.description) {
+                changes.push(`описание: "${shortAuditText(prev.description)}" -> "${shortAuditText(body.description)}"`);
+            }
         }
         if (changes.length === 0) return { action: 'сохранил счётчик без изменений', details: `ID: ${decodeURIComponent(lastPart)}` };
         return { action: 'обновил счётчик', details: `ID: ${decodeURIComponent(lastPart)}; ${changes.join(', ')}` };
@@ -603,7 +637,11 @@ function describeAdminAction(req: Request, context?: AdminAuditContext): { actio
         if (body.responseText != null) {
             const nextResponseText = String(body.responseText);
             if (!prev || prev.response_text !== nextResponseText) {
-                changes.push(prev ? `текст ответа: изменён` : 'текст ответа: изменён');
+                changes.push(
+                    prev
+                        ? `текст ответа: "${shortAuditText(prev.response_text)}" -> "${shortAuditText(nextResponseText)}"`
+                        : `текст ответа: "${shortAuditText(nextResponseText)}"`
+                );
             }
         }
         if (body.elementsCount != null) {
@@ -634,13 +672,31 @@ function describeAdminAction(req: Request, context?: AdminAuditContext): { actio
         return { action: skip ? 'выключил КД партии' : 'включил КД партии' };
     }
     if (method === 'POST' && pathOnly === '/api/party/items') {
-        return { action: 'добавил элемент партии' };
+        const text = typeof body.text === 'string' ? body.text : '';
+        return {
+            action: 'добавил элемент партии',
+            details: text ? `Текст: "${shortAuditText(text)}"` : undefined,
+        };
     }
     if (method === 'PUT' && pathOnly.startsWith('/api/party/items/')) {
+        const prev = context?.previousPartyItem;
+        const nextText = typeof body.text === 'string' ? body.text : '';
+        if (prev && nextText && prev.text !== nextText) {
+            return {
+                action: 'обновил элемент партии',
+                details: `ID: ${decodeURIComponent(lastPart)}; Текст: "${shortAuditText(prev.text)}" -> "${shortAuditText(nextText)}"`,
+            };
+        }
         return { action: 'обновил элемент партии', details: `ID: ${decodeURIComponent(lastPart)}` };
     }
     if (method === 'DELETE' && pathOnly.startsWith('/api/party/items/')) {
-        return { action: 'удалил элемент партии', details: `ID: ${decodeURIComponent(lastPart)}` };
+        const prev = context?.previousPartyItem;
+        return {
+            action: 'удалил элемент партии',
+            details: prev
+                ? `ID: ${decodeURIComponent(lastPart)}; Текст: "${shortAuditText(prev.text)}"`
+                : `ID: ${decodeURIComponent(lastPart)}`,
+        };
     }
     if (method === 'POST' && pathOnly === '/api/admin/duels/config') {
         const changes: string[] = [];
