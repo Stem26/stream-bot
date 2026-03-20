@@ -326,6 +326,19 @@ export async function initDatabase(): Promise<void> {
       await client.query(`CREATE INDEX IF NOT EXISTS idx_event_journal_created_at ON event_journal(created_at DESC)`);
       await client.query(`CREATE INDEX IF NOT EXISTS idx_event_journal_username ON event_journal(LOWER(username))`);
 
+      // Журнал действий админов (из админ-панели)
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS admin_action_journal (
+          id SERIAL PRIMARY KEY,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          admin_username TEXT NOT NULL DEFAULT '',
+          action TEXT NOT NULL,
+          details TEXT NOT NULL DEFAULT ''
+        )
+      `);
+      await client.query(`CREATE INDEX IF NOT EXISTS idx_admin_action_journal_created_at ON admin_action_journal(created_at DESC)`);
+      await client.query(`CREATE INDEX IF NOT EXISTS idx_admin_action_journal_username ON admin_action_journal(LOWER(admin_username))`);
+
       // Конфиг сообщения при входящем рейде
       await client.query(`
         CREATE TABLE IF NOT EXISTS raid_config (

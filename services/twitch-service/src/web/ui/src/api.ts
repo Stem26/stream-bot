@@ -275,6 +275,22 @@ export async function fetchJournal(params: {
   return handleJson<JournalResponse>(response, 'Ошибка загрузки журнала');
 }
 
+export async function fetchAdminJournal(params: {
+  page?: number;
+  limit?: number;
+  search?: string;
+  days?: number;
+}): Promise<JournalResponse> {
+  const searchParams = new URLSearchParams();
+  if (params.page != null) searchParams.set('page', String(params.page));
+  if (params.limit != null) searchParams.set('limit', String(params.limit));
+  if (params.search) searchParams.set('search', params.search);
+  if (params.days != null) searchParams.set('days', String(params.days));
+  const url = '/api/admin-journal' + (searchParams.toString() ? '?' + searchParams.toString() : '');
+  const response = await authFetch(url);
+  return handleJson<JournalResponse>(response, 'Ошибка загрузки журнала админов');
+}
+
 // === Логин (без authFetch — эндпоинт публичный) ===
 export async function login(username: string, password: string): Promise<{ success: true; token: string }> {
   const response = await fetch('/api/auth/login', {

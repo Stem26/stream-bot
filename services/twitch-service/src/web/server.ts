@@ -299,6 +299,393 @@ app.use('/api/links', requireAdmin);
 app.use('/api/raid', requireAdmin);
 app.use('/api/party', requireAdmin);
 app.use('/api/journal', requireAdmin);
+app.use('/api/admin-journal', requireAdmin);
+
+function logAdminAction(adminUsername: string, action: string, details: string = ''): void {
+    const safeAdmin = String(adminUsername ?? '').slice(0, 255).trim() || 'unknown';
+    const safeAction = String(action ?? '').slice(0, 255).trim();
+    const safeDetails = String(details ?? '').slice(0, 2000).trim();
+    if (!safeAction) return;
+    void query(
+        `INSERT INTO admin_action_journal (admin_username, action, details) VALUES ($1, $2, $3)`,
+        [safeAdmin, safeAction, safeDetails]
+    ).catch((err) => {
+        console.error('❌ Ошибка записи в журнал админа:', err?.message || err);
+    });
+}
+
+type PartyConfigAuditSnapshot = {
+    enabled: boolean;
+    trigger: string;
+    response_text: string;
+    elements_count: number;
+    quantity_max: number;
+    skip_cooldown: boolean;
+};
+
+type LinksConfigAuditSnapshot = { all_links_text: string; rotation_interval_minutes: number };
+type RaidConfigAuditSnapshot = { raid_message: string };
+type DuelConfigAuditSnapshot = { timeout_minutes: number; win_points: number; loss_points: number; miss_penalty: number };
+type DuelDailyConfigAuditSnapshot = {
+    daily_games_count: number;
+    daily_reward_points: number;
+    streak_wins_count: number;
+    streak_reward_points: number;
+};
+type ChatModerationAuditSnapshot = {
+    moderation_enabled: boolean;
+    check_symbols: boolean;
+    check_letters: boolean;
+    check_links: boolean;
+    max_message_length: number;
+    max_letters_digits: number;
+    timeout_minutes: number;
+};
+type CommandAuditSnapshot = {
+    id: string;
+    trigger: string;
+    response: string;
+    enabled: boolean;
+    cooldown: number;
+    message_type: string;
+    color: string;
+    description: string;
+    in_rotation: boolean;
+    access_level: string;
+};
+type CounterAuditSnapshot = {
+    id: string;
+    trigger: string;
+    response_template: string;
+    enabled: boolean;
+    value: number;
+    description: string;
+    access_level: string;
+};
+type AdminAuditContext = {
+    previousPartyConfig?: PartyConfigAuditSnapshot | null;
+    previousLinksConfig?: LinksConfigAuditSnapshot | null;
+    previousRaidConfig?: RaidConfigAuditSnapshot | null;
+    previousDuelConfig?: DuelConfigAuditSnapshot | null;
+    previousDuelDailyConfig?: DuelDailyConfigAuditSnapshot | null;
+    previousChatModerationConfig?: ChatModerationAuditSnapshot | null;
+    previousCommand?: CommandAuditSnapshot | null;
+    previousCounter?: CounterAuditSnapshot | null;
+};
+
+async function loadAdminAuditContext(req: Request): Promise<AdminAuditContext> {
+    const method = req.method.toUpperCase();
+    const pathOnly = req.originalUrl.split('?')[0];
+    const pathParts = pathOnly.split('/').filter(Boolean);
+    const lastPart = pathParts[pathParts.length - 1] || '';
+
+    const ctx: AdminAuditContext = {};
+    if (method === 'PUT' && pathOnly === '/api/party/config') {
+        ctx.previousPartyConfig = await queryOne<PartyConfigAuditSnapshot>(
+            'SELECT enabled, trigger, response_text, elements_count, quantity_max, skip_cooldown FROM party_config WHERE id = 1'
+        );
+    }
+    if (method === 'PUT' && pathOnly === '/api/links') {
+        ctx.previousLinksConfig = await queryOne<LinksConfigAuditSnapshot>(
+            'SELECT all_links_text, rotation_interval_minutes FROM links_config WHERE id = 1'
+        );
+    }
+    if (method === 'PUT' && pathOnly === '/api/raid') {
+        ctx.previousRaidConfig = await queryOne<RaidConfigAuditSnapshot>(
+            'SELECT raid_message FROM raid_config WHERE id = 1'
+        );
+    }
+    if (method === 'POST' && pathOnly === '/api/admin/duels/config') {
+        ctx.previousDuelConfig = await queryOne<DuelConfigAuditSnapshot>(
+            'SELECT timeout_minutes, win_points, loss_points, miss_penalty FROM duel_config WHERE id = 1'
+        );
+    }
+    if (method === 'POST' && pathOnly === '/api/admin/duels/daily-config') {
+        ctx.previousDuelDailyConfig = await queryOne<DuelDailyConfigAuditSnapshot>(
+            'SELECT daily_games_count, daily_reward_points, streak_wins_count, streak_reward_points FROM duel_daily_config WHERE id = 1'
+        );
+    }
+    if (method === 'POST' && pathOnly === '/api/admin/chat-moderation/config') {
+        ctx.previousChatModerationConfig = await queryOne<ChatModerationAuditSnapshot>(
+            'SELECT moderation_enabled, check_symbols, check_letters, check_links, max_message_length, max_letters_digits, timeout_minutes FROM chat_moderation_config WHERE id = 1'
+        );
+    }
+    if (method === 'PUT' && pathOnly.startsWith('/api/commands/')) {
+        ctx.previousCommand = await queryOne<CommandAuditSnapshot>(
+            'SELECT id, trigger, response, enabled, cooldown, message_type, color, description, in_rotation, access_level FROM custom_commands WHERE id = $1',
+            [decodeURIComponent(lastPart)]
+        );
+    }
+    if (method === 'PUT' && pathOnly.startsWith('/api/counters/')) {
+        ctx.previousCounter = await queryOne<CounterAuditSnapshot>(
+            'SELECT id, trigger, response_template, enabled, value, description, access_level FROM counters WHERE id = $1',
+            [decodeURIComponent(lastPart)]
+        );
+    }
+    return ctx;
+}
+
+function describeAdminAction(req: Request, context?: AdminAuditContext): { action: string; details?: string } {
+    const method = req.method.toUpperCase();
+    const pathOnly = req.originalUrl.split('?')[0];
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const pathParts = pathOnly.split('/').filter(Boolean);
+    const lastPart = pathParts[pathParts.length - 1] || '';
+    const prevPart = pathParts[pathParts.length - 2] || '';
+
+    if (method === 'POST' && pathOnly === '/api/admin/duels/disable') {
+        return { action: 'Админ выключил дуэли' };
+    }
+    if (method === 'POST' && pathOnly === '/api/admin/duels/enable') {
+        return { action: 'Админ включил дуэли' };
+    }
+    if (method === 'POST' && pathOnly === '/api/admin/duels/set-cooldown-skip') {
+        const skip = Boolean(body.skip);
+        return { action: skip ? 'Админ выключил КД дуэлей' : 'Админ включил КД дуэлей' };
+    }
+    if (method === 'PUT' && pathOnly === '/api/links') {
+        const prev = context?.previousLinksConfig;
+        const hasText = typeof body.allLinksText === 'string';
+        const hasRotation = typeof body.rotationIntervalMinutes === 'number';
+        const textChanged = hasText && (!prev || prev.all_links_text !== String(body.allLinksText));
+        const rotationChanged = hasRotation && (!prev || prev.rotation_interval_minutes !== Number(body.rotationIntervalMinutes));
+        if (textChanged && rotationChanged) {
+            return {
+                action: 'Админ обновил ссылки и интервал ротации',
+                details: prev
+                    ? `Интервал: ${prev.rotation_interval_minutes} -> ${Number(body.rotationIntervalMinutes)} мин; текст ссылок: изменён`
+                    : `Интервал: ${Number(body.rotationIntervalMinutes)} мин; текст ссылок: изменён`,
+            };
+        }
+        if (rotationChanged) {
+            return {
+                action: 'Админ поменял время ротации ссылок',
+                details: prev
+                    ? `Интервал: ${prev.rotation_interval_minutes} -> ${Number(body.rotationIntervalMinutes)} мин`
+                    : `Интервал: ${Number(body.rotationIntervalMinutes)} мин`,
+            };
+        }
+        if (textChanged) {
+            return { action: 'Админ обновил текст команды !ссылки', details: prev ? 'Текст: изменён' : undefined };
+        }
+        return { action: 'Админ сохранил ссылки без изменений' };
+    }
+    if (method === 'PUT' && pathOnly === '/api/raid') {
+        const prev = context?.previousRaidConfig;
+        if (typeof body.raidMessage === 'string') {
+            if (!prev || prev.raid_message !== body.raidMessage) {
+                return { action: 'Админ обновил сообщение при рейде', details: prev ? 'Сообщение: изменено' : undefined };
+            }
+            return { action: 'Админ сохранил сообщение рейда без изменений' };
+        }
+        return { action: 'Админ обновил сообщение при рейде' };
+    }
+    if (method === 'POST' && pathOnly === '/api/commands') {
+        return { action: 'Админ создал команду', details: `ID: ${String(body.id ?? '').slice(0, 80)}` };
+    }
+    if (method === 'PUT' && pathOnly.startsWith('/api/commands/')) {
+        const prev = context?.previousCommand;
+        const changes: string[] = [];
+        if (prev) {
+            if (body.trigger != null && String(body.trigger) !== prev.trigger) changes.push(`триггер: ${prev.trigger} -> ${String(body.trigger)}`);
+            if (body.response != null && String(body.response) !== prev.response) changes.push('изменён ответ');
+            if (body.enabled != null && Boolean(body.enabled) !== prev.enabled) changes.push(`статус: ${prev.enabled ? 'вкл' : 'выкл'} -> ${Boolean(body.enabled) ? 'вкл' : 'выкл'}`);
+            if (body.cooldown != null && Number(body.cooldown) !== prev.cooldown) changes.push(`кд: ${prev.cooldown}с -> ${Number(body.cooldown)}с`);
+            if (body.accessLevel != null && String(body.accessLevel) !== prev.access_level) changes.push(`доступ: ${prev.access_level} -> ${String(body.accessLevel)}`);
+            if (body.messageType != null && String(body.messageType) !== prev.message_type) changes.push(`тип: ${prev.message_type} -> ${String(body.messageType)}`);
+            if (body.color != null && String(body.color) !== prev.color) changes.push(`цвет: ${prev.color} -> ${String(body.color)}`);
+            if (body.description != null && String(body.description) !== prev.description) changes.push('изменено описание');
+            if (body.inRotation != null && Boolean(body.inRotation) !== prev.in_rotation) changes.push(`ротация: ${prev.in_rotation ? 'вкл' : 'выкл'} -> ${Boolean(body.inRotation) ? 'вкл' : 'выкл'}`);
+        }
+        if (changes.length === 0) return { action: 'Админ сохранил команду без изменений', details: `ID: ${decodeURIComponent(lastPart)}` };
+        return { action: 'Админ обновил команду', details: `ID: ${decodeURIComponent(lastPart)}; ${changes.join(', ')}` };
+    }
+    if (method === 'DELETE' && pathOnly.startsWith('/api/commands/')) {
+        return { action: 'Админ удалил команду', details: `ID: ${decodeURIComponent(lastPart)}` };
+    }
+    if (method === 'PATCH' && pathOnly.endsWith('/toggle') && pathOnly.startsWith('/api/commands/')) {
+        return { action: 'Админ переключил команду', details: `ID: ${decodeURIComponent(prevPart)}` };
+    }
+    if (method === 'PATCH' && pathOnly.endsWith('/rotation-toggle') && pathOnly.startsWith('/api/commands/')) {
+        return { action: 'Админ переключил ротацию команды', details: `ID: ${decodeURIComponent(prevPart)}` };
+    }
+    if (method === 'POST' && pathOnly.endsWith('/send') && pathOnly.startsWith('/api/commands/')) {
+        return { action: 'Админ отправил команду в чат', details: `ID: ${decodeURIComponent(prevPart)}` };
+    }
+    if (method === 'POST' && pathOnly === '/api/links/send') {
+        return { action: 'Админ отправил !ссылки в чат' };
+    }
+    if (method === 'POST' && pathOnly === '/api/counters') {
+        return { action: 'Админ создал счётчик', details: `ID: ${String(body.id ?? '').slice(0, 80)}` };
+    }
+    if (method === 'PUT' && pathOnly.startsWith('/api/counters/')) {
+        const prev = context?.previousCounter;
+        const changes: string[] = [];
+        if (prev) {
+            if (body.trigger != null && String(body.trigger) !== prev.trigger) changes.push(`триггер: ${prev.trigger} -> ${String(body.trigger)}`);
+            if (body.responseTemplate != null && String(body.responseTemplate) !== prev.response_template) changes.push('изменён шаблон');
+            if (body.enabled != null && Boolean(body.enabled) !== prev.enabled) changes.push(`статус: ${prev.enabled ? 'вкл' : 'выкл'} -> ${Boolean(body.enabled) ? 'вкл' : 'выкл'}`);
+            if (body.value != null && Number(body.value) !== prev.value) changes.push(`значение: ${prev.value} -> ${Number(body.value)}`);
+            if (body.accessLevel != null && String(body.accessLevel) !== prev.access_level) changes.push(`доступ: ${prev.access_level} -> ${String(body.accessLevel)}`);
+            if (body.description != null && String(body.description) !== prev.description) changes.push('изменено описание');
+        }
+        if (changes.length === 0) return { action: 'Админ сохранил счётчик без изменений', details: `ID: ${decodeURIComponent(lastPart)}` };
+        return { action: 'Админ обновил счётчик', details: `ID: ${decodeURIComponent(lastPart)}; ${changes.join(', ')}` };
+    }
+    if (method === 'DELETE' && pathOnly.startsWith('/api/counters/')) {
+        return { action: 'Админ удалил счётчик', details: `ID: ${decodeURIComponent(lastPart)}` };
+    }
+    if (method === 'PATCH' && pathOnly.endsWith('/toggle') && pathOnly.startsWith('/api/counters/')) {
+        return { action: 'Админ переключил счётчик', details: `ID: ${decodeURIComponent(prevPart)}` };
+    }
+    if (method === 'PATCH' && pathOnly.endsWith('/increment') && pathOnly.startsWith('/api/counters/')) {
+        return { action: 'Админ увеличил счётчик', details: `ID: ${decodeURIComponent(prevPart)}` };
+    }
+    if (method === 'PUT' && pathOnly === '/api/party/config') {
+        const changes: string[] = [];
+        const prev = context?.previousPartyConfig;
+        if (body.enabled != null) {
+            const nextEnabled = Boolean(body.enabled);
+            if (!prev || prev.enabled !== nextEnabled) {
+                changes.push(prev ? `партия: ${prev.enabled ? 'вкл' : 'выкл'} -> ${nextEnabled ? 'вкл' : 'выкл'}` : `партия: ${nextEnabled ? 'вкл' : 'выкл'}`);
+            }
+        }
+        if (body.trigger != null) {
+            const nextTrigger = String(body.trigger).trim();
+            if (!prev || prev.trigger !== nextTrigger) {
+                changes.push(prev ? `триггер: ${prev.trigger} -> ${nextTrigger}` : `триггер: ${nextTrigger}`);
+            }
+        }
+        if (body.responseText != null) {
+            const nextResponseText = String(body.responseText);
+            if (!prev || prev.response_text !== nextResponseText) {
+                changes.push(prev ? `текст ответа: изменён` : 'текст ответа: изменён');
+            }
+        }
+        if (body.elementsCount != null) {
+            const nextElementsCount = Number(body.elementsCount);
+            if (!prev || prev.elements_count !== nextElementsCount) {
+                changes.push(prev ? `элементов: ${prev.elements_count} -> ${nextElementsCount}` : `элементов: ${nextElementsCount}`);
+            }
+        }
+        if (body.quantityMax != null) {
+            const nextQuantityMax = Number(body.quantityMax);
+            if (!prev || prev.quantity_max !== nextQuantityMax) {
+                changes.push(prev ? `макс. кол-во: ${prev.quantity_max} -> ${nextQuantityMax}` : `макс. кол-во: ${nextQuantityMax}`);
+            }
+        }
+        if (body.skipCooldown != null) {
+            const nextSkipCooldown = Boolean(body.skipCooldown);
+            if (!prev || prev.skip_cooldown !== nextSkipCooldown) {
+                changes.push(prev ? `КД: ${prev.skip_cooldown ? 'выкл' : 'вкл'} -> ${nextSkipCooldown ? 'выкл' : 'вкл'}` : `КД: ${nextSkipCooldown ? 'выкл' : 'вкл'}`);
+            }
+        }
+        if (changes.length === 0) {
+            return { action: 'Админ открыл/сохранил настройки партии без изменений' };
+        }
+        return { action: 'Админ обновил настройки партии', details: changes.join(', ') };
+    }
+    if (method === 'PATCH' && pathOnly === '/api/party/config/skip-cooldown') {
+        const skip = Boolean(body.skipCooldown);
+        return { action: skip ? 'Админ выключил КД партии' : 'Админ включил КД партии' };
+    }
+    if (method === 'POST' && pathOnly === '/api/party/items') {
+        return { action: 'Админ добавил элемент партии' };
+    }
+    if (method === 'PUT' && pathOnly.startsWith('/api/party/items/')) {
+        return { action: 'Админ обновил элемент партии', details: `ID: ${decodeURIComponent(lastPart)}` };
+    }
+    if (method === 'DELETE' && pathOnly.startsWith('/api/party/items/')) {
+        return { action: 'Админ удалил элемент партии', details: `ID: ${decodeURIComponent(lastPart)}` };
+    }
+    if (method === 'POST' && pathOnly === '/api/admin/duels/config') {
+        const changes: string[] = [];
+        const prev = context?.previousDuelConfig;
+        if (body.timeoutMinutes != null && (!prev || Number(body.timeoutMinutes) !== prev.timeout_minutes)) changes.push(prev ? `таймаут: ${prev.timeout_minutes} -> ${Number(body.timeoutMinutes)} мин` : `таймаут: ${Number(body.timeoutMinutes)} мин`);
+        if (body.winPoints != null && (!prev || Number(body.winPoints) !== prev.win_points)) changes.push(prev ? `очки за победу: ${prev.win_points} -> ${Number(body.winPoints)}` : `очки за победу: ${Number(body.winPoints)}`);
+        if (body.lossPoints != null && (!prev || Number(body.lossPoints) !== prev.loss_points)) changes.push(prev ? `очки за поражение: ${prev.loss_points} -> ${Number(body.lossPoints)}` : `очки за поражение: ${Number(body.lossPoints)}`);
+        if (body.missPenalty != null && (!prev || Number(body.missPenalty) !== prev.miss_penalty)) changes.push(prev ? `штраф за промах: ${prev.miss_penalty} -> ${Number(body.missPenalty)}` : `штраф за промах: ${Number(body.missPenalty)}`);
+        if (changes.length === 0) return { action: 'Админ сохранил настройки дуэлей без изменений' };
+        return {
+            action: 'Админ обновил настройки дуэлей',
+            details: changes.join(', '),
+        };
+    }
+    if (method === 'POST' && pathOnly === '/api/admin/duels/daily-config') {
+        const changes: string[] = [];
+        const prev = context?.previousDuelDailyConfig;
+        if (body.dailyGamesCount != null && (!prev || Number(body.dailyGamesCount) !== prev.daily_games_count)) changes.push(prev ? `игр в день: ${prev.daily_games_count} -> ${Number(body.dailyGamesCount)}` : `игр в день: ${Number(body.dailyGamesCount)}`);
+        if (body.dailyRewardPoints != null && (!prev || Number(body.dailyRewardPoints) !== prev.daily_reward_points)) changes.push(prev ? `награда за дейлик: ${prev.daily_reward_points} -> ${Number(body.dailyRewardPoints)}` : `награда за дейлик: ${Number(body.dailyRewardPoints)}`);
+        if (body.streakWinsCount != null && (!prev || Number(body.streakWinsCount) !== prev.streak_wins_count)) changes.push(prev ? `побед для серии: ${prev.streak_wins_count} -> ${Number(body.streakWinsCount)}` : `побед для серии: ${Number(body.streakWinsCount)}`);
+        if (body.streakRewardPoints != null && (!prev || Number(body.streakRewardPoints) !== prev.streak_reward_points)) changes.push(prev ? `награда за серию: ${prev.streak_reward_points} -> ${Number(body.streakRewardPoints)}` : `награда за серию: ${Number(body.streakRewardPoints)}`);
+        if (changes.length === 0) return { action: 'Админ сохранил дейлики дуэлей без изменений' };
+        return {
+            action: 'Админ обновил дейлики дуэлей',
+            details: changes.join(', '),
+        };
+    }
+    if (method === 'POST' && pathOnly === '/api/admin/chat-moderation/config') {
+        const changes: string[] = [];
+        const prev = context?.previousChatModerationConfig;
+        if (body.moderationEnabled != null && (!prev || Boolean(body.moderationEnabled) !== prev.moderation_enabled)) changes.push(prev ? `модерация: ${prev.moderation_enabled ? 'вкл' : 'выкл'} -> ${Boolean(body.moderationEnabled) ? 'вкл' : 'выкл'}` : `модерация: ${Boolean(body.moderationEnabled) ? 'вкл' : 'выкл'}`);
+        if (body.checkSymbols != null && (!prev || Boolean(body.checkSymbols) !== prev.check_symbols)) changes.push(prev ? `символы: ${prev.check_symbols ? 'вкл' : 'выкл'} -> ${Boolean(body.checkSymbols) ? 'вкл' : 'выкл'}` : `символы: ${Boolean(body.checkSymbols) ? 'вкл' : 'выкл'}`);
+        if (body.checkLetters != null && (!prev || Boolean(body.checkLetters) !== prev.check_letters)) changes.push(prev ? `буквы/цифры: ${prev.check_letters ? 'вкл' : 'выкл'} -> ${Boolean(body.checkLetters) ? 'вкл' : 'выкл'}` : `буквы/цифры: ${Boolean(body.checkLetters) ? 'вкл' : 'выкл'}`);
+        if (body.checkLinks != null && (!prev || Boolean(body.checkLinks) !== prev.check_links)) changes.push(prev ? `ссылки: ${prev.check_links ? 'вкл' : 'выкл'} -> ${Boolean(body.checkLinks) ? 'вкл' : 'выкл'}` : `ссылки: ${Boolean(body.checkLinks) ? 'вкл' : 'выкл'}`);
+        if (body.maxMessageLength != null && (!prev || Number(body.maxMessageLength) !== prev.max_message_length)) changes.push(prev ? `лимит сообщения: ${prev.max_message_length} -> ${Number(body.maxMessageLength)}` : `лимит сообщения: ${Number(body.maxMessageLength)}`);
+        if (body.maxLettersDigits != null && (!prev || Number(body.maxLettersDigits) !== prev.max_letters_digits)) changes.push(prev ? `лимит букв/цифр: ${prev.max_letters_digits} -> ${Number(body.maxLettersDigits)}` : `лимит букв/цифр: ${Number(body.maxLettersDigits)}`);
+        if (body.timeoutMinutes != null && (!prev || Number(body.timeoutMinutes) !== prev.timeout_minutes)) changes.push(prev ? `таймаут: ${prev.timeout_minutes} -> ${Number(body.timeoutMinutes)} мин` : `таймаут: ${Number(body.timeoutMinutes)} мин`);
+        if (changes.length === 0) return { action: 'Админ сохранил модерацию чата без изменений' };
+        return { action: 'Админ обновил модерацию чата', details: changes.join(', ') };
+    }
+    if (method === 'POST' && pathOnly === '/api/admin/link-whitelist') {
+        const count = Array.isArray(body.patterns) ? body.patterns.length : 0;
+        return { action: 'Админ обновил whitelist ссылок', details: `Паттернов: ${count}` };
+    }
+    if (method === 'POST' && pathOnly === '/api/admin/duels/reset-reward-flags') {
+        return { action: 'Админ сбросил флаги наград дуэлей' };
+    }
+    if (method === 'POST' && pathOnly === '/api/admin/duels/reset-points') {
+        return { action: 'Админ сбросил очки дуэлей' };
+    }
+    if (method === 'POST' && pathOnly === '/api/admin/pardon-all') {
+        return { action: 'Админ запустил амнистию дуэлей' };
+    }
+    if (method === 'POST' && pathOnly.startsWith('/api/admin/duels/pardon/')) {
+        return { action: 'Админ амнистировал игрока', details: `Пользователь: ${decodeURIComponent(lastPart)}` };
+    }
+
+    return { action: `${method} ${pathOnly}` };
+}
+
+// Автоматический аудит: все успешные mutating-запросы админки пишем в admin_action_journal
+app.use((req: Request, res: Response, next: () => void) => {
+    const method = req.method.toUpperCase();
+    const isMutating = method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS';
+    const admin = (req as Request & { adminUser?: JwtPayload }).adminUser;
+    if (!isMutating || !admin?.username) {
+        next();
+        return;
+    }
+    void loadAdminAuditContext(req).then((ctx) => {
+        const described = describeAdminAction(req, ctx);
+        res.on('finish', () => {
+            if (res.statusCode >= 200 && res.statusCode < 400) {
+                if (described.action.includes('без изменений')) return;
+                logAdminAction(admin.username, described.action, described.details);
+            }
+        });
+        next();
+    }).catch(() => {
+        const described = describeAdminAction(req);
+        res.on('finish', () => {
+            if (res.statusCode >= 200 && res.statusCode < 400) {
+                if (described.action.includes('без изменений')) return;
+                logAdminAction(admin.username, described.action, described.details);
+            }
+        });
+        next();
+    });
+});
 
 // Интерфейс команды
 interface CustomCommand {
@@ -1244,6 +1631,64 @@ app.get('/api/journal', async (req: Request, res: Response) => {
     } catch (error) {
         console.error('❌ Ошибка загрузки журнала:', error);
         res.status(500).json({ error: 'Ошибка загрузки журнала' });
+    }
+});
+
+type AdminJournalRow = { id: number; created_at: Date; admin_username: string; action: string; details: string };
+
+app.get('/api/admin-journal', async (req: Request, res: Response) => {
+    try {
+        const page = Math.max(1, parseInt(req.query.page as string) || 1);
+        const limit = Math.min(100, Math.max(10, parseInt(req.query.limit as string) || 25));
+        const search = typeof req.query.search === 'string' ? req.query.search.trim().slice(0, 200) : '';
+        const days = Math.min(30, Math.max(1, parseInt(req.query.days as string) || 7));
+        const offset = (page - 1) * limit;
+
+        let whereClause = `WHERE created_at >= NOW() - ($1::int * INTERVAL '1 day')`;
+        const params: (string | number)[] = [days];
+        let paramIndex = 2;
+
+        if (search) {
+            whereClause += ` AND (LOWER(admin_username) LIKE $${paramIndex} OR LOWER(action) LIKE $${paramIndex} OR LOWER(details) LIKE $${paramIndex})`;
+            params.push(`%${search.toLowerCase()}%`);
+            paramIndex++;
+        }
+
+        const countResult = await queryOne<{ count: string }>(
+            `SELECT COUNT(*)::text AS count FROM admin_action_journal ${whereClause}`,
+            params,
+        );
+        const total = parseInt(countResult?.count || '0', 10);
+
+        const limitParam = paramIndex;
+        const offsetParam = paramIndex + 1;
+        const rows = await query<AdminJournalRow>(
+            `SELECT id, created_at, admin_username, action, details
+             FROM admin_action_journal
+             ${whereClause}
+             ORDER BY created_at DESC
+             LIMIT $${limitParam} OFFSET $${offsetParam}`,
+            [...params, limit, offset],
+        );
+
+        res.json({
+            items: rows.map((r) => ({
+                id: r.id,
+                createdAt: r.created_at,
+                username: r.admin_username,
+                message: r.details ? `${r.action} — ${r.details}` : r.action,
+                eventType: 'system',
+            })),
+            pagination: {
+                page,
+                limit,
+                total,
+                totalPages: Math.ceil(total / limit),
+            },
+        });
+    } catch (error) {
+        console.error('❌ Ошибка загрузки журнала админов:', error);
+        res.status(500).json({ error: 'Ошибка загрузки журнала админов' });
     }
 });
 

@@ -7,7 +7,7 @@ import type { LinkDialogElement } from '../dialog/link-dialog/link-dialog';
 import type { LinkDialogSaveDetail } from '../../../interfaces/link-dialog';
 import { clearAdminAuth, getAdminPassword, setAdminPassword } from '../../../admin-auth';
 
-const VALID_TABS = ['commands', 'counters', 'duels', 'party', 'moderation', 'logs'] as const;
+const VALID_TABS = ['commands', 'counters', 'duels', 'party', 'moderation', 'logs', 'admin-logs'] as const;
 
 function getAdminTabFromHash(): (typeof VALID_TABS)[number] {
   const hash = window.location.hash.slice(1).toLowerCase();
@@ -129,6 +129,9 @@ export class AdminPanelElement extends HTMLElement {
       // инициируем принудительную загрузку при каждом заходе на вкладку.
       if (targetTab === 'logs') {
         window.dispatchEvent(new CustomEvent('admin-logs-open'));
+      }
+      if (targetTab === 'admin-logs') {
+        window.dispatchEvent(new CustomEvent('admin-admin-logs-open'));
       }
       if (tabsContainer) {
         btn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });

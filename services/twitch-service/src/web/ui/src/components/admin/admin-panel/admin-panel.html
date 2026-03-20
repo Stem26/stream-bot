@@ -43,6 +43,7 @@
     <button class="tab-btn" data-tab="party">🎉 Партия</button>
     <button class="tab-btn" data-tab="moderation">🛡️ Модерация чата</button>
     <button class="tab-btn" data-tab="logs">📜 Журналы</button>
+    <button class="tab-btn" data-tab="admin-logs">🧾 Журнал админов</button>
   </div>
   <div class="tab-content" id="tab-commands">
     <div class="controls">
@@ -125,5 +126,13 @@
   <div class="tab-content"
        id="tab-logs">
     <journal-table></journal-table>
+  </div>
+  <div class="tab-content"
+       id="tab-admin-logs">
+    <journal-table
+      data-source="admin"
+      data-open-event="admin-admin-logs-open"
+      data-title="Журнал действий админов"
+      data-description="Показывает изменения из админ-панели (кто, когда и что изменил)."></journal-table>
   </div>
 </div>

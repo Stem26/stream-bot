@@ -2,7 +2,7 @@
 import template from './journal-table.html?raw';
 import './journal-table.scss';
 import { showAlert } from '../../../../alerts';
-import { fetchJournal } from '../../../../api';
+import { fetchAdminJournal, fetchJournal } from '../../../../api';
 import type { JournalEntry, JournalResponse } from '../../../../types';
 import { getAdminPassword } from '../../../../admin-auth';
 
@@ -26,20 +26,38 @@ export class JournalTableElement extends HTMLElement {
   private currentDays = 7;
   private lastResponse: JournalResponse | null = null;
   private isLoading = false;
+  private source: 'event' | 'admin' = 'event';
+  private openEventName = 'admin-logs-open';
 
   connectedCallback(): void {
     if (this.initialized) return;
     this.initialized = true;
     this.innerHTML = template;
+    this.source = this.getAttribute('data-source') === 'admin' ? 'admin' : 'event';
+    this.openEventName = this.getAttribute('data-open-event') || 'admin-logs-open';
+    const title = this.getAttribute('data-title');
+    const description = this.getAttribute('data-description');
+    if (title) {
+      const h3 = this.querySelector<HTMLElement>('.journal-table-header h3');
+      if (h3) h3.textContent = title;
+    }
+    if (description) {
+      const desc = this.querySelector<HTMLElement>('.journal-description');
+      if (desc) desc.textContent = description;
+    }
+    if (this.source === 'admin') {
+      const typeFilter = this.querySelector<HTMLElement>('#journal-type-filter');
+      if (typeFilter) typeFilter.style.display = 'none';
+    }
     this.setupHandlers();
     if (getAdminPassword()) void this.loadJournal();
     window.addEventListener('admin-auth-success', this.handleAuthSuccess);
-    window.addEventListener('admin-logs-open', this.handleLogsOpen);
+    window.addEventListener(this.openEventName, this.handleLogsOpen);
   }
 
   disconnectedCallback(): void {
     window.removeEventListener('admin-auth-success', this.handleAuthSuccess);
-    window.removeEventListener('admin-logs-open', this.handleLogsOpen);
+    window.removeEventListener(this.openEventName, this.handleLogsOpen);
   }
 
   private handleAuthSuccess = (): void => {
@@ -130,13 +148,20 @@ export class JournalTableElement extends HTMLElement {
     if (loadingEl) loadingEl.style.display = 'block';
 
     try {
-      const data = await fetchJournal({
-        page: this.currentPage,
-        limit: this.currentLimit,
-        search: this.currentSearch || undefined,
-        type: this.currentType || undefined,
-        days: this.currentDays,
-      });
+      const data = this.source === 'admin'
+        ? await fetchAdminJournal({
+            page: this.currentPage,
+            limit: this.currentLimit,
+            search: this.currentSearch || undefined,
+            days: this.currentDays,
+          })
+        : await fetchJournal({
+            page: this.currentPage,
+            limit: this.currentLimit,
+            search: this.currentSearch || undefined,
+            type: this.currentType || undefined,
+            days: this.currentDays,
+          });
       this.renderItems(data);
     } catch (error) {
       if (error instanceof Error) {
