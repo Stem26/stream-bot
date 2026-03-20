@@ -99,7 +99,8 @@ counter-dialog .char-counter {
 }
 
 counter-dialog .form-group input,
-counter-dialog .form-group textarea {
+counter-dialog .form-group textarea,
+counter-dialog .form-group select {
   width: 100%;
   padding: 10px;
   border: 2px solid #e0e0e0;
@@ -121,6 +122,12 @@ counter-dialog .form-group textarea {
   min-height: 100px;
   font-family: Menlo, Consolas, monospace;
   max-height: 200px;
+}
+
+counter-dialog .form-group input.is-invalid,
+counter-dialog .form-group textarea.is-invalid,
+counter-dialog .form-group select.is-invalid {
+  border-color: #dc3545;
 }
 
 counter-dialog .form-group small {
