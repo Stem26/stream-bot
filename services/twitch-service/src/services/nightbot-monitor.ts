@@ -196,7 +196,6 @@ export class NightBotMonitor {
     private privmsgIdCache = new Map<string, string>();
     private static readonly PRIVMSG_ID_CACHE_MAX = 100;
 
-    // Команды, которые работают всегда (не требуют активного стрима)
     private readonly ALWAYS_AVAILABLE_COMMANDS = new Set([
         '!discord', '!ds', '!дискорд', '!дс',
         '!tg', '!тг',
@@ -210,7 +209,9 @@ export class NightBotMonitor {
         '!игры', '!help',
         '!дуэль', '!duel', '!fight',
         '!старт_дуэль', '!start_duel',
+        '!стартдуэль', '!startduel',
         '!стоп_дуэль', '!stop_duel',
+        '!стопдуэль', '!stopduel',
         '!амнистия', '!pardon'
     ]);
 
@@ -261,8 +262,8 @@ export class NightBotMonitor {
         register(['!дуэль'], (ch, u, m, msg) => void this.handleDuelCommand(ch, u, m, msg));
         register(['!принять'], (ch, u, m, msg) => void this.handleAcceptDuelCommand(ch, u, msg));
         register(['!отклонить'], (ch, u, m, msg) => void this.handleDeclineDuelCommand(ch, u, msg));
-        register(['!стоп_дуэль'], (ch, u, m, msg) => void this.handleDisableDuelsCommand(ch, u, msg));
-        register(['!старт_дуэль'], (ch, u, m, msg) => void this.handleEnableDuelsCommand(ch, u, msg));
+        register(['!стоп_дуэль', '!стопдуэль', '!stop_duel', '!stopduel'], (ch, u, m, msg) => void this.handleDisableDuelsCommand(ch, u, msg));
+        register(['!старт_дуэль', '!стартдуэль', '!start_duel', '!startduel'], (ch, u, m, msg) => void this.handleEnableDuelsCommand(ch, u, msg));
         register(['!амнистия'], (ch, u, m, msg) => void this.handleDuelPardonCommand(ch, u, msg));
         register(['!крыса'], (ch, u, m, msg) => void this.handleRatCommand(ch, u, m, msg));
         register(['!милашка'], (ch, u, m, msg) => void this.handleCutieCommand(ch, u, m, msg));

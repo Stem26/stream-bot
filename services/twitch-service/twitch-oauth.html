@@ -169,7 +169,7 @@
 <body>
     <div class="container">
         <h1>🎮 Twitch OAuth</h1>
-        <p class="subtitle">Получение токена стримера для управления каналом</p>
+        <p class="subtitle">Получение токена для Twitch бота (чат + управление + модераторы)</p>
 
         <div class="info-box">
             <h3>📋 Что это дает?</h3>
@@ -180,7 +180,8 @@
                 <li>Управлять тегами стрима (команда <code>!tags</code>)</li>
             </ul>
             <div class="scopes">
-                <strong>Запрашиваемые права:</strong> channel:manage:broadcast
+                <strong>Запрашиваемые права (по умолчанию):</strong><br>
+                chat:read, chat:edit, channel:manage:broadcast, moderation:read, channel:manage:redemptions
             </div>
         </div>
 
@@ -197,16 +198,21 @@
             </div>
 
             <div class="token-box">
-                <div class="token-label">Access Token (TWITCH_ACCESS_TOKEN):</div>
+                <div class="token-label">Access Token (один токен для двух env):</div>
                 <div class="token-value" id="accessToken"></div>
                 <button class="copy-btn" onclick="copyToken('accessToken')">📋 Копировать</button>
+                <div style="margin-top: 10px; color: #555; font-size: 13px; line-height: 1.6;">
+                    Укажи это значение в:
+                    <div><code>TWITCH_ACCESS_TOKEN</code></div>
+                    <div><code>BROADCAST_TWITCH_ACCESS_TOKEN</code></div>
+                </div>
             </div>
 
             <div class="warning">
                 <strong>⚠️ Важно:</strong><br>
-                1. Сохраните этот токен в файл <code>.env</code> как <code>TWITCH_ACCESS_TOKEN</code><br>
-                2. Никому не показывайте этот токен!<br>
-                3. Токен выдан от имени стримера <strong id="streamerName"></strong>
+                1. Никому не показывайте этот токен!<br>
+                2. Токен выдан от имени стримера <strong id="streamerName"></strong><br>
+                3. Помести токен в <code>.env</code> как <code>TWITCH_ACCESS_TOKEN</code> и <code>BROADCAST_TWITCH_ACCESS_TOKEN</code>
             </div>
         </div>
     </div>
@@ -214,7 +220,8 @@
     <script>
         const CLIENT_ID = 'gp762nuuoqcoxypju8c569th9wz7q5';
         const REDIRECT_URI = window.location.origin + window.location.pathname;
-        const SCOPES = 'channel:manage:broadcast';
+        // Запрашиваем сразу все нужные scope, чтобы не приходилось повторно "дотыкать" галочки на стороне Twitch.
+        const SCOPES = 'chat:read chat:edit channel:manage:broadcast moderation:read channel:manage:redemptions';
 
         document.getElementById('authBtn').addEventListener('click', () => {
             const authUrl = `https://id.twitch.tv/oauth2/authorize?client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=token&scope=${encodeURIComponent(SCOPES)}`;
