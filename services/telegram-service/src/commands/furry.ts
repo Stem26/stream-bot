@@ -27,9 +27,15 @@ export async function furryCommand(ctx: BotContext) {
   }
 
   const canUse = canUseFurryToday(player);
+  const isStreamer = ctx.config.streamerUserIds.includes(userId);
 
   if (canUse) {
-    const percentage = Math.floor(Math.random() * 101);
+    let percentage: number;
+    if (isStreamer) {
+      percentage = Math.random() < 0.1 ? 100 : -100;
+    } else {
+      percentage = Math.floor(Math.random() * 101);
+    }
     player.lastFurryDate = today;
     player.username = username;
     player.firstName = firstName;

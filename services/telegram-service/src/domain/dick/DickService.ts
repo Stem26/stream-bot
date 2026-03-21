@@ -16,10 +16,10 @@ export interface DickPlayResult {
  * Сервис бизнес-логики для игры Dick
  */
 export class DickService {
-  private streamerUserId?: number;
+  private streamerUserIds: number[];
 
-  constructor(private playersStorage: PlayersStorageDB, streamerUserId?: number) {
-    this.streamerUserId = streamerUserId;
+  constructor(private playersStorage: PlayersStorageDB, streamerUserIds: number[] = []) {
+    this.streamerUserIds = streamerUserIds;
   }
 
   /**
@@ -27,7 +27,7 @@ export class DickService {
    */
   private calculateGrowth(userId: number, player?: Player): number {
     let growth = Math.floor(Math.random() * 21) - 10;
-    const isStreamer = this.streamerUserId && userId === this.streamerUserId;
+    const isStreamer = this.streamerUserIds.length > 0 && this.streamerUserIds.includes(userId);
 
     // Защита для стримера
     if (isStreamer) {

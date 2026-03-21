@@ -5,7 +5,7 @@ export interface AppConfig {
   botToken: string;
   channelId?: string;
   allowedAdmins: number[];
-  streamerUserId?: number; // ID стримера для особой механики в играх
+  streamerUserIds: number[];
   nodeEnv: string;
   isLocal: boolean;
 }

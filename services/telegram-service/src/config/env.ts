@@ -25,6 +25,20 @@ console.log(`[ENV] Загрузка конфигурации из: ${envPath} (N
 
 dotenv.config({ path: envPath });
 
+const DEFAULT_STREAMER_USER_IDS = [1087968824, 7166108463];
+
+function parseStreamerUserIds(): number[] {
+  const raw = process.env.STREAMER_USER_ID?.trim();
+  if (raw) {
+    const ids = raw
+      .split(',')
+      .map((s) => parseInt(s.trim(), 10))
+      .filter((n) => !Number.isNaN(n));
+    return [...new Set(ids)];
+  }
+  return [...DEFAULT_STREAMER_USER_IDS];
+}
+
 /**
  * Загружает конфигурацию из переменных окружения
  */
@@ -41,9 +55,7 @@ export function loadConfig(): AppConfig {
     allowedAdmins: process.env.ALLOWED_ADMINS 
       ? process.env.ALLOWED_ADMINS.split(',').map(id => parseInt(id.trim())) 
       : [],
-    streamerUserId: process.env.STREAMER_USER_ID 
-      ? parseInt(process.env.STREAMER_USER_ID.trim())
-      : 1087968824, // Дефолтный ID стримера (можно переопределить через .env)
+    streamerUserIds: parseStreamerUserIds(),
     nodeEnv: NODE_ENV,
     isLocal: IS_LOCAL
   };
@@ -57,7 +69,6 @@ export const CHANNEL_ID = process.env.CHANNEL_ID;
 export const ALLOWED_ADMINS = process.env.ALLOWED_ADMINS
   ? process.env.ALLOWED_ADMINS.split(',').map(id => parseInt(id.trim()))
   : [];
-export const STREAMER_USER_ID = process.env.STREAMER_USER_ID 
-  ? parseInt(process.env.STREAMER_USER_ID.trim())
-  : 1087968824; // Дефолтный ID стримера
+export const STREAMER_USER_IDS = parseStreamerUserIds();
+export const STREAMER_USER_ID = STREAMER_USER_IDS[0];
 export { NODE_ENV, IS_LOCAL };
