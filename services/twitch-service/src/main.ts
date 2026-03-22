@@ -71,22 +71,12 @@ async function main() {
     // Monitor stream online/offline -> отправляет уведомления в TG + announcement в Twitch
     const streamMonitor = new TwitchEventSubNative(telegramBot.telegram);
 
-    await streamMonitor.connect(
-        config.twitch.channel,
-        config.twitch.accessToken,
-        config.twitch.clientId,
-        config.telegram.channelId,
-        config.telegram.chatId
-    );
-
-    if (config.twitch.broadcastAccessToken) {
-        streamMonitor.setBroadcastAccessToken(config.twitch.broadcastAccessToken);
-    }
-
+    // Провайдер ротации должен быть задан ДО connect(): иначе при session_welcome + checkCurrentStreamStatus
+    // startLinkRotation() увидит getLinkRotationItems === null и навсегда пропустит ротацию до следующего оффлайна.
     streamMonitor.setLinkRotationProvider(
         async () => {
             const rows = await query<{ response: string; color: string }>(
-                'SELECT response, color FROM custom_commands WHERE in_rotation = true ORDER BY id'
+                'SELECT response, color FROM custom_commands WHERE in_rotation = true AND enabled = true ORDER BY id'
             );
             return rows.map((r) => ({ message: r.response, color: r.color || 'primary' }));
         },
@@ -98,12 +88,23 @@ async function main() {
         }
     );
 
-    // При изменении интервала ротации ссылок в админке — мягко перезапускаем таймеры, сохраняя текущий индекс
     setOnLinksConfigUpdatedCallback(() => {
         streamMonitor.reloadLinkRotation();
     });
 
     streamMonitor.setRaidMessageProvider(getRaidMessageFromDb);
+
+    if (config.twitch.broadcastAccessToken) {
+        streamMonitor.setBroadcastAccessToken(config.twitch.broadcastAccessToken);
+    }
+
+    await streamMonitor.connect(
+        config.twitch.channel,
+        config.twitch.accessToken,
+        config.twitch.clientId,
+        config.telegram.channelId,
+        config.telegram.chatId
+    );
 
     setOnChatModerationConfigUpdatedCallback(() => {
         nightBotMonitor.invalidateSpamConfigCache();
