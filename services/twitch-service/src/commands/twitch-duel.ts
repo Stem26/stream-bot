@@ -125,6 +125,12 @@ export function setDuelCooldownSkipped(skip: boolean): void {
   duelCooldownSkipped = skip;
 }
 
+/** Логин аккаунта, от которого бот пишет в чат (из OAuth validate). Если цель персонального вызова совпадает — бот сразу принимает дуэль. */
+let duelResponderLogin: string | null = null;
+export function setDuelResponderLogin(login: string | null | undefined): void {
+  duelResponderLogin = login ? login.trim().toLowerCase() : null;
+}
+
 /** Вызывается при изменении списка забаненных (дуэль/амнистия) — для реал-тайм обновления админки по WebSocket */
 let onDuelBannedListChanged: (() => void) | null = null;
 export function setOnDuelBannedListChanged(fn: (() => void) | null): void {
@@ -271,7 +277,7 @@ async function handlePersonalChallenge(
   channel: string,
   players: Map<string, TwitchPlayerData>,
   now: number
-): Promise<{ response: string; loser?: string; loser2?: string; bothLost?: boolean }> {
+): Promise<{ response: string; loser?: string; loser2?: string; bothLost?: boolean; extraMessages?: string[] }> {
   // Очищаем имя от @ и невидимых символов
   let cleanTarget = targetUsername.toLowerCase().replace(/^@+/, '');
   cleanTarget = cleanTarget.replace(/[\u200B-\u200D\uFEFF\u034F\u061C\u180E]/g, '').trim();
@@ -407,7 +413,13 @@ async function handlePersonalChallenge(
   console.log(`⚔️ Создан персональный вызов #${challenges.size}: ${challengerUsername} -> ${cleanTarget} в канале ${channel}`);
 
   await storage.saveTwitchPlayers(players);
-  
+
+  // Персональный вызов бота: КД канала и вызывающего уже проверены выше; дальше — как !принять (личный КД/таймаут бота и т.д.)
+  if (duelResponderLogin && targetNormalized === duelResponderLogin) {
+    console.log(`🤖 Авто-принятие дуэли ботом (${duelResponderLogin})`);
+    return await acceptDuelChallenge(cleanTarget, channel);
+  }
+
   return {
     response: `@${challengerUsername} вызывает @${cleanTarget} на дуэль! ⚔️ У @${cleanTarget} есть 2 минуты, чтобы написать !принять или !отклонить`
   };
