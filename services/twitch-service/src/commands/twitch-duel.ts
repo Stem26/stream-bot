@@ -40,6 +40,8 @@ type DuelChallengeEntry = {
 // challengeId формируется как "challenger_challenged" (оба normalized)
 const duelQueueByChannel = new Map<string, DuelQueueEntry>();
 const duelCooldownByChannel = new Map<string, number>();
+/** Последняя дуэль с участием бота в канале — не чаще BOT_DUEL_COOLDOWN_MS между такими дуэлями */
+const duelBotCooldownByChannel = new Map<string, number>();
 const duelChallengesByChannel = new Map<string, Map<string, DuelChallengeEntry>>();
 const DEFAULT_POINTS = 1000;
 export type DuelConfig = { timeoutMinutes: number; winPoints: number; lossPoints: number; missPenalty: number };
@@ -68,6 +70,8 @@ export function getDuelTimeoutSeconds(): number {
 
 const DUEL_COOLDOWN_MS = 60 * 1000; // 1 минута общий КД канала
 const DUEL_PLAYER_COOLDOWN_MS = 60 * 1000; // 1 минута личный КД игрока (победитель)
+/** КД после дуэли с аккаунтом бота (антиспам фарма очков на авто-принятии) */
+const BOT_DUEL_COOLDOWN_MS = 10 * 60 * 1000;
 const CHALLENGE_TIMEOUT_MS = 2 * 60 * 1000; // 2 минуты на принятие вызова
 const QUEUE_TIMEOUT_MS = 2 * 60 * 1000; // 2 минуты ожидания в общей очереди
 const STREAMER_WIN_CHANCE = 0.9; // 90% шанс победы для стримера
@@ -129,6 +133,20 @@ export function setDuelCooldownSkipped(skip: boolean): void {
 let duelResponderLogin: string | null = null;
 export function setDuelResponderLogin(login: string | null | undefined): void {
   duelResponderLogin = login ? login.trim().toLowerCase() : null;
+}
+
+function markBotDuelParticipationCooldown(
+  channel: string,
+  player1Normalized: string,
+  player2Normalized: string,
+  now: number
+): void {
+  if (duelCooldownSkipped || !duelResponderLogin) return;
+  const b = duelResponderLogin;
+  if (player1Normalized === b || player2Normalized === b) {
+    duelBotCooldownByChannel.set(channel, now);
+    console.log(`⏱️ КД дуэли с ботом: ${BOT_DUEL_COOLDOWN_MS / 60000} мин (канал ${channel})`);
+  }
 }
 
 /** Вызывается при изменении списка забаненных (дуэль/амнистия) — для реал-тайм обновления админки по WebSocket */
@@ -392,6 +410,22 @@ async function handlePersonalChallenge(
     }
   }
 
+  // Антифарм: дуэль с ботом не чаще чем раз в BOT_DUEL_COOLDOWN_MS
+  if (
+    duelResponderLogin &&
+    targetNormalized === duelResponderLogin &&
+    !duelCooldownSkipped
+  ) {
+    const lastBotDuel = duelBotCooldownByChannel.get(channel);
+    if (lastBotDuel && now - lastBotDuel < BOT_DUEL_COOLDOWN_MS) {
+      const minutesLeft = Math.ceil((BOT_DUEL_COOLDOWN_MS - (now - lastBotDuel)) / 60000);
+      const botCdMin = Math.round(BOT_DUEL_COOLDOWN_MS / 60000);
+      return {
+        response: `@${challengerUsername}, с ботом можно дуэлиться не чаще раз в ${botCdMin} мин. Подожди ещё ${minutesLeft} мин.`
+      };
+    }
+  }
+
   // Создаём новый вызов
   const challenges = getChallengesForChannel(channel);
   const challengeId = `${challengerNormalized}_${targetNormalized}`;
@@ -538,6 +572,8 @@ async function executeDuel(
 
     void sendOverlayDuel(player1Username, player2Username, 'all-lose');
 
+    markBotDuelParticipationCooldown(channel, player1Normalized, player2Normalized, now);
+
     return {
       response: `@${player1Username} и @${player2Username} сошлись в дуэли! Оба попали и убили друг друга! 💀💀 Оба получают (-${duelConfig.lossPoints}) очков и таймаут на ${duelConfig.timeoutMinutes} мин.`,
       loser: player1Username,
@@ -569,6 +605,8 @@ async function executeDuel(
 
     // Сообщаем о результате дуэли в Overlay (оба выжили / ничья)
     void sendOverlayDuel(player1Username, player2Username, 'all-win');
+
+    markBotDuelParticipationCooldown(channel, player1Normalized, player2Normalized, now);
 
     return {
       response: `@${player1Username} и @${player2Username} сошлись в дуэли! Оба промахнулись! 😅 Живы оба, но позор на всю деревню! (-${duelConfig.missPenalty}) очков каждому.`,
@@ -670,6 +708,8 @@ async function executeDuel(
       `@${winner} получил награду за серию из ${dailyQuestConfig.streakWinsCount} побед подряд: +${dailyQuestConfig.streakRewardPoints} очков! 🔥`
     );
   }
+
+  markBotDuelParticipationCooldown(channel, player1Normalized, player2Normalized, now);
 
   return {
     response: `@${player1Username} и @${player2Username} сошлись в дуэли! Победитель @${winner} (+${duelConfig.winPoints}), проигравший @${loser} (-${duelConfig.lossPoints}) и в таймаут на ${duelConfig.timeoutMinutes} мин.`,
