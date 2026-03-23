@@ -75,6 +75,8 @@ const STREAM_WELCOME_MESSAGE =
 
 const ANNOUNCEMENT_REPEAT_INTERVAL_MS = 60 * 60 * 1000;
 const DEFAULT_LINK_ROTATION_INTERVAL_MS = 13 * 60 * 1000;
+const OFFLINE_STATUS_POLL_MS = 30 * 1000;
+const OFFLINE_EVENT_TRIGGER_PROBE_COOLDOWN_MS = 15 * 1000;
 
 export type LinkRotationItem = { message: string; color: string };
 
@@ -122,10 +124,13 @@ export class TwitchEventSubNative {
     private broadcastAccessToken: string | null = null;
 
     private keepAliveInterval: NodeJS.Timeout | null = null;
+    private offlineProbeInterval: NodeJS.Timeout | null = null;
     private reconnectAttempts: number = 0;
     private maxReconnectAttempts: number = 5;
     private reconnectDelay: number = 5000;
     private lastKeepaliveStatus: 'active' | 'error' | null = null;
+    private statusProbeInFlight: boolean = false;
+    private lastOfflineEventProbeAt: number = 0;
 
     constructor(telegram: Telegram) {
         this.telegram = telegram;
@@ -187,6 +192,7 @@ export class TwitchEventSubNative {
             }
 
             await this.connectWebSocket();
+            this.startOfflineProbeLoop();
 
             log('CONNECTION', {
                 service: 'TwitchEventSubNative',
@@ -501,6 +507,7 @@ export class TwitchEventSubNative {
             saveAnnouncementState(this.announcementState);
         } else {
             console.log(`ℹ️ Follow получен вне стрима, не учитывается в статистике`);
+            this.triggerOfflineRecoveryProbe('event:channel.follow');
         }
 
         if (!ENABLE_BOT_FEATURES) {
@@ -528,6 +535,7 @@ export class TwitchEventSubNative {
         const fromName = event.from_broadcaster_user_name || event.from_broadcaster_user_login || 'Кто-то';
         const viewers = event.viewers ?? 0;
         console.log(`⚔️ Входящий рейд: ${fromName} с ${viewers} зрителями`);
+        this.triggerOfflineRecoveryProbe('event:channel.raid');
 
         if (!ENABLE_BOT_FEATURES) {
             console.log('🔇 Сообщение при рейде отключено (ENABLE_BOT_FEATURES=false)');
@@ -676,7 +684,40 @@ export class TwitchEventSubNative {
         }
     }
 
-    private async checkCurrentStreamStatus(): Promise<void> {
+    private startOfflineProbeLoop(): void {
+        if (this.offlineProbeInterval) {
+            clearInterval(this.offlineProbeInterval);
+        }
+        this.offlineProbeInterval = setInterval(() => {
+            void this.triggerOfflineRecoveryProbe('timer:offline-poll');
+        }, OFFLINE_STATUS_POLL_MS);
+    }
+
+    private stopOfflineProbeLoop(): void {
+        if (this.offlineProbeInterval) {
+            clearInterval(this.offlineProbeInterval);
+            this.offlineProbeInterval = null;
+        }
+    }
+
+    private async triggerOfflineRecoveryProbe(reason: string): Promise<void> {
+        if (this.isStreamOnline || this.statusProbeInFlight) return;
+        const now = Date.now();
+        if (
+            reason.startsWith('event:') &&
+            now - this.lastOfflineEventProbeAt < OFFLINE_EVENT_TRIGGER_PROBE_COOLDOWN_MS
+        ) {
+            return;
+        }
+        if (reason.startsWith('event:')) {
+            this.lastOfflineEventProbeAt = now;
+        }
+        await this.checkCurrentStreamStatus(reason);
+    }
+
+    private async checkCurrentStreamStatus(reason: string = 'startup'): Promise<void> {
+        if (this.statusProbeInFlight) return;
+        this.statusProbeInFlight = true;
         try {
             const response = await fetch(`https://api.twitch.tv/helix/streams?user_id=${this.broadcasterId}`, {
                 headers: {
@@ -698,7 +739,22 @@ export class TwitchEventSubNative {
                 console.error(`   📝 Название: ${stream.title}`);
                 console.error(`   👥 Зрителей: ${stream.viewer_count}`);
 
+                const wasOffline = !this.isStreamOnline;
                 this.isStreamOnline = true;
+                log('STREAM_STATUS_PROBE', {
+                    reason,
+                    online: true,
+                    viewers: stream.viewer_count,
+                    title: stream.title,
+                    startedAt: stream.started_at,
+                });
+                if (wasOffline) {
+                    log('STREAM_ONLINE_RECOVERED', {
+                        channel: stream.user_name || this.broadcasterName,
+                        reason,
+                        startedAt: stream.started_at,
+                    });
+                }
 
                 try {
                     this.onStreamOnlineCallback?.();
@@ -714,9 +770,17 @@ export class TwitchEventSubNative {
                 this.startViewerCountTracking(this.broadcasterId, this.broadcasterName, startDate);
             } else {
                 console.error(`📊 Статус стрима: 🔴 Оффлайн`);
+                log('STREAM_STATUS_PROBE', { reason, online: false });
             }
         } catch (error) {
             console.error('⚠️ Не удалось получить статус стрима:', error);
+            log('ERROR', {
+                context: 'TwitchEventSubNative.checkCurrentStreamStatus',
+                error: error instanceof Error ? error.message : String(error),
+                reason,
+            });
+        } finally {
+            this.statusProbeInFlight = false;
         }
     }
 
@@ -1180,6 +1244,7 @@ export class TwitchEventSubNative {
                 clearInterval(this.keepAliveInterval);
                 this.keepAliveInterval = null;
             }
+            this.stopOfflineProbeLoop();
 
             if (this.ws) {
                 this.ws.close();
