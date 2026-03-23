@@ -77,6 +77,9 @@ const ANNOUNCEMENT_REPEAT_INTERVAL_MS = 60 * 60 * 1000;
 const DEFAULT_LINK_ROTATION_INTERVAL_MS = 13 * 60 * 1000;
 const OFFLINE_STATUS_POLL_MS = 30 * 1000;
 const OFFLINE_EVENT_TRIGGER_PROBE_COOLDOWN_MS = 15 * 1000;
+const WATCHDOG_CHECK_INTERVAL_MS = 30 * 1000;
+const WATCHDOG_DEGRADED_GRACE_MS = 7 * 60 * 1000;
+const EVENTSUB_SILENCE_TIMEOUT_MS = 90 * 1000;
 
 export type LinkRotationItem = { message: string; color: string };
 
@@ -131,6 +134,13 @@ export class TwitchEventSubNative {
     private lastKeepaliveStatus: 'active' | 'error' | null = null;
     private statusProbeInFlight: boolean = false;
     private lastOfflineEventProbeAt: number = 0;
+    private lastEventSubMessageAt: number = 0;
+    private lastKeepaliveAt: number = 0;
+    private expectedKeepaliveTimeoutMs: number = 30 * 1000;
+    private watchdogInterval: NodeJS.Timeout | null = null;
+    private degradedSinceAt: number | null = null;
+    private watchdogExitScheduled: boolean = false;
+    private isShuttingDown: boolean = false;
 
     constructor(telegram: Telegram) {
         this.telegram = telegram;
@@ -143,6 +153,7 @@ export class TwitchEventSubNative {
     }
 
     private async handleShutdown(signal: string) {
+        this.isShuttingDown = true;
         console.log(`🛑 ${signal} — закрываем EventSub WebSocket`);
         await this.disconnect();
         console.log('✅ EventSub WebSocket остановлен');
@@ -193,6 +204,7 @@ export class TwitchEventSubNative {
 
             await this.connectWebSocket();
             this.startOfflineProbeLoop();
+            this.startWatchdog();
 
             log('CONNECTION', {
                 service: 'TwitchEventSubNative',
@@ -223,6 +235,7 @@ export class TwitchEventSubNative {
                 console.log('✅ WebSocket соединение установлено');
                 log('EVENTSUB_WEBSOCKET', { status: 'connected' });
                 this.lastKeepaliveStatus = 'active';
+                this.lastEventSubMessageAt = Date.now();
             });
 
             this.ws.on('message', async (data: WebSocket.Data) => {
@@ -308,6 +321,7 @@ export class TwitchEventSubNative {
 
     private async handleMessage(message: any): Promise<void> {
         const messageType = message.metadata?.message_type;
+        this.lastEventSubMessageAt = Date.now();
 
         if (messageType !== 'session_keepalive') {
             log('EVENTSUB_RAW', this.buildEventSubRawEntry(message));
@@ -315,10 +329,12 @@ export class TwitchEventSubNative {
 
         switch (messageType) {
             case 'session_welcome':
+                this.lastKeepaliveAt = Date.now();
                 await this.handleSessionWelcome(message);
                 break;
 
             case 'session_keepalive':
+                this.lastKeepaliveAt = Date.now();
                 // Логируем только изменение статуса
                 if (this.lastKeepaliveStatus !== 'active') {
                     console.log('💓 Keepalive восстановлен');
@@ -347,6 +363,7 @@ export class TwitchEventSubNative {
 
         console.log(`✅ Session ID получен: ${this.sessionId}`);
         console.log(`⏱️  Keepalive timeout: ${keepaliveTimeout}s`);
+        this.expectedKeepaliveTimeoutMs = Math.max(keepaliveTimeout, 5) * 1000;
 
         this.startKeepAliveMonitor(keepaliveTimeout);
 
@@ -390,6 +407,80 @@ export class TwitchEventSubNative {
                 this.handleDisconnect();
             }
         }, checkInterval);
+    }
+
+    private startWatchdog(): void {
+        if (this.watchdogInterval) return;
+        this.watchdogInterval = setInterval(() => this.checkWatchdog(), WATCHDOG_CHECK_INTERVAL_MS);
+    }
+
+    private stopWatchdog(): void {
+        if (this.watchdogInterval) {
+            clearInterval(this.watchdogInterval);
+            this.watchdogInterval = null;
+        }
+        this.degradedSinceAt = null;
+        this.watchdogExitScheduled = false;
+    }
+
+    private checkWatchdog(): void {
+        if (this.isShuttingDown) return;
+
+        const now = Date.now();
+        const issues: string[] = [];
+
+        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+            issues.push('websocket_not_open');
+        }
+        if (this.lastEventSubMessageAt > 0 && now - this.lastEventSubMessageAt > EVENTSUB_SILENCE_TIMEOUT_MS) {
+            issues.push(`eventsub_silence>${Math.floor((now - this.lastEventSubMessageAt) / 1000)}s`);
+        }
+        if (this.lastKeepaliveAt > 0 && now - this.lastKeepaliveAt > this.expectedKeepaliveTimeoutMs * 3) {
+            issues.push(`keepalive_stale>${Math.floor((now - this.lastKeepaliveAt) / 1000)}s`);
+        }
+
+        if (issues.length === 0) {
+            if (this.degradedSinceAt) {
+                const degradedForSec = Math.floor((now - this.degradedSinceAt) / 1000);
+                console.log(`✅ Watchdog: состояние восстановлено (degraded ${degradedForSec}s)`);
+                log('CONNECTION', {
+                    service: 'TwitchEventSubNative',
+                    status: 'recovered',
+                    degradedForSec
+                });
+            }
+            this.degradedSinceAt = null;
+            this.watchdogExitScheduled = false;
+            return;
+        }
+
+        if (!this.degradedSinceAt) {
+            this.degradedSinceAt = now;
+            console.warn(`⚠️ Watchdog: деградация EventSub (${issues.join(', ')})`);
+            log('CONNECTION', {
+                service: 'TwitchEventSubNative',
+                status: 'degraded',
+                issues
+            });
+            return;
+        }
+
+        const degradedMs = now - this.degradedSinceAt;
+        if (degradedMs < WATCHDOG_DEGRADED_GRACE_MS || this.watchdogExitScheduled) {
+            return;
+        }
+
+        this.watchdogExitScheduled = true;
+        const degradedSec = Math.floor(degradedMs / 1000);
+        console.error(`💥 Watchdog: деградация держится ${degradedSec}s, завершаем процесс для автоперезапуска PM2`);
+        log('ERROR', {
+            context: 'TwitchEventSubNative.watchdog',
+            error: 'Degraded too long, process exit for PM2 recovery',
+            degradedSec,
+            issues
+        });
+
+        setTimeout(() => process.exit(1), 1500);
     }
 
     private async subscribeToEvents(): Promise<void> {
@@ -1281,6 +1372,7 @@ export class TwitchEventSubNative {
 
     async disconnect(): Promise<void> {
         try {
+            this.isShuttingDown = true;
             this.isStreamOnline = false;
             this.stopWelcomeMessageInterval();
             // При явном отключении (рестарт бота) не сбрасываем индекс ротации,
@@ -1292,6 +1384,7 @@ export class TwitchEventSubNative {
                 this.keepAliveInterval = null;
             }
             this.stopOfflineProbeLoop();
+            this.stopWatchdog();
 
             if (this.ws) {
                 this.ws.close();
