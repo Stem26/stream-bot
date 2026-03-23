@@ -7,7 +7,7 @@ export type TwitchEventSubStreamOnlineEvent = {
 
 export type TwitchEventSubStreamOfflineEvent = Pick<
     TwitchEventSubStreamOnlineEvent,
-    'broadcaster_user_login' | 'broadcaster_user_name'
+    'broadcaster_user_id' | 'broadcaster_user_login' | 'broadcaster_user_name'
 >;
 
 export type TwitchEventSubFollowEvent = {

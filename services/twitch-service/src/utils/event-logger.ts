@@ -29,6 +29,7 @@ type EventType =
   | 'STREAM_STATUS_PROBE'
   | 'COMMAND' 
   | 'DUEL_RESULT'
+  | 'WARN'
   | 'ERROR'
   | 'BOT_START'
   | 'BOT_STOP'

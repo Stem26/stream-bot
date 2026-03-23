@@ -13,8 +13,14 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { ApiBackoffGate, TwitchApiClient } from './twitch/twitch-api-client';
 import { API_SKIP_EVENTS, handleApiResult as handleApiResultPolicy } from './twitch/twitch-api-policy';
+import {
+    buildEventSubRawEntry,
+    createEventSubSubscription,
+    getEventSubParseMetrics,
+    resetEventSubParseMetrics,
+    parseEventSubNotification
+} from './twitch/twitch-eventsub-transport';
 import type {
-    EventSubNotification,
     TwitchEventSubFollowEvent,
     TwitchEventSubRaidEvent,
     TwitchEventSubStreamOfflineEvent,
@@ -334,49 +340,12 @@ export class TwitchEventSubNative {
         });
     }
 
-    private buildEventSubRawEntry(message: any): Record<string, any> {
-        const metadata = message?.metadata ?? {};
-        const payload = message?.payload ?? {};
-        const session = payload?.session ?? {};
-        const subscription = payload?.subscription ?? {};
-        const event = payload?.event ?? null;
-
-        let rawBytes = 0;
-        let eventPreview = '';
-        try {
-            const raw = JSON.stringify(message);
-            rawBytes = Buffer.byteLength(raw, 'utf8');
-        } catch {
-            // ignore
-        }
-
-        if (event && typeof event === 'object') {
-            try {
-                const eventStr = JSON.stringify(event);
-                eventPreview = eventStr.length > 800 ? `${eventStr.slice(0, 800)}...` : eventStr;
-            } catch {
-                eventPreview = '[unserializable event payload]';
-            }
-        }
-
-        return {
-            messageType: metadata.message_type ?? null,
-            messageId: metadata.message_id ?? null,
-            messageTimestamp: metadata.message_timestamp ?? null,
-            subscriptionType: subscription.type ?? null,
-            sessionId: session.id ?? null,
-            reconnectUrl: session.reconnect_url ?? null,
-            rawBytes,
-            eventPreview
-        };
-    }
-
     private async handleMessage(message: any): Promise<void> {
         const messageType = message.metadata?.message_type;
         this.lastEventSubMessageAt = Date.now();
 
         if (messageType !== 'session_keepalive') {
-            log('EVENTSUB_RAW', this.buildEventSubRawEntry(message));
+            log('EVENTSUB_RAW', buildEventSubRawEntry(message));
         }
 
         switch (messageType) {
@@ -566,28 +535,13 @@ export class TwitchEventSubNative {
 
     private async subscribe(type: string, condition: any): Promise<void> {
         try {
-            const response = await fetch('https://api.twitch.tv/helix/eventsub/subscriptions', {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${this.accessToken}`,
-                    'Client-Id': this.clientId,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    type,
-                    version: type === 'channel.follow' ? '2' : '1',
-                    condition,
-                    transport: {
-                        method: 'websocket',
-                        session_id: this.sessionId
-                    }
-                })
+            await createEventSubSubscription({
+                accessToken: this.accessToken,
+                clientId: this.clientId,
+                sessionId: this.sessionId,
+                type,
+                condition
             });
-
-            if (!response.ok) {
-                const errorText = await response.text();
-                throw new Error(`Ошибка подписки на ${type}: ${response.status} ${errorText}`);
-            }
 
             console.log(`✅ Подписка на ${type} создана`);
         } catch (error: any) {
@@ -597,11 +551,10 @@ export class TwitchEventSubNative {
     }
 
     private async handleNotification(message: any): Promise<void> {
-        const raw = message.payload;
-        const payload: EventSubNotification = {
-            type: raw.subscription.type,
-            event: raw.event
-        };
+        const payload = parseEventSubNotification(message);
+        if (!payload) {
+            return;
+        }
         const eventType = payload.type;
 
         console.log(`📨 Событие: ${eventType}`);
@@ -624,8 +577,10 @@ export class TwitchEventSubNative {
                 await this.handleRaid(payload.event);
                 break;
 
-            default:
-                console.log('❓ Неизвестное событие:', eventType);
+            default: {
+                const _exhaustive: never = payload;
+                return _exhaustive;
+            }
         }
     }
 
@@ -1466,6 +1421,14 @@ export class TwitchEventSubNative {
 
     getStreamStatus(): boolean {
         return this.isStreamOnline;
+    }
+
+    getEventSubParseMetrics(): { invalidPayload: number; unknownType: number } {
+        return getEventSubParseMetrics();
+    }
+
+    resetEventSubParseMetrics(): void {
+        resetEventSubParseMetrics();
     }
 
     async disconnect(): Promise<void> {
