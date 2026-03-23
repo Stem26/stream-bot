@@ -93,3 +93,22 @@ pm2 logs 1 --lines 8000 --nostream | rg "stream.online|stream.offline|STREAM_ONL
 tail -n 800 logs/events.log | rg "STREAM_|EVENTSUB_|MessageParse|checkCurrentStreamStatus"
 ```
 
+## Как расширять orchestration-слой (кратко)
+
+Когда добавляешь новый Twitch API сценарий (например, moderation/polls), придерживайся этого паттерна:
+
+1. Добавь метод в `TwitchApiClient`, который возвращает `ApiCallResult<T>`.
+2. В `TwitchEventSubNative` добавь новый ключ в `API_META`:
+   - `skipEvent` — тип skip-лога для throttled/backoff кейсов
+   - `errorContext` — стабильный контекст для `ERROR` логов
+3. На call-site используй:
+   - `const status = this.handleApiResult(result, { context: '<операция>', api: '<ключ>' })`
+   - `if (status !== 'ok') return`
+4. Успешный orchestration-путь (side effects, state updates, `recovered`-лог) оставляй в вызывающем методе, не в API клиенте.
+
+Почему так:
+
+- transport/retry/backoff остаются в `TwitchApiClient`
+- policy логирования skip/fail централизована в `handleApiResult`
+- orchestration-решения остаются в `TwitchEventSubNative`
+

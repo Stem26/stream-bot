@@ -11,6 +11,8 @@ import { addStreamToHistory } from '../storage/stream-history';
 import { log } from '../utils/event-logger';
 import * as fs from 'fs';
 import * as path from 'path';
+import { ApiBackoffGate, TwitchApiClient } from './twitch/twitch-api-client';
+import { isApiFailed, isApiOk, isApiSkipped, type ApiCallResult } from './twitch/twitch-api.types';
 
 const MONOREPO_ROOT = (() => {
     let root = process.cwd();
@@ -83,67 +85,7 @@ const EVENTSUB_SILENCE_TIMEOUT_MS = 90 * 1000;
 const STREAMS_API_MIN_INTERVAL_MS = 10 * 1000;
 const STREAMS_API_MAX_BACKOFF_MS = 5 * 60 * 1000;
 const ANNOUNCEMENTS_API_MAX_BACKOFF_MS = 2 * 60 * 1000;
-const API_FETCH_TIMEOUT_MS = 8000;
 const SKIP_LOG_THROTTLE_MS = 30_000;
-
-class ApiBackoffGate {
-    private nextAllowedAt = 0;
-    private failureCount = 0;
-    private lastCallAt = 0;
-
-    constructor(
-        private readonly minIntervalMs: number,
-        private readonly maxBackoffMs: number
-    ) { }
-
-    shouldSkip(): { skip: boolean; reason?: 'backoff' | 'rate_limit'; waitMs?: number } {
-        const now = Date.now();
-
-        if (now < this.nextAllowedAt) {
-            return {
-                skip: true,
-                reason: 'backoff',
-                waitMs: this.nextAllowedAt - now
-            };
-        }
-
-        const elapsed = now - this.lastCallAt;
-        if (this.lastCallAt > 0 && elapsed < this.minIntervalMs) {
-            return {
-                skip: true,
-                reason: 'rate_limit',
-                waitMs: this.minIntervalMs - elapsed
-            };
-        }
-
-        return { skip: false };
-    }
-
-    markCall(): void {
-        this.lastCallAt = Date.now();
-    }
-
-    registerFailure(retryAfterMs?: number): { delayMs: number; failureCount: number } {
-        this.failureCount += 1;
-        const exp = Math.min(this.failureCount, 6);
-        const base = Math.pow(2, exp) * 5000;
-        const jitter = Math.floor(Math.random() * 1000);
-        const delayMs = Math.min(
-            this.maxBackoffMs,
-            Math.max(base + jitter, retryAfterMs ?? 0)
-        );
-        this.nextAllowedAt = Date.now() + delayMs;
-        return { delayMs, failureCount: this.failureCount };
-    }
-
-    registerSuccess(): { hadFailures: boolean; failureCount: number } {
-        const hadFailures = this.failureCount > 0 || this.nextAllowedAt > 0;
-        const prevFailures = this.failureCount;
-        this.failureCount = 0;
-        this.nextAllowedAt = 0;
-        return { hadFailures, failureCount: prevFailures };
-    }
-}
 
 export type LinkRotationItem = { message: string; color: string };
 
@@ -156,6 +98,17 @@ interface StreamStats {
 }
 
 export class TwitchEventSubNative {
+    private readonly API_META = {
+        streams: {
+            skipEvent: 'STREAMS_API_SKIP' as const,
+            errorContext: 'TwitchEventSubNative.streamsApi'
+        },
+        announcements: {
+            skipEvent: 'ANNOUNCEMENTS_API_SKIP' as const,
+            errorContext: 'TwitchEventSubNative.announcementsApi'
+        }
+    } as const;
+
     private ws: WebSocket | null = null;
     private sessionId: string | null = null;
     private subscriptionsCreated: boolean = false;
@@ -207,6 +160,7 @@ export class TwitchEventSubNative {
     private isShuttingDown: boolean = false;
     private streamsApiGate = new ApiBackoffGate(STREAMS_API_MIN_INTERVAL_MS, STREAMS_API_MAX_BACKOFF_MS);
     private announcementsApiGate = new ApiBackoffGate(0, ANNOUNCEMENTS_API_MAX_BACKOFF_MS);
+    private twitchApi: TwitchApiClient | null = null;
     private lastStreamsSkipLogAt: number = 0;
     private lastAnnouncementsSkipLogAt: number = 0;
 
@@ -240,6 +194,12 @@ export class TwitchEventSubNative {
             this.channelName = channelName;
             this.telegramChannelId = telegramChannelId;
             this.telegramChatId = telegramChatId;
+            this.twitchApi = new TwitchApiClient({
+                accessToken: this.accessToken,
+                clientId: this.clientId,
+                streamsGate: this.streamsApiGate,
+                announcementsGate: this.announcementsApiGate
+            });
 
             const userResponse = await fetch(`https://api.twitch.tv/helix/users?login=${channelName}`, {
                 headers: {
@@ -921,103 +881,90 @@ export class TwitchEventSubNative {
         await this.checkCurrentStreamStatus(reason);
     }
 
-    private parseRetryAfterMs(headerValue: string | null): number | null {
-        if (!headerValue) return null;
-        const asSeconds = Number(headerValue);
-        if (Number.isFinite(asSeconds) && asSeconds >= 0) {
-            return asSeconds * 1000;
+    private handleApiResult<T>(
+        result: ApiCallResult<T>,
+        options: {
+            context: string;
+            api: 'streams' | 'announcements';
         }
-        const asDateMs = Date.parse(headerValue);
-        if (Number.isFinite(asDateMs)) {
-            return Math.max(0, asDateMs - Date.now());
-        }
-        return null;
-    }
+    ): 'ok' | 'skip' | 'failed' {
+        const apiMeta = this.API_META[options.api];
+        const throttle = this.getSkipThrottleRef(options.api);
+        const now = Date.now();
+        const lastSkipAt = throttle.get();
 
-    private async fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), API_FETCH_TIMEOUT_MS);
-        try {
-            return await fetch(url, { ...init, signal: controller.signal });
-        } finally {
-            clearTimeout(timeout);
-        }
-    }
-
-    private async fetchStreamByUserId(userId: string, reason: string): Promise<{ skipped: boolean; stream: any | null }> {
-        const gate = this.streamsApiGate.shouldSkip();
-        if (gate.skip) {
-            const now = Date.now();
-            if (now - this.lastStreamsSkipLogAt > SKIP_LOG_THROTTLE_MS) {
-                this.lastStreamsSkipLogAt = now;
-                log('STREAMS_API_SKIP', {
-                    reason: gate.reason,
-                    waitMs: gate.waitMs ?? 0,
-                    context: reason
+        if (isApiSkipped(result)) {
+            if (now - lastSkipAt > SKIP_LOG_THROTTLE_MS) {
+                throttle.set(now);
+                log(apiMeta.skipEvent, {
+                    reason: result.reason,
+                    waitMs: result.waitMs,
+                    context: options.context
                 });
             }
-            return { skipped: true, stream: null };
+            return 'skip';
         }
-        this.streamsApiGate.markCall();
 
-        try {
-            const response = await this.fetchWithTimeout(`https://api.twitch.tv/helix/streams?user_id=${userId}`, {
-                headers: {
-                    'Authorization': `Bearer ${this.accessToken}`,
-                    'Client-Id': this.clientId
-                }
-            });
-
-            if (!response.ok) {
-                const retryAfterMs = this.parseRetryAfterMs(response.headers.get('retry-after'));
-                const backoff = this.streamsApiGate.registerFailure(retryAfterMs ?? undefined);
-                log('ERROR', {
-                    context: 'TwitchEventSubNative.streamsApi',
-                    error: `Backoff after status=${response.status}, delayMs=${backoff.delayMs}`,
-                    reason,
-                    failureCount: backoff.failureCount
-                });
-                return { skipped: true, stream: null };
-            }
-
-            const data = await response.json() as { data: any[] };
-            const recovered = this.streamsApiGate.registerSuccess();
-            if (recovered.hadFailures) {
-                log('CONNECTION', {
-                    service: 'TwitchEventSubNative.streamsApi',
-                    status: 'recovered',
-                    reason,
-                    failureCount: recovered.failureCount
-                });
-            }
-            if (data.data && data.data.length > 0) {
-                return { skipped: false, stream: data.data[0] };
-            }
-            return { skipped: false, stream: null };
-        } catch (error: any) {
-            const backoff = this.streamsApiGate.registerFailure(undefined);
+        if (isApiFailed(result)) {
             log('ERROR', {
-                context: 'TwitchEventSubNative.streamsApi.fetch',
-                error: error?.message || String(error),
-                reason,
-                backoffMs: backoff.delayMs,
-                failureCount: backoff.failureCount
+                context: apiMeta.errorContext,
+                error: result.error,
+                errorType: result.type,
+                reason: options.context,
+                status: result.status,
+                backoffMs: result.backoffMs
             });
-            return { skipped: true, stream: null };
+            return 'failed';
         }
+
+        return 'ok';
+    }
+
+    private getSkipThrottleRef(api: 'streams' | 'announcements'): {
+        get: () => number;
+        set: (value: number) => void;
+    } {
+        return api === 'streams'
+            ? {
+                get: () => this.lastStreamsSkipLogAt,
+                set: (value: number) => { this.lastStreamsSkipLogAt = value; }
+            }
+            : {
+                get: () => this.lastAnnouncementsSkipLogAt,
+                set: (value: number) => { this.lastAnnouncementsSkipLogAt = value; }
+            };
     }
 
     private async checkCurrentStreamStatus(reason: string = 'startup'): Promise<void> {
         if (this.statusProbeInFlight) return;
         this.statusProbeInFlight = true;
         try {
-            const streamResult = await this.fetchStreamByUserId(this.broadcasterId, `probe:${reason}`);
-            if (streamResult.skipped) {
+            if (!this.twitchApi) {
+                log('ERROR', {
+                    context: 'TwitchEventSubNative.streamsApi',
+                    error: 'TwitchApiClient not initialized',
+                    reason: `probe:${reason}`
+                });
                 return;
             }
-
-            if (streamResult.stream) {
-                const stream = streamResult.stream;
+            const streamResult = await this.twitchApi.getStreamByUserId(this.broadcasterId, `probe:${reason}`);
+            const status = this.handleApiResult(streamResult, {
+                context: `probe:${reason}`,
+                api: 'streams'
+            });
+            if (status !== 'ok') {
+                return;
+            }
+            if (isApiOk(streamResult) && streamResult.data) {
+                if (streamResult.recovered) {
+                    log('CONNECTION', {
+                        service: 'TwitchEventSubNative.streamsApi',
+                        status: 'recovered',
+                        reason: `probe:${reason}`,
+                        failureCount: streamResult.failureCountBeforeRecover ?? 0
+                    });
+                }
+                const stream = streamResult.data;
                 console.error(`📊 Статус стрима: 🟢 В ЭФИРЕ`);
                 console.error(`   🎮 Игра: ${stream.game_name || 'Не указана'}`);
                 console.error(`   📝 Название: ${stream.title}`);
@@ -1145,29 +1092,46 @@ export class TwitchEventSubNative {
         }
 
         try {
-            const streamResult = await this.fetchStreamByUserId(
+            if (!this.twitchApi) return;
+            const streamResult = await this.twitchApi.getStreamByUserId(
                 this.currentStreamStats.broadcasterId,
                 'viewers:record'
             );
-            if (streamResult.skipped || !streamResult.stream) return;
-            const viewersAPI = streamResult.stream.viewer_count;
-                const actualViewers = chattersCount ? Math.max(viewersAPI, chattersCount) : viewersAPI;
+            const status = this.handleApiResult(streamResult, {
+                context: 'viewers:record',
+                api: 'streams'
+            });
+            if (status !== 'ok') {
+                return;
+            }
+            if (!isApiOk(streamResult) || !streamResult.data) return;
+            if (streamResult.recovered) {
+                log('CONNECTION', {
+                    service: 'TwitchEventSubNative.streamsApi',
+                    status: 'recovered',
+                    reason: 'viewers:record',
+                    failureCount: streamResult.failureCountBeforeRecover ?? 0
+                });
+            }
 
-                this.currentStreamStats.viewerCounts.push(actualViewers);
+            const viewersAPI = streamResult.data.viewer_count;
+            const actualViewers = chattersCount ? Math.max(viewersAPI, chattersCount) : viewersAPI;
 
-                if (this.announcementState.currentStreamPeak === null || actualViewers > this.announcementState.currentStreamPeak) {
-                    this.announcementState.currentStreamPeak = actualViewers;
-                    saveAnnouncementState(this.announcementState);
-                }
+            this.currentStreamStats.viewerCounts.push(actualViewers);
 
-                if (chattersCount) {
-                    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-                    console.log('📊 СИНХРОНИЗАЦИЯ ДВУХ API:');
-                    console.log(`Viewers API (streams):  ${viewersAPI}`);
-                    console.log(`Chatters API (chat):    ${chattersCount}`);
-                    console.log(`Записываем в статистику: ${actualViewers} (максимум)`);
-                    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-                }
+            if (this.announcementState.currentStreamPeak === null || actualViewers > this.announcementState.currentStreamPeak) {
+                this.announcementState.currentStreamPeak = actualViewers;
+                saveAnnouncementState(this.announcementState);
+            }
+
+            if (chattersCount) {
+                console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+                console.log('📊 СИНХРОНИЗАЦИЯ ДВУХ API:');
+                console.log(`Viewers API (streams):  ${viewersAPI}`);
+                console.log(`Chatters API (chat):    ${chattersCount}`);
+                console.log(`Записываем в статистику: ${actualViewers} (максимум)`);
+                console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+            }
         } catch (error) {
             console.error('⚠️ Ошибка синхронизированного замера viewers:', error);
         }
@@ -1178,13 +1142,29 @@ export class TwitchEventSubNative {
 
         try {
             let message: string;
-            const streamResult = await this.fetchStreamByUserId(
+            if (!this.twitchApi) return;
+            const streamResult = await this.twitchApi.getStreamByUserId(
                 event.broadcaster_user_id,
                 'telegram:stream_notification'
             );
+            const status = this.handleApiResult(streamResult, {
+                context: 'telegram:stream_notification',
+                api: 'streams'
+            });
+            if (status !== 'ok') {
+                return;
+            }
 
-            if (!streamResult.skipped && streamResult.stream) {
-                const stream = streamResult.stream;
+            if (isApiOk(streamResult) && streamResult.data) {
+                if (streamResult.recovered) {
+                    log('CONNECTION', {
+                        service: 'TwitchEventSubNative.streamsApi',
+                        status: 'recovered',
+                        reason: 'telegram:stream_notification',
+                        failureCount: streamResult.failureCountBeforeRecover ?? 0
+                    });
+                }
+                const stream = streamResult.data;
                 message = `
 🟢 <b>Стрим начался!</b>
 
@@ -1431,56 +1411,41 @@ export class TwitchEventSubNative {
         const items = await this.getLinkRotationItems();
         if (items.length === 0) return;
 
-        const gate = this.announcementsApiGate.shouldSkip();
-        if (gate.skip) {
-            const now = Date.now();
-            if (now - this.lastAnnouncementsSkipLogAt > SKIP_LOG_THROTTLE_MS) {
-                this.lastAnnouncementsSkipLogAt = now;
-                log('ANNOUNCEMENTS_API_SKIP', {
-                    reason: gate.reason,
-                    waitMs: gate.waitMs ?? 0,
-                    context: 'links-rotation'
-                });
-            }
-            return;
-        }
-        this.announcementsApiGate.markCall();
-
         this.currentLinkIndex = this.currentLinkIndex % items.length;
         const currentLink = items[this.currentLinkIndex];
 
         try {
             console.log(`📣 Ротация ссылок [${this.currentLinkIndex + 1}/${items.length}]: ${currentLink.message.split(':')[0]}`);
-
-            const response = await this.fetchWithTimeout(
-                `https://api.twitch.tv/helix/chat/announcements?broadcaster_id=${this.broadcasterId}&moderator_id=${this.moderatorId}`,
-                {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${this.accessToken}`,
-                        'Client-Id': this.clientId,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        message: currentLink.message,
-                        color: currentLink.color
-                    })
-                }
-            );
-
-            if (!response.ok) {
-                const retryAfterMs = this.parseRetryAfterMs(response.headers.get('retry-after'));
-                const backoff = this.announcementsApiGate.registerFailure(retryAfterMs ?? undefined);
-                const errorText = await response.text();
-                throw new Error(`Ошибка отправки announcement: ${response.status} ${errorText} (backoff=${backoff.delayMs}ms)`);
-            }
-            const recovered = this.announcementsApiGate.registerSuccess();
-            if (recovered.hadFailures) {
-                log('CONNECTION', {
-                    service: 'TwitchEventSubNative.announcementsApi',
-                    status: 'recovered',
-                    failureCount: recovered.failureCount
+            if (!this.twitchApi) {
+                log('ERROR', {
+                    context: 'TwitchEventSubNative.announcementsApi',
+                    error: 'TwitchApiClient not initialized',
+                    reason: 'links-rotation'
                 });
+                return;
+            }
+            const result = await this.twitchApi.sendAnnouncement({
+                broadcasterId: this.broadcasterId,
+                moderatorId: this.moderatorId,
+                message: currentLink.message,
+                color: currentLink.color,
+                context: 'links-rotation'
+            });
+            const status = this.handleApiResult(result, {
+                context: 'links-rotation',
+                api: 'announcements'
+            });
+            if (status !== 'ok') {
+                return;
+            }
+            if (isApiOk(result)) {
+                if (result.recovered) {
+                    log('CONNECTION', {
+                        service: 'TwitchEventSubNative.announcementsApi',
+                        status: 'recovered',
+                        failureCount: result.failureCountBeforeRecover ?? 0
+                    });
+                }
             }
 
             console.log(`✅ Link announcement отправлен (цвет: ${currentLink.color})`);
