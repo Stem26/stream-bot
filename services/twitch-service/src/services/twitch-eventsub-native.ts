@@ -234,6 +234,12 @@ export class TwitchEventSubNative {
                         resolve();
                     }
                 } catch (error) {
+                    const rawText = data?.toString ? data.toString() : String(data);
+                    log('ERROR', {
+                        context: 'TwitchEventSubNative.MessageParse',
+                        error: error instanceof Error ? error.message : String(error),
+                        rawPreview: rawText.length > 1200 ? `${rawText.slice(0, 1200)}...` : rawText
+                    });
                     console.error('❌ Ошибка обработки сообщения:', error);
                 }
             });
@@ -263,8 +269,49 @@ export class TwitchEventSubNative {
         });
     }
 
+    private buildEventSubRawEntry(message: any): Record<string, any> {
+        const metadata = message?.metadata ?? {};
+        const payload = message?.payload ?? {};
+        const session = payload?.session ?? {};
+        const subscription = payload?.subscription ?? {};
+        const event = payload?.event ?? null;
+
+        let rawBytes = 0;
+        let eventPreview = '';
+        try {
+            const raw = JSON.stringify(message);
+            rawBytes = Buffer.byteLength(raw, 'utf8');
+        } catch {
+            // ignore
+        }
+
+        if (event && typeof event === 'object') {
+            try {
+                const eventStr = JSON.stringify(event);
+                eventPreview = eventStr.length > 800 ? `${eventStr.slice(0, 800)}...` : eventStr;
+            } catch {
+                eventPreview = '[unserializable event payload]';
+            }
+        }
+
+        return {
+            messageType: metadata.message_type ?? null,
+            messageId: metadata.message_id ?? null,
+            messageTimestamp: metadata.message_timestamp ?? null,
+            subscriptionType: subscription.type ?? null,
+            sessionId: session.id ?? null,
+            reconnectUrl: session.reconnect_url ?? null,
+            rawBytes,
+            eventPreview
+        };
+    }
+
     private async handleMessage(message: any): Promise<void> {
         const messageType = message.metadata?.message_type;
+
+        if (messageType !== 'session_keepalive') {
+            log('EVENTSUB_RAW', this.buildEventSubRawEntry(message));
+        }
 
         switch (messageType) {
             case 'session_welcome':

@@ -36,7 +36,8 @@ type EventType =
   | 'EVENTSUB_WEBSOCKET'
   | 'EVENTSUB_KEEPALIVE'
   | 'EVENTSUB_NOTIFICATION'
-  | 'EVENTSUB_RECONNECT';
+  | 'EVENTSUB_RECONNECT'
+  | 'EVENTSUB_RAW';
 
 interface EventLogData {
   timestamp: string;
