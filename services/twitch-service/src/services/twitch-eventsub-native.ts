@@ -14,6 +14,7 @@ import * as path from 'path';
 import { ApiBackoffGate, TwitchApiClient } from './twitch/twitch-api-client';
 import { API_SKIP_EVENTS, handleApiResult as handleApiResultPolicy } from './twitch/twitch-api-policy';
 import type { TwitchEventSubStreamOfflineEvent, TwitchEventSubStreamOnlineEvent } from './twitch/twitch-eventsub.types';
+import { computeStreamStats, formatDuration } from './twitch/stream-tracker';
 import { TelegramMessageBuilder, TelegramSender } from './twitch/telegram';
 import { isApiOk, type ApiCallResult } from './twitch/twitch-api.types';
 
@@ -103,6 +104,7 @@ interface StreamStats {
 interface StreamTrackingResult {
     stats: {
         peak: number;
+        durationMs: number;
         duration: string;
         followsCount: number;
         startTime: Date;
@@ -1045,13 +1047,18 @@ export class TwitchEventSubNative {
             return null;
         }
 
-        const stats = this.calculateStreamStats();
+        const stats = computeStreamStats({
+            viewerCounts: this.currentStreamStats.viewerCounts,
+            followsCount: this.currentStreamStats.followsCount,
+            startTimeMs: this.currentStreamStats.startTime.getTime()
+        });
         const broadcasterName = this.currentStreamStats.broadcasterName;
         const startTime = this.currentStreamStats.startTime;
+        const duration = formatDuration(stats.durationMs);
 
         console.error('\n📊 ===== СТАТИСТИКА СТРИМА =====');
         console.error(`👤 Канал: ${broadcasterName}`);
-        console.error(`⏱️  Длительность: ${stats.duration}`);
+        console.error(`⏱️  Длительность: ${duration}`);
         console.error(`👥 Пик зрителей: ${stats.peak}`);
         console.error(`💜 Новых follow: ${stats.followsCount}`);
         console.error('================================\n');
@@ -1059,25 +1066,9 @@ export class TwitchEventSubNative {
         this.currentStreamStats = null;
 
         return {
-            stats: { ...stats, startTime },
+            stats: { ...stats, duration, startTime },
             broadcasterName
         };
-    }
-
-    private calculateStreamStats() {
-        if (!this.currentStreamStats || this.currentStreamStats.viewerCounts.length === 0) {
-            return { peak: 0, duration: '0мин', followsCount: 0 };
-        }
-
-        const counts = this.currentStreamStats.viewerCounts.filter(c => typeof c === 'number' && !isNaN(c));
-        const peak = counts.length > 0 ? Math.max(...counts) : 0;
-
-        const durationMs = Date.now() - this.currentStreamStats.startTime.getTime();
-        const hours = Math.floor(durationMs / 3600000);
-        const minutes = Math.floor((durationMs % 3600000) / 60000);
-        const duration = hours > 0 ? `${hours}ч ${minutes}мин` : `${minutes}мин`;
-
-        return { peak, duration, followsCount: this.currentStreamStats.followsCount };
     }
 
     public async recordViewersNow(chattersCount?: number): Promise<void> {
