@@ -92,6 +92,13 @@ async function main() {
         streamMonitor.reloadLinkRotation();
     });
 
+    streamMonitor.setWelcomeMessageProvider(async () => {
+        const row = await queryOne<{ all_links_text: string }>(
+            'SELECT all_links_text FROM links_config WHERE id = 1'
+        );
+        return row?.all_links_text ?? '';
+    });
+
     streamMonitor.setRaidMessageProvider(getRaidMessageFromDb);
 
     if (config.twitch.broadcastAccessToken) {

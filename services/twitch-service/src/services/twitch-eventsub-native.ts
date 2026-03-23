@@ -13,7 +13,13 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { ApiBackoffGate, TwitchApiClient } from './twitch/twitch-api-client';
 import { API_SKIP_EVENTS, handleApiResult as handleApiResultPolicy } from './twitch/twitch-api-policy';
-import type { TwitchEventSubStreamOfflineEvent, TwitchEventSubStreamOnlineEvent } from './twitch/twitch-eventsub.types';
+import type {
+    EventSubNotification,
+    TwitchEventSubFollowEvent,
+    TwitchEventSubRaidEvent,
+    TwitchEventSubStreamOfflineEvent,
+    TwitchEventSubStreamOnlineEvent
+} from './twitch/twitch-eventsub.types';
 import { computeStreamStats, formatDuration } from './twitch/stream-tracker';
 import { TelegramMessageBuilder, TelegramSender } from './twitch/telegram';
 import { isApiOk, type ApiCallResult } from './twitch/twitch-api.types';
@@ -72,6 +78,7 @@ function saveAnnouncementState(state: AnnouncementState): void {
     }
 }
 
+// Fallback welcome-текст: используется только если links_config.all_links_text пустой.
 const STREAM_WELCOME_MESSAGE =
     '📸Boosty (запретные фото): https://boosty.to/kunilika911 ───────────────── ' +
     '😻Discord (тут я мурчу): https://discord.gg/zrNsn4vAw2 ───────────────── ' +
@@ -155,6 +162,7 @@ export class TwitchEventSubNative {
 
     private getLinkRotationItems: (() => Promise<LinkRotationItem[]>) | null = null;
     private getRotationIntervalMinutes: (() => Promise<number>) | null = null;
+    private getWelcomeMessage: (() => Promise<string>) | null = null;
     private getRaidMessage: (() => Promise<string>) | null = null;
     private broadcastAccessToken: string | null = null;
 
@@ -589,27 +597,31 @@ export class TwitchEventSubNative {
     }
 
     private async handleNotification(message: any): Promise<void> {
-        const eventType = message.payload.subscription.type;
-        const event = message.payload.event;
+        const raw = message.payload;
+        const payload: EventSubNotification = {
+            type: raw.subscription.type,
+            event: raw.event
+        };
+        const eventType = payload.type;
 
         console.log(`📨 Событие: ${eventType}`);
         log('EVENTSUB_NOTIFICATION', { type: eventType });
 
-        switch (eventType) {
+        switch (payload.type) {
             case 'stream.online':
-                await this.handleStreamOnline(event);
+                await this.handleStreamOnline(payload.event);
                 break;
 
             case 'stream.offline':
-                await this.handleStreamOffline(event);
+                await this.handleStreamOffline(payload.event);
                 break;
 
             case 'channel.follow':
-                await this.handleFollow(event);
+                await this.handleFollow(payload.event);
                 break;
 
             case 'channel.raid':
-                await this.handleRaid(event);
+                await this.handleRaid(payload.event);
                 break;
 
             default:
@@ -678,7 +690,7 @@ export class TwitchEventSubNative {
         }
     }
 
-    private async handleFollow(event: any): Promise<void> {
+    private async handleFollow(event: TwitchEventSubFollowEvent): Promise<void> {
         console.log(`💜 Новый фоловер: ${event.user_name}`);
 
         if (this.isStreamOnline && this.currentStreamStats) {
@@ -713,7 +725,7 @@ export class TwitchEventSubNative {
         }
     }
 
-    private async handleRaid(event: any): Promise<void> {
+    private async handleRaid(event: TwitchEventSubRaidEvent): Promise<void> {
         const fromName = event.from_broadcaster_user_name || event.from_broadcaster_user_login || 'Кто-то';
         const viewers = event.viewers ?? 0;
         console.log(`⚔️ Входящий рейд: ${fromName} с ${viewers} зрителями`);
@@ -1247,7 +1259,9 @@ export class TwitchEventSubNative {
         }
 
         try {
-            await this.chatSender(this.channelName, STREAM_WELCOME_MESSAGE);
+            const dbWelcomeMessage = this.getWelcomeMessage ? await this.getWelcomeMessage() : '';
+            const welcomeMessage = (dbWelcomeMessage || '').trim() || STREAM_WELCOME_MESSAGE;
+            await this.chatSender(this.channelName, welcomeMessage);
             this.announcementState.lastWelcomeAnnouncementAt = now;
             saveAnnouncementState(this.announcementState);
             console.log('✅ Приветственное сообщение отправлено в чат!');
@@ -1332,6 +1346,10 @@ export class TwitchEventSubNative {
     ): void {
         this.getLinkRotationItems = getItems;
         this.getRotationIntervalMinutes = getIntervalMinutes;
+    }
+
+    setWelcomeMessageProvider(provider: () => Promise<string>): void {
+        this.getWelcomeMessage = provider;
     }
 
     private stopLinkRotation(resetIndex: boolean = true): void {
