@@ -12,7 +12,10 @@ import { log } from '../utils/event-logger';
 import * as fs from 'fs';
 import * as path from 'path';
 import { ApiBackoffGate, TwitchApiClient } from './twitch/twitch-api-client';
-import { isApiFailed, isApiOk, isApiSkipped, type ApiCallResult } from './twitch/twitch-api.types';
+import { API_SKIP_EVENTS, handleApiResult as handleApiResultPolicy } from './twitch/twitch-api-policy';
+import type { TwitchEventSubStreamOfflineEvent, TwitchEventSubStreamOnlineEvent } from './twitch/twitch-eventsub.types';
+import { TelegramMessageBuilder, TelegramSender } from './twitch/telegram';
+import { isApiOk, type ApiCallResult } from './twitch/twitch-api.types';
 
 const MONOREPO_ROOT = (() => {
     let root = process.cwd();
@@ -97,14 +100,24 @@ interface StreamStats {
     followsCount: number;
 }
 
+interface StreamTrackingResult {
+    stats: {
+        peak: number;
+        duration: string;
+        followsCount: number;
+        startTime: Date;
+    };
+    broadcasterName: string;
+}
+
 export class TwitchEventSubNative {
     private readonly API_META = {
         streams: {
-            skipEvent: 'STREAMS_API_SKIP' as const,
+            skipEvent: API_SKIP_EVENTS.STREAMS,
             errorContext: 'TwitchEventSubNative.streamsApi'
         },
         announcements: {
-            skipEvent: 'ANNOUNCEMENTS_API_SKIP' as const,
+            skipEvent: API_SKIP_EVENTS.ANNOUNCEMENTS,
             errorContext: 'TwitchEventSubNative.announcementsApi'
         }
     } as const;
@@ -114,7 +127,7 @@ export class TwitchEventSubNative {
     private subscriptionsCreated: boolean = false;
     /** Session id, для которого мы реально создали подписки EventSub (нужно пересоздавать при новом session_id). */
     private subscriptionsSessionId: string | null = null;
-    private telegram: Telegram;
+    private telegramSender: TelegramSender;
     private accessToken: string = '';
     private clientId: string = '';
     private broadcasterId: string = '';
@@ -161,11 +174,12 @@ export class TwitchEventSubNative {
     private streamsApiGate = new ApiBackoffGate(STREAMS_API_MIN_INTERVAL_MS, STREAMS_API_MAX_BACKOFF_MS);
     private announcementsApiGate = new ApiBackoffGate(0, ANNOUNCEMENTS_API_MAX_BACKOFF_MS);
     private twitchApi: TwitchApiClient | null = null;
+    private telegramMessageBuilder = new TelegramMessageBuilder();
     private lastStreamsSkipLogAt: number = 0;
     private lastAnnouncementsSkipLogAt: number = 0;
 
     constructor(telegram: Telegram) {
-        this.telegram = telegram;
+        this.telegramSender = new TelegramSender(telegram);
         this.announcementState = loadAnnouncementState();
         this.currentLinkIndex = this.announcementState.currentLinkIndex;
         console.log('📋 Загружено состояние announcements:', this.announcementState);
@@ -601,7 +615,7 @@ export class TwitchEventSubNative {
         }
     }
 
-    private async handleStreamOnline(event: any): Promise<void> {
+    private async handleStreamOnline(event: TwitchEventSubStreamOnlineEvent): Promise<void> {
         try {
             this.onStreamOnlineCallback?.();
             console.log('✅ Синхронизация зрителей запущена при начале стрима');
@@ -635,7 +649,7 @@ export class TwitchEventSubNative {
         this.startViewerCountTracking(event.broadcaster_user_id, event.broadcaster_user_name, startDate);
     }
 
-    private async handleStreamOffline(event: any): Promise<void> {
+    private async handleStreamOffline(event: TwitchEventSubStreamOfflineEvent): Promise<void> {
         console.error(`⚫ Стрим завершился на канале ${event.broadcaster_user_name}`);
         this.isStreamOnline = false;
 
@@ -890,34 +904,14 @@ export class TwitchEventSubNative {
     ): 'ok' | 'skip' | 'failed' {
         const apiMeta = this.API_META[options.api];
         const throttle = this.getSkipThrottleRef(options.api);
-        const now = Date.now();
-        const lastSkipAt = throttle.get();
-
-        if (isApiSkipped(result)) {
-            if (now - lastSkipAt > SKIP_LOG_THROTTLE_MS) {
-                throttle.set(now);
-                log(apiMeta.skipEvent, {
-                    reason: result.reason,
-                    waitMs: result.waitMs,
-                    context: options.context
-                });
-            }
-            return 'skip';
-        }
-
-        if (isApiFailed(result)) {
-            log('ERROR', {
-                context: apiMeta.errorContext,
-                error: result.error,
-                errorType: result.type,
-                reason: options.context,
-                status: result.status,
-                backoffMs: result.backoffMs
-            });
-            return 'failed';
-        }
-
-        return 'ok';
+        return handleApiResultPolicy(result, {
+            context: options.context,
+            apiMeta,
+            lastSkipAt: throttle.get(),
+            setLastSkipAt: throttle.set,
+            skipLogThrottleMs: SKIP_LOG_THROTTLE_MS,
+            log
+        });
     }
 
     private getSkipThrottleRef(api: 'streams' | 'announcements'): {
@@ -1045,7 +1039,7 @@ export class TwitchEventSubNative {
         console.error(`⏱️  Время начала стрима: ${startDate.toLocaleString('ru-RU')}`);
     }
 
-    private stopViewerCountTracking(): any {
+    private stopViewerCountTracking(): StreamTrackingResult | null {
         if (!this.currentStreamStats || this.currentStreamStats.viewerCounts.length === 0) {
             this.currentStreamStats = null;
             return null;
@@ -1137,11 +1131,10 @@ export class TwitchEventSubNative {
         }
     }
 
-    private async sendTelegramStreamNotification(event: any): Promise<void> {
+    private async sendTelegramStreamNotification(event: TwitchEventSubStreamOnlineEvent): Promise<void> {
         if (!this.telegramChannelId) return;
 
         try {
-            let message: string;
             if (!this.twitchApi) return;
             const streamResult = await this.twitchApi.getStreamByUserId(
                 event.broadcaster_user_id,
@@ -1155,6 +1148,7 @@ export class TwitchEventSubNative {
                 return;
             }
 
+            let streamData: { game_name?: string | null; title: string } | null = null;
             if (isApiOk(streamResult) && streamResult.data) {
                 if (streamResult.recovered) {
                     log('CONNECTION', {
@@ -1164,27 +1158,11 @@ export class TwitchEventSubNative {
                         failureCount: streamResult.failureCountBeforeRecover ?? 0
                     });
                 }
-                const stream = streamResult.data;
-                message = `
-🟢 <b>Стрим начался!</b>
-
-<b>Канал:</b> ${event.broadcaster_user_name}
-<b>Категория:</b> ${stream.game_name || 'Не указана'}
-<b>Название:</b> ${stream.title}
-
-🔗 <a href="https://twitch.tv/${event.broadcaster_user_login}">${event.broadcaster_user_name}</a>
-                `.trim();
-            } else {
-                message = `
-🟢 <b>Стрим начался!</b>
-
-<b>Канал:</b> ${event.broadcaster_user_name}
-
-🔗 <a href="https://twitch.tv/${event.broadcaster_user_login}">${event.broadcaster_user_name}</a>
-                `.trim();
+                streamData = streamResult.data;
             }
+            const message = this.telegramMessageBuilder.buildStreamOnlineMessage({ event, stream: streamData });
 
-            await this.telegram.sendMessage(this.telegramChannelId, message, {
+            await this.telegramSender.sendMessage(this.telegramChannelId, message, {
                 parse_mode: 'HTML',
                 link_preview_options: { is_disabled: false }
             });
@@ -1195,20 +1173,17 @@ export class TwitchEventSubNative {
         }
     }
 
-    private async sendTelegramOfflineNotification(event: any, result: any): Promise<void> {
+    private async sendTelegramOfflineNotification(
+        event: TwitchEventSubStreamOfflineEvent,
+        result: StreamTrackingResult
+    ): Promise<void> {
         if (!this.telegramChatId) return;
 
         try {
             const { stats } = result;
-            const message = [
-                `🔴 Стрим <a href="https://twitch.tv/${event.broadcaster_user_login}">${event.broadcaster_user_name}</a> закончился`,
-                ``,
-                `   <b>Максимум зрителей:</b> ${stats.peak}`,
-                `   <b>Продолжительность:</b> ${stats.duration}`,
-                `   <b>Новых follow:</b> ${stats.followsCount}`
-            ].join('\n');
+            const message = this.telegramMessageBuilder.buildStreamOfflineMessage({ event, stats });
 
-            await this.telegram.sendMessage(this.telegramChatId, message, {
+            await this.telegramSender.sendMessage(this.telegramChatId, message, {
                 parse_mode: 'HTML',
                 link_preview_options: { is_disabled: true }
             });
@@ -1220,7 +1195,7 @@ export class TwitchEventSubNative {
                 console.log('📦 Создание бэкапа БД после окончания стрима...');
                 const { exec } = require('child_process');
                 const backupScript = require('path').join(MONOREPO_ROOT, 'scripts', 'backup-db.js');
-                exec(`node "${backupScript}" ${adminChatId}`, (error: any, stdout: any) => {
+                exec(`node "${backupScript}" ${adminChatId}`, (error: Error | null, stdout: string) => {
                     if (error) {
                         console.error('❌ Ошибка создания бэкапа:', error.message);
                     } else {
@@ -1234,7 +1209,7 @@ export class TwitchEventSubNative {
         }
     }
 
-    private async saveStreamHistory(result: any): Promise<void> {
+    private async saveStreamHistory(result: StreamTrackingResult): Promise<void> {
         try {
             const { stats } = result;
 
