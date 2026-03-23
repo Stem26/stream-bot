@@ -37,7 +37,9 @@ type EventType =
   | 'EVENTSUB_KEEPALIVE'
   | 'EVENTSUB_NOTIFICATION'
   | 'EVENTSUB_RECONNECT'
-  | 'EVENTSUB_RAW';
+  | 'EVENTSUB_RAW'
+  | 'STREAMS_API_SKIP'
+  | 'ANNOUNCEMENTS_API_SKIP';
 
 interface EventLogData {
   timestamp: string;
