@@ -11,7 +11,9 @@ module.exports = {
       instances: 1,
       autorestart: true,
       watch: false,
-      max_memory_restart: '500M',
+      max_memory_restart: '450M',
+      restart_delay: 5000,
+      exp_backoff_restart_delay: 200,
       error_file: '~/.pm2/logs/telegram-bot-error.log',
       out_file: '~/.pm2/logs/telegram-bot-out.log',
       log_date_format: ''
@@ -28,7 +30,9 @@ module.exports = {
       exec_mode: 'fork', // 🔥 КРИТИЧЕСКИ ВАЖНО: EventSub WS несовместим с cluster mode
       autorestart: true,
       watch: false,
-      max_memory_restart: '500M',
+      max_memory_restart: '450M',
+      restart_delay: 5000,
+      exp_backoff_restart_delay: 200,
       error_file: '~/.pm2/logs/twitch-bot-error.log',
       out_file: '~/.pm2/logs/twitch-bot-out.log',
       log_date_format: ''
