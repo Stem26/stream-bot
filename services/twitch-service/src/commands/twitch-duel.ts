@@ -1056,8 +1056,8 @@ export function clearDuelQueue(): void {
  * Сброс состояния дуэлей при окончании стрима
  */
 export function resetDuelsOnStreamEnd(): void {
-  duelsEnabled = true;
-  console.log('🔄 Дуэли сброшены в состояние "включены" (окончание стрима)');
+  duelsEnabled = false;
+  console.log('🔄 Дуэли сброшены в состояние "выключены" (окончание стрима)');
 }
 
 /**
