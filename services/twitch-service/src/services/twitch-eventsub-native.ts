@@ -170,6 +170,8 @@ export class TwitchEventSubNative {
     private getRotationIntervalMinutes: (() => Promise<number>) | null = null;
     private getWelcomeMessage: (() => Promise<string>) | null = null;
     private getRaidMessage: (() => Promise<string>) | null = null;
+    /** Рейд-буст дуэлей: логин рейдера (как в EventSub) + число зрителей рейда */
+    private onRaidDuelBoost: ((raiderLogin: string, viewers: number) => void) | null = null;
     private broadcastAccessToken: string | null = null;
 
     private keepAliveInterval: NodeJS.Timeout | null = null;
@@ -744,6 +746,16 @@ export class TwitchEventSubNative {
         } else {
             if (!this.broadcastAccessToken) {
                 console.log('ℹ️ Авто-шатаут пропущен: нет BROADCAST_TWITCH_ACCESS_TOKEN');
+            }
+        }
+
+        const raiderLogin = event.from_broadcaster_user_login?.trim();
+        // Буст дуэлей только пока эфир онлайн; при оффлайне не пишем в БД/память
+        if (this.isStreamOnline && raiderLogin && this.onRaidDuelBoost) {
+            try {
+                this.onRaidDuelBoost(raiderLogin.toLowerCase(), event.viewers ?? 0);
+            } catch (e) {
+                console.error('❌ Ошибка onRaidDuelBoost:', e);
             }
         }
     }
@@ -1405,6 +1417,10 @@ export class TwitchEventSubNative {
 
     setRaidMessageProvider(provider: () => Promise<string>): void {
         this.getRaidMessage = provider;
+    }
+
+    setRaidDuelBoostHandler(handler: ((raiderLogin: string, viewers: number) => void) | null): void {
+        this.onRaidDuelBoost = handler;
     }
 
     setBroadcastAccessToken(token: string): void {

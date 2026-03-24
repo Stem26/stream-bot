@@ -59,9 +59,31 @@ const duelCooldownByChannel = new Map<string, number>();
 const duelBotCooldownByChannel = new Map<string, number>();
 const duelChallengesByChannel = new Map<string, Map<string, DuelChallengeEntry>>();
 const DEFAULT_POINTS = 1000;
-export type DuelConfig = { timeoutMinutes: number; winPoints: number; lossPoints: number; missPenalty: number };
+export type DuelConfig = {
+  timeoutMinutes: number;
+  winPoints: number;
+  lossPoints: number;
+  missPenalty: number;
+  /** Буст шанса победы в дуэли для рейдера (только vs обычные зрители, не vs стример) */
+  raidBoostEnabled: boolean;
+  raidBoostWinPercent: number;
+  raidBoostDurationMinutes: number;
+  raidBoostMinViewers: number;
+};
 
-let duelConfig: DuelConfig = { timeoutMinutes: 5, winPoints: 25, lossPoints: 25, missPenalty: 5 };
+let duelConfig: DuelConfig = {
+  timeoutMinutes: 5,
+  winPoints: 25,
+  lossPoints: 25,
+  missPenalty: 5,
+  raidBoostEnabled: false,
+  raidBoostWinPercent: 70,
+  raidBoostDurationMinutes: 10,
+  raidBoostMinViewers: 5,
+};
+
+/** Активные окна буста рейдера: логин (lower) → истечение (epoch ms) */
+const raidBoostExpiresByUser = new Map<string, number>();
 
 export function getDuelConfig(): DuelConfig {
   return { ...duelConfig };
@@ -72,6 +94,87 @@ export function setDuelConfig(c: Partial<DuelConfig>): void {
   if (c.winPoints != null && c.winPoints >= 0) duelConfig.winPoints = c.winPoints;
   if (c.lossPoints != null && c.lossPoints >= 0) duelConfig.lossPoints = c.lossPoints;
   if (c.missPenalty != null && c.missPenalty >= 0) duelConfig.missPenalty = c.missPenalty;
+  if (c.raidBoostEnabled != null) duelConfig.raidBoostEnabled = Boolean(c.raidBoostEnabled);
+  if (c.raidBoostWinPercent != null && c.raidBoostWinPercent >= 1 && c.raidBoostWinPercent <= 99) {
+    duelConfig.raidBoostWinPercent = c.raidBoostWinPercent;
+  }
+  if (c.raidBoostDurationMinutes != null && c.raidBoostDurationMinutes >= 1 && c.raidBoostDurationMinutes <= 240) {
+    duelConfig.raidBoostDurationMinutes = c.raidBoostDurationMinutes;
+  }
+  if (c.raidBoostMinViewers != null && c.raidBoostMinViewers >= 0 && c.raidBoostMinViewers <= 100000) {
+    duelConfig.raidBoostMinViewers = c.raidBoostMinViewers;
+  }
+}
+
+function isRaidBoostActiveForUser(normalizedLogin: string, now: number): boolean {
+  const until = raidBoostExpiresByUser.get(normalizedLogin);
+  return until != null && until > now;
+}
+
+/**
+ * Загрузка неистёкших бустов из БД (после рестарта бота).
+ */
+export async function initRaidDuelBoostsFromDb(): Promise<void> {
+  try {
+    const now = Date.now();
+    await query('DELETE FROM duel_raid_boost WHERE expires_at_ms <= $1', [now]);
+    const rows = await query<{ twitch_username: string; expires_at_ms: string | number }>(
+      'SELECT twitch_username, expires_at_ms FROM duel_raid_boost WHERE expires_at_ms > $1',
+      [now]
+    );
+    raidBoostExpiresByUser.clear();
+    for (const row of rows) {
+      const exp = typeof row.expires_at_ms === 'string' ? Number(row.expires_at_ms) : row.expires_at_ms;
+      if (row.twitch_username && Number.isFinite(exp) && exp > now) {
+        raidBoostExpiresByUser.set(row.twitch_username.toLowerCase(), exp);
+      }
+    }
+    if (raidBoostExpiresByUser.size > 0) {
+      console.log(`✅ Загружено активных рейд-бустов дуэлей: ${raidBoostExpiresByUser.size}`);
+    }
+  } catch (error: any) {
+    console.error('⚠️ Ошибка загрузки duel_raid_boost из БД:', error?.message || error);
+  }
+}
+
+/**
+ * Регистрация буста для рейдера по событию channel.raid (только лидер рейда).
+ * Повторный рейд в активное окно игнорируется; таймер не продлевается.
+ */
+export function registerRaidDuelBoostFromRaidEvent(raiderLogin: string, viewers: number): void {
+  const normalized = raiderLogin.trim().toLowerCase();
+  if (!normalized) return;
+
+  const cfg = duelConfig;
+  if (!cfg.raidBoostEnabled) return;
+  if (viewers < cfg.raidBoostMinViewers) return;
+
+  const now = Date.now();
+  const existingUntil = raidBoostExpiresByUser.get(normalized);
+  if (existingUntil != null && existingUntil > now) return;
+
+  const expiresAt = now + cfg.raidBoostDurationMinutes * 60 * 1000;
+  raidBoostExpiresByUser.set(normalized, expiresAt);
+
+  void query(
+    `INSERT INTO duel_raid_boost (twitch_username, expires_at_ms) VALUES ($1, $2)
+     ON CONFLICT (twitch_username) DO UPDATE SET expires_at_ms = EXCLUDED.expires_at_ms`,
+    [normalized, expiresAt]
+  ).catch((error: any) => {
+    console.error('⚠️ Ошибка сохранения duel_raid_boost:', error?.message || error);
+  });
+}
+
+/**
+ * Сброс всех окон рейд-буста (память + БД). Вызывать при окончании стрима или при старте бота, если эфир оффлайн.
+ */
+export async function clearAllRaidDuelBoosts(): Promise<void> {
+  raidBoostExpiresByUser.clear();
+  try {
+    await query('DELETE FROM duel_raid_boost');
+  } catch (error: any) {
+    console.error('⚠️ Ошибка очистки duel_raid_boost:', error?.message || error);
+  }
 }
 
 function getDuelTimeoutMs(): number {
@@ -750,7 +853,20 @@ async function executeDuel(
   } else if (!player1IsExempt && player2IsExempt) {
     player1Wins = Math.random() >= STREAMER_WIN_CHANCE;
   } else {
-    player1Wins = Math.random() < 0.5;
+    const p1RaidBoost =
+      duelConfig.raidBoostEnabled && !player1IsExempt && !player2IsExempt && isRaidBoostActiveForUser(player1Normalized, now);
+    const p2RaidBoost =
+      duelConfig.raidBoostEnabled && !player1IsExempt && !player2IsExempt && isRaidBoostActiveForUser(player2Normalized, now);
+    const raidP = Math.min(0.99, Math.max(0.01, duelConfig.raidBoostWinPercent / 100));
+    if (p1RaidBoost && !p2RaidBoost) {
+      player1Wins = Math.random() < raidP;
+    } else if (p2RaidBoost && !p1RaidBoost) {
+      player1Wins = Math.random() >= raidP;
+    } else if (p1RaidBoost && p2RaidBoost) {
+      player1Wins = Math.random() < 0.5;
+    } else {
+      player1Wins = Math.random() < 0.5;
+    }
   }
   
   const winner = player1Wins ? player1Username : player2Username;

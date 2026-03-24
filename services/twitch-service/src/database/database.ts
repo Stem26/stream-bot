@@ -227,10 +227,30 @@ export async function initDatabase(): Promise<void> {
         ALTER TABLE duel_config ADD COLUMN IF NOT EXISTS overlay_sync_enabled BOOLEAN NOT NULL DEFAULT TRUE
       `).catch(() => {});
       await client.query(`
+        ALTER TABLE duel_config ADD COLUMN IF NOT EXISTS raid_duel_boost_enabled BOOLEAN NOT NULL DEFAULT FALSE
+      `).catch(() => {});
+      await client.query(`
+        ALTER TABLE duel_config ADD COLUMN IF NOT EXISTS raid_duel_boost_win_percent INTEGER NOT NULL DEFAULT 70
+      `).catch(() => {});
+      await client.query(`
+        ALTER TABLE duel_config ADD COLUMN IF NOT EXISTS raid_duel_boost_duration_minutes INTEGER NOT NULL DEFAULT 10
+      `).catch(() => {});
+      await client.query(`
+        ALTER TABLE duel_config ADD COLUMN IF NOT EXISTS raid_duel_boost_min_viewers INTEGER NOT NULL DEFAULT 5
+      `).catch(() => {});
+      await client.query(`
         INSERT INTO duel_config (id, duels_enabled, timeout_minutes, win_points, loss_points, miss_penalty, overlay_sync_enabled)
         VALUES (1, TRUE, 5, 25, 25, 5, TRUE)
         ON CONFLICT (id) DO NOTHING
       `);
+
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS duel_raid_boost (
+          twitch_username TEXT PRIMARY KEY,
+          expires_at_ms BIGINT NOT NULL
+        )
+      `);
+      await client.query(`CREATE INDEX IF NOT EXISTS idx_duel_raid_boost_expires ON duel_raid_boost(expires_at_ms)`);
 
       // Настройки модерации чата: вкл/выкл, проверка по символам, по буквам, лимиты, таймаут
       await client.query(`

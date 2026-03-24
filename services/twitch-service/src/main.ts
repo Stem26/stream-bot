@@ -3,7 +3,7 @@ import { NightBotMonitor } from './services/nightbot-monitor';
 import { TwitchEventSubNative } from './services/twitch-eventsub-native';
 import { Telegraf } from 'telegraf';
 import { loadConfig } from './config/env';
-import { clearDuelQueue, resetDuelsOnStreamEnd, clearDuelChallenges, setOnDuelBannedListChanged, setDuelConfig, setDailyQuestConfig } from "./commands/twitch-duel";
+import { clearDuelQueue, resetDuelsOnStreamEnd, clearDuelChallenges, setOnDuelBannedListChanged, setDuelConfig, setDailyQuestConfig, initRaidDuelBoostsFromDb, clearAllRaidDuelBoosts, registerRaidDuelBoostFromRaidEvent } from "./commands/twitch-duel";
 import { clearActiveUsers } from "./commands/twitch-rat";
 import { log } from './utils/event-logger';
 import { initDatabase, closeDatabase, query, queryOne } from './database/database';
@@ -25,8 +25,17 @@ async function main() {
         await initDatabase();
         console.log('✅ База данных готова');
         try {
-            const duelConfigRow = await queryOne<{ timeout_minutes: number; win_points: number; loss_points: number; miss_penalty: number }>(
-                'SELECT timeout_minutes, win_points, loss_points, miss_penalty FROM duel_config WHERE id = 1'
+            const duelConfigRow = await queryOne<{
+                timeout_minutes: number;
+                win_points: number;
+                loss_points: number;
+                miss_penalty: number;
+                raid_duel_boost_enabled?: boolean;
+                raid_duel_boost_win_percent?: number;
+                raid_duel_boost_duration_minutes?: number;
+                raid_duel_boost_min_viewers?: number;
+            }>(
+                'SELECT timeout_minutes, win_points, loss_points, miss_penalty, raid_duel_boost_enabled, raid_duel_boost_win_percent, raid_duel_boost_duration_minutes, raid_duel_boost_min_viewers FROM duel_config WHERE id = 1'
             );
             if (duelConfigRow) {
                 setDuelConfig({
@@ -34,6 +43,10 @@ async function main() {
                     winPoints: duelConfigRow.win_points,
                     lossPoints: duelConfigRow.loss_points,
                     missPenalty: duelConfigRow.miss_penalty ?? 5,
+                    raidBoostEnabled: duelConfigRow.raid_duel_boost_enabled ?? false,
+                    raidBoostWinPercent: duelConfigRow.raid_duel_boost_win_percent ?? 70,
+                    raidBoostDurationMinutes: duelConfigRow.raid_duel_boost_duration_minutes ?? 10,
+                    raidBoostMinViewers: duelConfigRow.raid_duel_boost_min_viewers ?? 5,
                 });
             }
             const dailyRow = await queryOne<{ daily_games_count: number; daily_reward_points: number; streak_wins_count: number; streak_reward_points: number }>(
@@ -101,6 +114,10 @@ async function main() {
 
     streamMonitor.setRaidMessageProvider(getRaidMessageFromDb);
 
+    streamMonitor.setRaidDuelBoostHandler((login, viewers) => {
+        registerRaidDuelBoostFromRaidEvent(login, viewers);
+    });
+
     if (config.twitch.broadcastAccessToken) {
         streamMonitor.setBroadcastAccessToken(config.twitch.broadcastAccessToken);
     }
@@ -112,6 +129,16 @@ async function main() {
         config.telegram.channelId,
         config.telegram.chatId
     );
+
+    try {
+        if (streamMonitor.getStreamStatus()) {
+            await initRaidDuelBoostsFromDb();
+        } else {
+            await clearAllRaidDuelBoosts();
+        }
+    } catch (error: any) {
+        console.error('⚠️ Рейд-бусты: не удалось синхронизировать с БД:', error?.message || error);
+    }
 
     setOnChatModerationConfigUpdatedCallback(() => {
         nightBotMonitor.invalidateSpamConfigCache();
@@ -195,6 +222,7 @@ async function main() {
         nightBotMonitor.clearDetectedModerators();
         nightBotMonitor.disableDuelsFromWeb();
         nightBotMonitor.stopViewersSync();
+        void clearAllRaidDuelBoosts();
     });
 
     await nightBotMonitor.connect(

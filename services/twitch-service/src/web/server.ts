@@ -332,7 +332,16 @@ type PartyConfigAuditSnapshot = {
 
 type LinksConfigAuditSnapshot = { all_links_text: string; rotation_interval_minutes: number };
 type RaidConfigAuditSnapshot = { raid_message: string };
-type DuelConfigAuditSnapshot = { timeout_minutes: number; win_points: number; loss_points: number; miss_penalty: number };
+type DuelConfigAuditSnapshot = {
+    timeout_minutes: number;
+    win_points: number;
+    loss_points: number;
+    miss_penalty: number;
+    raid_duel_boost_enabled: boolean;
+    raid_duel_boost_win_percent: number;
+    raid_duel_boost_duration_minutes: number;
+    raid_duel_boost_min_viewers: number;
+};
 type DuelDailyConfigAuditSnapshot = {
     daily_games_count: number;
     daily_reward_points: number;
@@ -407,7 +416,7 @@ async function loadAdminAuditContext(req: Request): Promise<AdminAuditContext> {
     }
     if (method === 'POST' && pathOnly === '/api/admin/duels/config') {
         ctx.previousDuelConfig = await queryOne<DuelConfigAuditSnapshot>(
-            'SELECT timeout_minutes, win_points, loss_points, miss_penalty FROM duel_config WHERE id = 1'
+            'SELECT timeout_minutes, win_points, loss_points, miss_penalty, raid_duel_boost_enabled, raid_duel_boost_win_percent, raid_duel_boost_duration_minutes, raid_duel_boost_min_viewers FROM duel_config WHERE id = 1'
         );
     }
     if (method === 'POST' && pathOnly === '/api/admin/duels/daily-config') {
@@ -713,6 +722,34 @@ function describeAdminAction(req: Request, context?: AdminAuditContext): { actio
         if (body.winPoints != null && (!prev || Number(body.winPoints) !== prev.win_points)) changes.push(prev ? `очки за победу: ${prev.win_points} -> ${Number(body.winPoints)}` : `очки за победу: ${Number(body.winPoints)}`);
         if (body.lossPoints != null && (!prev || Number(body.lossPoints) !== prev.loss_points)) changes.push(prev ? `очки за поражение: ${prev.loss_points} -> ${Number(body.lossPoints)}` : `очки за поражение: ${Number(body.lossPoints)}`);
         if (body.missPenalty != null && (!prev || Number(body.missPenalty) !== prev.miss_penalty)) changes.push(prev ? `штраф за промах: ${prev.miss_penalty} -> ${Number(body.missPenalty)}` : `штраф за промах: ${Number(body.missPenalty)}`);
+        if (body.raidBoostEnabled != null && (!prev || Boolean(body.raidBoostEnabled) !== prev.raid_duel_boost_enabled)) {
+            changes.push(
+                prev
+                    ? `рейд-буст дуэлей: ${prev.raid_duel_boost_enabled ? 'вкл' : 'выкл'} -> ${Boolean(body.raidBoostEnabled) ? 'вкл' : 'выкл'}`
+                    : `рейд-буст дуэлей: ${Boolean(body.raidBoostEnabled) ? 'вкл' : 'выкл'}`
+            );
+        }
+        if (body.raidBoostWinPercent != null && (!prev || Number(body.raidBoostWinPercent) !== prev.raid_duel_boost_win_percent)) {
+            changes.push(
+                prev
+                    ? `рейд-буст шанс: ${prev.raid_duel_boost_win_percent}% -> ${Number(body.raidBoostWinPercent)}%`
+                    : `рейд-буст шанс: ${Number(body.raidBoostWinPercent)}%`
+            );
+        }
+        if (body.raidBoostDurationMinutes != null && (!prev || Number(body.raidBoostDurationMinutes) !== prev.raid_duel_boost_duration_minutes)) {
+            changes.push(
+                prev
+                    ? `рейд-буст время: ${prev.raid_duel_boost_duration_minutes} -> ${Number(body.raidBoostDurationMinutes)} мин`
+                    : `рейд-буст время: ${Number(body.raidBoostDurationMinutes)} мин`
+            );
+        }
+        if (body.raidBoostMinViewers != null && (!prev || Number(body.raidBoostMinViewers) !== prev.raid_duel_boost_min_viewers)) {
+            changes.push(
+                prev
+                    ? `рейд-буст мин. зрителей: ${prev.raid_duel_boost_min_viewers} -> ${Number(body.raidBoostMinViewers)}`
+                    : `рейд-буст мин. зрителей: ${Number(body.raidBoostMinViewers)}`
+            );
+        }
         if (changes.length === 0) return { action: 'сохранил настройки дуэлей без изменений' };
         return {
             action: 'обновил настройки дуэлей',
@@ -2352,14 +2389,34 @@ app.post('/api/admin/link-whitelist', async (req: Request, res: Response) => {
     }
 });
 
-// Настройки дуэлей (таймаут, очки, штраф за промах)
-type DuelConfigRow = { timeout_minutes: number; win_points: number; loss_points: number; miss_penalty: number };
+// Настройки дуэлей (таймаут, очки, штраф за промах, рейд-буст)
+type DuelConfigRow = {
+    timeout_minutes: number;
+    win_points: number;
+    loss_points: number;
+    miss_penalty: number;
+    raid_duel_boost_enabled: boolean;
+    raid_duel_boost_win_percent: number;
+    raid_duel_boost_duration_minutes: number;
+    raid_duel_boost_min_viewers: number;
+};
 
 app.get('/api/admin/duels/config', async (req: Request, res: Response) => {
     try {
-        const row = await queryOne<DuelConfigRow>('SELECT timeout_minutes, win_points, loss_points, miss_penalty FROM duel_config WHERE id = 1');
+        const row = await queryOne<DuelConfigRow>(
+            'SELECT timeout_minutes, win_points, loss_points, miss_penalty, raid_duel_boost_enabled, raid_duel_boost_win_percent, raid_duel_boost_duration_minutes, raid_duel_boost_min_viewers FROM duel_config WHERE id = 1'
+        );
         if (!row) {
-            res.json({ timeoutMinutes: 5, winPoints: 25, lossPoints: 25, missPenalty: 5 });
+            res.json({
+                timeoutMinutes: 5,
+                winPoints: 25,
+                lossPoints: 25,
+                missPenalty: 5,
+                raidBoostEnabled: false,
+                raidBoostWinPercent: 70,
+                raidBoostDurationMinutes: 10,
+                raidBoostMinViewers: 5,
+            });
             return;
         }
         res.json({
@@ -2367,6 +2424,10 @@ app.get('/api/admin/duels/config', async (req: Request, res: Response) => {
             winPoints: row.win_points,
             lossPoints: row.loss_points,
             missPenalty: row.miss_penalty ?? 5,
+            raidBoostEnabled: row.raid_duel_boost_enabled ?? false,
+            raidBoostWinPercent: row.raid_duel_boost_win_percent ?? 70,
+            raidBoostDurationMinutes: row.raid_duel_boost_duration_minutes ?? 10,
+            raidBoostMinViewers: row.raid_duel_boost_min_viewers ?? 5,
         });
     } catch (error) {
         console.error('❌ Ошибка получения конфига дуэлей:', error);
@@ -2380,6 +2441,10 @@ app.post('/api/admin/duels/config', async (req: Request, res: Response) => {
         const winPoints = req.body?.winPoints != null ? Number(req.body.winPoints) : undefined;
         const lossPoints = req.body?.lossPoints != null ? Number(req.body.lossPoints) : undefined;
         const missPenalty = req.body?.missPenalty != null ? Number(req.body.missPenalty) : undefined;
+        const raidBoostEnabled = req.body?.raidBoostEnabled != null ? Boolean(req.body.raidBoostEnabled) : undefined;
+        const raidBoostWinPercent = req.body?.raidBoostWinPercent != null ? Number(req.body.raidBoostWinPercent) : undefined;
+        const raidBoostDurationMinutes = req.body?.raidBoostDurationMinutes != null ? Number(req.body.raidBoostDurationMinutes) : undefined;
+        const raidBoostMinViewers = req.body?.raidBoostMinViewers != null ? Number(req.body.raidBoostMinViewers) : undefined;
         if (
             (timeoutMinutes != null && (Number.isNaN(timeoutMinutes) || timeoutMinutes < 0)) ||
             (winPoints != null && (Number.isNaN(winPoints) || winPoints < 0)) ||
@@ -2389,8 +2454,21 @@ app.post('/api/admin/duels/config', async (req: Request, res: Response) => {
             res.status(400).json({ error: 'Значения должны быть неотрицательными числами' });
             return;
         }
+        if (
+            (raidBoostWinPercent != null &&
+                (Number.isNaN(raidBoostWinPercent) || raidBoostWinPercent < 1 || raidBoostWinPercent > 99)) ||
+            (raidBoostDurationMinutes != null &&
+                (Number.isNaN(raidBoostDurationMinutes) || raidBoostDurationMinutes < 1 || raidBoostDurationMinutes > 240)) ||
+            (raidBoostMinViewers != null &&
+                (Number.isNaN(raidBoostMinViewers) || raidBoostMinViewers < 0 || raidBoostMinViewers > 100000))
+        ) {
+            res.status(400).json({
+                error: 'Рейд-буст: шанс 1–99%, длительность 1–240 мин, мин. зрителей 0–100000',
+            });
+            return;
+        }
         const updates: string[] = [];
-        const params: number[] = [];
+        const params: (number | boolean)[] = [];
         let i = 1;
         if (timeoutMinutes != null) {
             updates.push(`timeout_minutes = $${i++}`);
@@ -2408,22 +2486,78 @@ app.post('/api/admin/duels/config', async (req: Request, res: Response) => {
             updates.push(`miss_penalty = $${i++}`);
             params.push(missPenalty);
         }
+        if (raidBoostEnabled != null) {
+            updates.push(`raid_duel_boost_enabled = $${i++}`);
+            params.push(raidBoostEnabled);
+        }
+        if (raidBoostWinPercent != null) {
+            updates.push(`raid_duel_boost_win_percent = $${i++}`);
+            params.push(raidBoostWinPercent);
+        }
+        if (raidBoostDurationMinutes != null) {
+            updates.push(`raid_duel_boost_duration_minutes = $${i++}`);
+            params.push(raidBoostDurationMinutes);
+        }
+        if (raidBoostMinViewers != null) {
+            updates.push(`raid_duel_boost_min_viewers = $${i++}`);
+            params.push(raidBoostMinViewers);
+        }
         if (updates.length === 0) {
-            const row = await queryOne<DuelConfigRow>('SELECT timeout_minutes, win_points, loss_points, miss_penalty FROM duel_config WHERE id = 1');
+            const row = await queryOne<DuelConfigRow>(
+                'SELECT timeout_minutes, win_points, loss_points, miss_penalty, raid_duel_boost_enabled, raid_duel_boost_win_percent, raid_duel_boost_duration_minutes, raid_duel_boost_min_viewers FROM duel_config WHERE id = 1'
+            );
             const out = row
-                ? { timeoutMinutes: row.timeout_minutes, winPoints: row.win_points, lossPoints: row.loss_points, missPenalty: row.miss_penalty ?? 5 }
-                : { timeoutMinutes: 5, winPoints: 25, lossPoints: 25, missPenalty: 5 };
+                ? {
+                      timeoutMinutes: row.timeout_minutes,
+                      winPoints: row.win_points,
+                      lossPoints: row.loss_points,
+                      missPenalty: row.miss_penalty ?? 5,
+                      raidBoostEnabled: row.raid_duel_boost_enabled ?? false,
+                      raidBoostWinPercent: row.raid_duel_boost_win_percent ?? 70,
+                      raidBoostDurationMinutes: row.raid_duel_boost_duration_minutes ?? 10,
+                      raidBoostMinViewers: row.raid_duel_boost_min_viewers ?? 5,
+                  }
+                : {
+                      timeoutMinutes: 5,
+                      winPoints: 25,
+                      lossPoints: 25,
+                      missPenalty: 5,
+                      raidBoostEnabled: false,
+                      raidBoostWinPercent: 70,
+                      raidBoostDurationMinutes: 10,
+                      raidBoostMinViewers: 5,
+                  };
             res.json(out);
             return;
         }
         await query(
             `UPDATE duel_config SET ${updates.join(', ')} WHERE id = 1`,
-            params
+            params as unknown[]
         );
-        const row = await queryOne<DuelConfigRow>('SELECT timeout_minutes, win_points, loss_points, miss_penalty FROM duel_config WHERE id = 1');
+        const row = await queryOne<DuelConfigRow>(
+            'SELECT timeout_minutes, win_points, loss_points, miss_penalty, raid_duel_boost_enabled, raid_duel_boost_win_percent, raid_duel_boost_duration_minutes, raid_duel_boost_min_viewers FROM duel_config WHERE id = 1'
+        );
         const config = row
-            ? { timeoutMinutes: row.timeout_minutes, winPoints: row.win_points, lossPoints: row.loss_points, missPenalty: row.miss_penalty ?? 5 }
-            : { timeoutMinutes: 5, winPoints: 25, lossPoints: 25, missPenalty: 5 };
+            ? {
+                  timeoutMinutes: row.timeout_minutes,
+                  winPoints: row.win_points,
+                  lossPoints: row.loss_points,
+                  missPenalty: row.miss_penalty ?? 5,
+                  raidBoostEnabled: row.raid_duel_boost_enabled ?? false,
+                  raidBoostWinPercent: row.raid_duel_boost_win_percent ?? 70,
+                  raidBoostDurationMinutes: row.raid_duel_boost_duration_minutes ?? 10,
+                  raidBoostMinViewers: row.raid_duel_boost_min_viewers ?? 5,
+              }
+            : {
+                  timeoutMinutes: 5,
+                  winPoints: 25,
+                  lossPoints: 25,
+                  missPenalty: 5,
+                  raidBoostEnabled: false,
+                  raidBoostWinPercent: 70,
+                  raidBoostDurationMinutes: 10,
+                  raidBoostMinViewers: 5,
+              };
         if (onDuelConfigUpdatedCallback) onDuelConfigUpdatedCallback(config);
         res.json(config);
     } catch (error) {
@@ -2617,7 +2751,18 @@ let getDuelCooldownSkipCallback: (() => boolean) | null = null;
 let setDuelCooldownSkipCallback: ((skip: boolean) => void) | null = null;
 let getDuelOverlaySyncEnabledCallback: (() => boolean) | null = null;
 let setDuelOverlaySyncEnabledCallback: ((enabled: boolean) => void) | null = null;
-let onDuelConfigUpdatedCallback: ((config: { timeoutMinutes: number; winPoints: number; lossPoints: number; missPenalty: number }) => void) | null = null;
+let onDuelConfigUpdatedCallback:
+    | ((config: {
+          timeoutMinutes: number;
+          winPoints: number;
+          lossPoints: number;
+          missPenalty: number;
+          raidBoostEnabled: boolean;
+          raidBoostWinPercent: number;
+          raidBoostDurationMinutes: number;
+          raidBoostMinViewers: number;
+      }) => void)
+    | null = null;
 let onDuelDailyConfigUpdatedCallback: ((config: { dailyGamesCount: number; dailyRewardPoints: number; streakWinsCount: number; streakRewardPoints: number }) => void) | null = null;
 let onLinksConfigUpdatedCallback: ((config: LinksConfig) => void) | null = null;
 let onRaidConfigUpdatedCallback: ((config: RaidConfig) => void) | null = null;
@@ -2696,7 +2841,16 @@ export function setSetDuelOverlaySyncEnabledCallback(callback: (enabled: boolean
     setDuelOverlaySyncEnabledCallback = callback;
 }
 
-export function setOnDuelConfigUpdatedCallback(callback: (config: { timeoutMinutes: number; winPoints: number; lossPoints: number; missPenalty: number }) => void) {
+export function setOnDuelConfigUpdatedCallback(callback: (config: {
+    timeoutMinutes: number;
+    winPoints: number;
+    lossPoints: number;
+    missPenalty: number;
+    raidBoostEnabled: boolean;
+    raidBoostWinPercent: number;
+    raidBoostDurationMinutes: number;
+    raidBoostMinViewers: number;
+}) => void) {
     onDuelConfigUpdatedCallback = callback;
 }
 

@@ -17,7 +17,16 @@ function formatDuelRemaining(timeoutUntil: number): string {
   return `${m} мин ${s} сек`;
 }
 
-type DuelConfigValues = { timeoutMinutes: number; winPoints: number; lossPoints: number; missPenalty: number };
+type DuelConfigValues = {
+  timeoutMinutes: number;
+  winPoints: number;
+  lossPoints: number;
+  missPenalty: number;
+  raidBoostEnabled: boolean;
+  raidBoostWinPercent: number;
+  raidBoostDurationMinutes: number;
+  raidBoostMinViewers: number;
+};
 type DailyConfigValues = { dailyGamesCount: number; dailyRewardPoints: number; streakWinsCount: number; streakRewardPoints: number };
 
 export class DuelsTableElement extends HTMLElement {
@@ -150,9 +159,21 @@ export class DuelsTableElement extends HTMLElement {
       }
     });
 
-    [this.querySelector('#duel-timeout-min'), this.querySelector('#duel-win-points'), this.querySelector('#duel-loss-points'), this.querySelector('#duel-miss-penalty')].forEach((el) => {
+    [this.querySelector('#duel-timeout-min'), this.querySelector('#duel-win-points'), this.querySelector('#duel-loss-points'), this.querySelector('#duel-miss-penalty'), this.querySelector('#raid-boost-win-percent'), this.querySelector('#raid-boost-duration-min'), this.querySelector('#raid-boost-min-viewers')].forEach((el) => {
       el?.addEventListener('input', () => this.updateDuelConfigSaveButton());
       el?.addEventListener('change', () => this.updateDuelConfigSaveButton());
+    });
+
+    this.querySelector('#raid-boost-toggle')?.addEventListener('click', () => {
+      const toggle = this.querySelector('#raid-boost-toggle') as HTMLElement;
+      const enabled = toggle.getAttribute('data-enabled') === 'true';
+      const next = !enabled;
+      toggle.classList.toggle('on', next);
+      toggle.classList.toggle('off', !next);
+      toggle.setAttribute('data-enabled', String(next));
+      const textEl = toggle.querySelector('.status-toggle-text');
+      if (textEl) textEl.textContent = next ? 'ВКЛ' : 'ВЫКЛ';
+      this.updateDuelConfigSaveButton();
     });
 
     [this.querySelector('#daily-games-count'), this.querySelector('#daily-reward-points'), this.querySelector('#streak-wins-count'), this.querySelector('#streak-reward-points')].forEach((el) => {
@@ -161,10 +182,27 @@ export class DuelsTableElement extends HTMLElement {
     });
 
     duelConfigSaveBtn?.addEventListener('click', async () => {
-      const { timeoutMinutes, winPoints, lossPoints, missPenalty } = this.getDuelConfigFromInputs();
+      const { timeoutMinutes, winPoints, lossPoints, missPenalty, raidBoostEnabled, raidBoostWinPercent, raidBoostDurationMinutes, raidBoostMinViewers } = this.getDuelConfigFromInputs();
       if (timeoutMinutes < 0 || winPoints < 0 || lossPoints < 0 || missPenalty < 0) { showAlert('Введите неотрицательные числа', 'error'); return; }
+      if (raidBoostWinPercent < 1 || raidBoostWinPercent > 99 || raidBoostDurationMinutes < 1 || raidBoostDurationMinutes > 240 || raidBoostMinViewers < 0) {
+        showAlert('Рейд-буст: шанс 1–99%, длительность 1–240 мин, мин. зрителей ≥ 0', 'error');
+        return;
+      }
       try {
-        const res = await authFetch('/api/admin/duels/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ timeoutMinutes, winPoints, lossPoints, missPenalty }) });
+        const res = await authFetch('/api/admin/duels/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            timeoutMinutes,
+            winPoints,
+            lossPoints,
+            missPenalty,
+            raidBoostEnabled,
+            raidBoostWinPercent,
+            raidBoostDurationMinutes,
+            raidBoostMinViewers,
+          }),
+        });
         if (!res.ok) throw new Error((await res.json().catch(() => ({})) as { error?: string }).error || `HTTP ${res.status}`);
         await this.loadDuelConfig();
       } catch (error) { if (error instanceof Error) showAlert(`Ошибка: ${error.message}`, 'error'); }
@@ -317,20 +355,56 @@ export class DuelsTableElement extends HTMLElement {
   private async loadDuelConfig(): Promise<void> {
     try {
       const res = await authFetch('/api/admin/duels/config');
-      const data = (await res.json()) as { timeoutMinutes?: number; winPoints?: number; lossPoints?: number; missPenalty?: number };
+      const data = (await res.json()) as {
+        timeoutMinutes?: number;
+        winPoints?: number;
+        lossPoints?: number;
+        missPenalty?: number;
+        raidBoostEnabled?: boolean;
+        raidBoostWinPercent?: number;
+        raidBoostDurationMinutes?: number;
+        raidBoostMinViewers?: number;
+      };
       const timeoutMinutes = data.timeoutMinutes ?? 5;
       const winPoints = data.winPoints ?? 25;
       const lossPoints = data.lossPoints ?? 25;
       const missPenalty = data.missPenalty ?? 5;
-      this.lastDuelConfig = { timeoutMinutes, winPoints, lossPoints, missPenalty };
+      const raidBoostEnabled = Boolean(data.raidBoostEnabled);
+      const raidBoostWinPercent = data.raidBoostWinPercent ?? 70;
+      const raidBoostDurationMinutes = data.raidBoostDurationMinutes ?? 10;
+      const raidBoostMinViewers = data.raidBoostMinViewers ?? 5;
+      this.lastDuelConfig = {
+        timeoutMinutes,
+        winPoints,
+        lossPoints,
+        missPenalty,
+        raidBoostEnabled,
+        raidBoostWinPercent,
+        raidBoostDurationMinutes,
+        raidBoostMinViewers,
+      };
       const timeoutInput = this.querySelector<HTMLInputElement>('#duel-timeout-min');
       const winInput = this.querySelector<HTMLInputElement>('#duel-win-points');
       const lossInput = this.querySelector<HTMLInputElement>('#duel-loss-points');
       const missPenaltyInput = this.querySelector<HTMLInputElement>('#duel-miss-penalty');
+      const raidWinInput = this.querySelector<HTMLInputElement>('#raid-boost-win-percent');
+      const raidDurInput = this.querySelector<HTMLInputElement>('#raid-boost-duration-min');
+      const raidMinVInput = this.querySelector<HTMLInputElement>('#raid-boost-min-viewers');
+      const raidToggle = this.querySelector<HTMLElement>('#raid-boost-toggle');
       if (timeoutInput) timeoutInput.value = String(timeoutMinutes);
       if (winInput) winInput.value = String(winPoints);
       if (lossInput) lossInput.value = String(lossPoints);
       if (missPenaltyInput) missPenaltyInput.value = String(missPenalty);
+      if (raidWinInput) raidWinInput.value = String(raidBoostWinPercent);
+      if (raidDurInput) raidDurInput.value = String(raidBoostDurationMinutes);
+      if (raidMinVInput) raidMinVInput.value = String(raidBoostMinViewers);
+      if (raidToggle) {
+        raidToggle.classList.toggle('on', raidBoostEnabled);
+        raidToggle.classList.toggle('off', !raidBoostEnabled);
+        raidToggle.setAttribute('data-enabled', String(raidBoostEnabled));
+        const t = raidToggle.querySelector('.status-toggle-text');
+        if (t) t.textContent = raidBoostEnabled ? 'ВКЛ' : 'ВЫКЛ';
+      }
       this.updateDuelConfigSaveButton();
     } catch (error) { console.error('Ошибка загрузки конфига дуэлей:', error); }
   }
@@ -340,11 +414,19 @@ export class DuelsTableElement extends HTMLElement {
     const winInput = this.querySelector<HTMLInputElement>('#duel-win-points');
     const lossInput = this.querySelector<HTMLInputElement>('#duel-loss-points');
     const missPenaltyInput = this.querySelector<HTMLInputElement>('#duel-miss-penalty');
+    const raidWinInput = this.querySelector<HTMLInputElement>('#raid-boost-win-percent');
+    const raidDurInput = this.querySelector<HTMLInputElement>('#raid-boost-duration-min');
+    const raidMinVInput = this.querySelector<HTMLInputElement>('#raid-boost-min-viewers');
+    const raidToggle = this.querySelector<HTMLElement>('#raid-boost-toggle');
     return {
       timeoutMinutes: timeoutInput ? parseInt(timeoutInput.value, 10) || 0 : 0,
       winPoints: winInput ? parseInt(winInput.value, 10) || 0 : 0,
       lossPoints: lossInput ? parseInt(lossInput.value, 10) || 0 : 0,
       missPenalty: missPenaltyInput ? parseInt(missPenaltyInput.value, 10) || 0 : 0,
+      raidBoostEnabled: raidToggle ? raidToggle.getAttribute('data-enabled') === 'true' : false,
+      raidBoostWinPercent: raidWinInput ? parseInt(raidWinInput.value, 10) || 0 : 0,
+      raidBoostDurationMinutes: raidDurInput ? parseInt(raidDurInput.value, 10) || 0 : 0,
+      raidBoostMinViewers: raidMinVInput ? parseInt(raidMinVInput.value, 10) || 0 : 0,
     };
   }
 
@@ -352,7 +434,15 @@ export class DuelsTableElement extends HTMLElement {
     const btn = this.querySelector<HTMLButtonElement>('#duel-config-save-btn');
     if (!btn) return;
     const current = this.getDuelConfigFromInputs();
-    const same = this.lastDuelConfig !== null && this.lastDuelConfig.timeoutMinutes === current.timeoutMinutes && this.lastDuelConfig.winPoints === current.winPoints && this.lastDuelConfig.lossPoints === current.lossPoints && this.lastDuelConfig.missPenalty === current.missPenalty;
+    const same = this.lastDuelConfig !== null
+      && this.lastDuelConfig.timeoutMinutes === current.timeoutMinutes
+      && this.lastDuelConfig.winPoints === current.winPoints
+      && this.lastDuelConfig.lossPoints === current.lossPoints
+      && this.lastDuelConfig.missPenalty === current.missPenalty
+      && this.lastDuelConfig.raidBoostEnabled === current.raidBoostEnabled
+      && this.lastDuelConfig.raidBoostWinPercent === current.raidBoostWinPercent
+      && this.lastDuelConfig.raidBoostDurationMinutes === current.raidBoostDurationMinutes
+      && this.lastDuelConfig.raidBoostMinViewers === current.raidBoostMinViewers;
     btn.disabled = same;
   }
 
