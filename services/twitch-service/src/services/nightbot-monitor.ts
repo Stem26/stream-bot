@@ -208,6 +208,8 @@ export class NightBotMonitor {
         '!скины', '!скин',
         '!игры', '!help',
         '!дуэль', '!duel', '!fight',
+        '!дуэльвкл', '!duelon',
+        '!дуэльвыкл', '!dueloff',
         '!старт_дуэль', '!start_duel',
         '!стартдуэль', '!startduel',
         '!стоп_дуэль', '!stop_duel',
@@ -264,8 +266,8 @@ export class NightBotMonitor {
         register(['!дуэль'], (ch, u, m, msg) => void this.handleDuelCommand(ch, u, m, msg));
         register(['!принять'], (ch, u, m, msg) => void this.handleAcceptDuelCommand(ch, u, msg));
         register(['!отклонить'], (ch, u, m, msg) => void this.handleDeclineDuelCommand(ch, u, msg));
-        register(['!стоп_дуэль', '!стопдуэль', '!stop_duel', '!stopduel'], (ch, u, m, msg) => void this.handleDisableDuelsCommand(ch, u, msg));
-        register(['!старт_дуэль', '!стартдуэль', '!start_duel', '!startduel'], (ch, u, m, msg) => void this.handleEnableDuelsCommand(ch, u, msg));
+        register(['!дуэльвыкл', '!dueloff', '!стоп_дуэль', '!стопдуэль', '!stop_duel', '!stopduel'], (ch, u, m, msg) => void this.handleDisableDuelsCommand(ch, u, msg));
+        register(['!дуэльвкл', '!duelon', '!старт_дуэль', '!стартдуэль', '!start_duel', '!startduel'], (ch, u, m, msg) => void this.handleEnableDuelsCommand(ch, u, msg));
         register(['!амнистия'], (ch, u, m, msg) => void this.handleDuelPardonCommand(ch, u, msg));
         register(['!оверлейвкл', '!overlayon'], (ch, u, m, msg) => void this.handleEnableDuelOverlaySyncCommand(ch, u, msg));
         register(['!оверлейвыкл', '!overlayoff'], (ch, u, m, msg) => void this.handleDisableDuelOverlaySyncCommand(ch, u, msg));
@@ -1836,12 +1838,12 @@ export class NightBotMonitor {
     }
 
     /**
-     * Обработка команды !стоп_дуэль из чата
+     * Обработка команды !дуэльвыкл из чата
      * Отключает дуэли (только для админов)
      */
     private async handleDisableDuelsCommand(channel: string, user: string, msg: any) {
-        console.log(`Команда !стоп_дуэль от ${user} в ${channel}`);
-        log('COMMAND', { command: '!стоп_дуэль', username: user, channel });
+        console.log(`Команда !дуэльвыкл от ${user} в ${channel}`);
+        log('COMMAND', { command: '!дуэльвыкл', username: user, channel });
 
         try {
             const success = disableDuels(user);
@@ -1852,17 +1854,17 @@ export class NightBotMonitor {
             }
             // Если нет прав - молча игнорируем
         } catch (error) {
-            console.error('❌ Ошибка при обработке команды !стоп_дуэль:', error);
+            console.error('❌ Ошибка при обработке команды !дуэльвыкл:', error);
         }
     }
 
     /**
-     * Обработка команды !старт_дуэль из чата
+     * Обработка команды !дуэльвкл из чата
      * Включает дуэли (только для админов)
      */
     private async handleEnableDuelsCommand(channel: string, user: string, msg: any) {
-        console.log(`✅ Команда !старт_дуэль от ${user} в ${channel}`);
-        log('COMMAND', { command: '!старт_дуэль', username: user, channel });
+        console.log(`✅ Команда !дуэльвкл от ${user} в ${channel}`);
+        log('COMMAND', { command: '!дуэльвкл', username: user, channel });
 
         try {
             const success = enableDuels(user);
@@ -1873,7 +1875,7 @@ export class NightBotMonitor {
             }
             // Если нет прав - молча игнорируем
         } catch (error) {
-            console.error('❌ Ошибка при обработке команды !старт_дуэль:', error);
+            console.error('❌ Ошибка при обработке команды !дуэльвкл:', error);
         }
     }
 
