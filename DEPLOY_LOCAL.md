@@ -244,7 +244,6 @@ npm run dev:all
 
 ## Прочее
 
-
 ```bash
 # Nightbot команда
 npm run nightbot:send -- "@Kunilika666 милый стример"
