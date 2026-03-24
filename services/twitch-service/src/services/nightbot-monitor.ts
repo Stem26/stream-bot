@@ -251,7 +251,8 @@ export class NightBotMonitor {
         '!стопдуэль', '!stopduel',
         '!амнистия', '!pardon',
         '!оверлейвкл', '!overlayon',
-        '!оверлейвыкл', '!overlayoff'
+        '!оверлейвыкл', '!overlayoff',
+        '!jump', '!j', '!о',
     ]);
 
     private commands = this.buildCommandsMap('!партия');
