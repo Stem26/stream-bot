@@ -482,6 +482,14 @@ function describeAdminAction(req: Request, context?: AdminAuditContext): { actio
             details: `КД: ${before ? 'выкл' : 'вкл'} -> ${skip ? 'выкл' : 'вкл'}`,
         };
     }
+    if (method === 'POST' && pathOnly === '/api/admin/duels/set-overlay-sync') {
+        const enabled = Boolean(body.enabled);
+        const before = getDuelOverlaySyncEnabledCallback ? getDuelOverlaySyncEnabledCallback() : false;
+        return {
+            action: enabled ? 'включил синхронизацию дуэлей с оверлеем' : 'выключил синхронизацию дуэлей с оверлеем',
+            details: `Синхронизация: ${before ? 'вкл' : 'выкл'} -> ${enabled ? 'вкл' : 'выкл'}`,
+        };
+    }
     if (method === 'PUT' && pathOnly === '/api/links') {
         const prev = context?.previousLinksConfig;
         const hasText = typeof body.allLinksText === 'string';
@@ -2074,7 +2082,8 @@ app.get('/api/admin/duels/status', (req: Request, res: Response) => {
     try {
         const enabled = getDuelsStatus();
         const skipCooldown = getDuelCooldownSkipCallback ? getDuelCooldownSkipCallback() : false;
-        res.json({ enabled, skipCooldown });
+        const overlaySyncEnabled = getDuelOverlaySyncEnabledCallback ? getDuelOverlaySyncEnabledCallback() : false;
+        res.json({ enabled, skipCooldown, overlaySyncEnabled });
     } catch (error) {
         console.error('❌ Ошибка получения статуса дуэлей:', error);
         res.status(500).json({ error: 'Ошибка получения статуса' });
@@ -2112,6 +2121,18 @@ app.post('/api/admin/duels/set-cooldown-skip', (req: Request, res: Response) => 
     } catch (error) {
         console.error('❌ Ошибка установки режима КД:', error);
         res.status(500).json({ error: 'Ошибка установки режима КД' });
+    }
+});
+
+// Вкл/выкл синхронизации сообщений дуэли с оверлеем
+app.post('/api/admin/duels/set-overlay-sync', (req: Request, res: Response) => {
+    try {
+        const enabled = Boolean(req.body?.enabled);
+        if (setDuelOverlaySyncEnabledCallback) setDuelOverlaySyncEnabledCallback(enabled);
+        res.json({ success: true, overlaySyncEnabled: enabled });
+    } catch (error) {
+        console.error('❌ Ошибка установки режима синхронизации оверлея:', error);
+        res.status(500).json({ error: 'Ошибка установки режима синхронизации оверлея' });
     }
 });
 
@@ -2594,6 +2615,8 @@ let pardonDuelUserCallback: ((username: string) => Promise<void>) | null = null;
 let getDuelsStatusCallback: (() => boolean) | null = null;
 let getDuelCooldownSkipCallback: (() => boolean) | null = null;
 let setDuelCooldownSkipCallback: ((skip: boolean) => void) | null = null;
+let getDuelOverlaySyncEnabledCallback: (() => boolean) | null = null;
+let setDuelOverlaySyncEnabledCallback: ((enabled: boolean) => void) | null = null;
 let onDuelConfigUpdatedCallback: ((config: { timeoutMinutes: number; winPoints: number; lossPoints: number; missPenalty: number }) => void) | null = null;
 let onDuelDailyConfigUpdatedCallback: ((config: { dailyGamesCount: number; dailyRewardPoints: number; streakWinsCount: number; streakRewardPoints: number }) => void) | null = null;
 let onLinksConfigUpdatedCallback: ((config: LinksConfig) => void) | null = null;
@@ -2663,6 +2686,14 @@ export function setGetDuelCooldownSkipCallback(callback: () => boolean) {
 
 export function setSetDuelCooldownSkipCallback(callback: (skip: boolean) => void) {
     setDuelCooldownSkipCallback = callback;
+}
+
+export function setGetDuelOverlaySyncEnabledCallback(callback: () => boolean) {
+    getDuelOverlaySyncEnabledCallback = callback;
+}
+
+export function setSetDuelOverlaySyncEnabledCallback(callback: (enabled: boolean) => void) {
+    setDuelOverlaySyncEnabledCallback = callback;
 }
 
 export function setOnDuelConfigUpdatedCallback(callback: (config: { timeoutMinutes: number; winPoints: number; lossPoints: number; missPenalty: number }) => void) {

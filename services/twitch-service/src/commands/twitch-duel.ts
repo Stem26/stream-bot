@@ -1,6 +1,12 @@
 import { TwitchPlayersStorageDB } from '../services/TwitchPlayersStorageDB';
 import { STREAMER_USERNAME } from '../config/env';
-import { sendOverlayDuel, DuelMode } from '../services/overlay-api';
+import {
+  sendOverlayDuel,
+  sendOverlayDuelSafe,
+  waitOverlayDuelCompleteEvent,
+  DuelMode,
+} from '../services/overlay-api';
+import { query, queryOne } from '../database/database';
 
 const storage = new TwitchPlayersStorageDB();
 
@@ -34,6 +40,15 @@ type DuelChallengeEntry = {
   challenged: string;
   challengedDisplay: string;
   createdAt: number;
+};
+
+export type DuelCommandResult = {
+  response: string;
+  loser?: string;
+  loser2?: string;
+  bothLost?: boolean;
+  extraMessages?: string[];
+  postOverlayMessage?: Promise<string | undefined>;
 };
 
 // Храним несколько вызовов: Map<channel, Map<challengeId, DuelChallengeEntry>>
@@ -119,6 +134,55 @@ export function setDuelAdminsFromModerators(usernames: string[]): void {
 
 // Флаг состояния дуэлей (включены/выключены)
 let duelsEnabled = true;
+// Флаг синхронизации дуэлей с оверлеем (сообщение в 2 этапа)
+let duelOverlaySyncEnabled = false;
+let duelOverlaySyncLoadedFromDb = false;
+
+type DuelConfigDbRow = {
+  overlay_sync_enabled?: boolean;
+};
+
+async function loadDuelOverlaySyncFromDb(): Promise<void> {
+  try {
+    const row = await queryOne<DuelConfigDbRow>(
+      'SELECT overlay_sync_enabled FROM duel_config WHERE id = 1'
+    );
+    if (row && typeof row.overlay_sync_enabled === 'boolean') {
+      duelOverlaySyncEnabled = row.overlay_sync_enabled;
+      console.log(
+        `✅ Duel overlay sync загружен из БД: ${duelOverlaySyncEnabled ? 'ВКЛ' : 'ВЫКЛ'}`
+      );
+    } else {
+      console.log(
+        `ℹ️ Duel overlay sync в БД не найден, используем дефолт: ${duelOverlaySyncEnabled ? 'ВКЛ' : 'ВЫКЛ'}`
+      );
+    }
+  } catch (error: any) {
+    console.error(
+      '⚠️ Ошибка загрузки duel overlay sync из БД:',
+      error?.message || error
+    );
+  } finally {
+    duelOverlaySyncLoadedFromDb = true;
+  }
+}
+
+async function ensureDuelOverlaySyncLoadedFromDb(): Promise<void> {
+  if (duelOverlaySyncLoadedFromDb) return;
+  await loadDuelOverlaySyncFromDb();
+}
+
+function persistDuelOverlaySyncToDb(enabled: boolean): void {
+  void query(
+    'UPDATE duel_config SET overlay_sync_enabled = $1 WHERE id = 1',
+    [enabled]
+  ).catch((error: any) => {
+    console.error(
+      '⚠️ Ошибка сохранения duel overlay sync в БД:',
+      error?.message || error
+    );
+  });
+}
 
 /** Отключить КД 1 мин (канал + игрок) — для тестов, можно спамить дуэли */
 let duelCooldownSkipped = false;
@@ -295,7 +359,7 @@ async function handlePersonalChallenge(
   channel: string,
   players: Map<string, TwitchPlayerData>,
   now: number
-): Promise<{ response: string; loser?: string; loser2?: string; bothLost?: boolean; extraMessages?: string[] }> {
+): Promise<DuelCommandResult> {
   // Очищаем имя от @ и невидимых символов
   let cleanTarget = targetUsername.toLowerCase().replace(/^@+/, '');
   cleanTarget = cleanTarget.replace(/[\u200B-\u200D\uFEFF\u034F\u061C\u180E]/g, '').trim();
@@ -470,7 +534,7 @@ async function executeDuel(
   channel: string,
   players: Map<string, TwitchPlayerData>,
   now: number
-): Promise<{ response: string; loser?: string; loser2?: string; bothLost?: boolean; extraMessages?: string[] }> {
+): Promise<DuelCommandResult> {
   const player1 = ensurePlayer(players, player1Username);
   const player2 = ensurePlayer(players, player2Username);
 
@@ -570,12 +634,35 @@ async function executeDuel(
     await storage.saveTwitchPlayers(players);
     onDuelBannedListChanged?.();
 
-    void sendOverlayDuel(player1Username, player2Username, 'all-lose');
-
     markBotDuelParticipationCooldown(channel, player1Normalized, player2Normalized, now);
 
+    const introMessage = `@${player1Username} и @${player2Username} сошлись в дуэли!`;
+    const finalMessage = `Оба попали и убили друг друга! 💀💀 Оба получают (-${duelConfig.lossPoints}) очков и таймаут на ${duelConfig.timeoutMinutes} мин.`;
+
+    if (duelOverlaySyncEnabled) {
+      const postOverlayMessage = (async (): Promise<string | undefined> => {
+        const sent = await sendOverlayDuelSafe(player1Username, player2Username, 'all-lose');
+        if (!sent) {
+          return finalMessage;
+        }
+        const waitFromSec = Math.floor(Date.now() / 1000);
+        await waitOverlayDuelCompleteEvent(waitFromSec);
+        return finalMessage;
+      })();
+
+      return {
+        response: introMessage,
+        loser: player1Username,
+        loser2: player2Username,
+        bothLost: true,
+        postOverlayMessage,
+      };
+    }
+
+    void sendOverlayDuel(player1Username, player2Username, 'all-lose');
+
     return {
-      response: `@${player1Username} и @${player2Username} сошлись в дуэли! Оба попали и убили друг друга! 💀💀 Оба получают (-${duelConfig.lossPoints}) очков и таймаут на ${duelConfig.timeoutMinutes} мин.`,
+      response: `${introMessage} ${finalMessage}`,
       loser: player1Username,
       loser2: player2Username,
       bothLost: true
@@ -603,13 +690,36 @@ async function executeDuel(
     
     await storage.saveTwitchPlayers(players);
 
+    markBotDuelParticipationCooldown(channel, player1Normalized, player2Normalized, now);
+
+    const introMessage = `@${player1Username} и @${player2Username} сошлись в дуэли!`;
+    const finalMessage = `Оба промахнулись! 😅 Живы оба, но позор на всю деревню! (-${duelConfig.missPenalty}) очков каждому.`;
+
+    if (duelOverlaySyncEnabled) {
+      const postOverlayMessage = (async (): Promise<string | undefined> => {
+        const sent = await sendOverlayDuelSafe(player1Username, player2Username, 'all-win');
+        if (!sent) {
+          return finalMessage;
+        }
+        const waitFromSec = Math.floor(Date.now() / 1000);
+        await waitOverlayDuelCompleteEvent(waitFromSec);
+        return finalMessage;
+      })();
+
+      return {
+        response: introMessage,
+        loser: undefined,
+        loser2: undefined,
+        bothLost: false,
+        postOverlayMessage,
+      };
+    }
+
     // Сообщаем о результате дуэли в Overlay (оба выжили / ничья)
     void sendOverlayDuel(player1Username, player2Username, 'all-win');
 
-    markBotDuelParticipationCooldown(channel, player1Normalized, player2Normalized, now);
-
     return {
-      response: `@${player1Username} и @${player2Username} сошлись в дуэли! Оба промахнулись! 😅 Живы оба, но позор на всю деревню! (-${duelConfig.missPenalty}) очков каждому.`,
+      response: `${introMessage} ${finalMessage}`,
       loser: undefined,
       loser2: undefined,
       bothLost: false
@@ -695,7 +805,6 @@ async function executeDuel(
 
   // Сообщаем о результате дуэли в Overlay
   const mode: DuelMode = winner === player1Username ? 'a-win' : 'b-win';
-  void sendOverlayDuel(player1Username, player2Username, mode);
 
   const extraMessages: string[] = [];
   if (winnerDailyBonus > 0) {
@@ -711,8 +820,32 @@ async function executeDuel(
 
   markBotDuelParticipationCooldown(channel, player1Normalized, player2Normalized, now);
 
+  const introMessage = `@${player1Username} и @${player2Username} сошлись в дуэли!`;
+  const finalMessage = `Победитель @${winner} (+${duelConfig.winPoints}), проигравший @${loser} (-${duelConfig.lossPoints}) и в таймаут на ${duelConfig.timeoutMinutes} мин.`;
+
+  if (duelOverlaySyncEnabled) {
+    const postOverlayMessage = (async (): Promise<string | undefined> => {
+      const sent = await sendOverlayDuelSafe(player1Username, player2Username, mode);
+      if (!sent) {
+        return finalMessage;
+      }
+      const waitFromSec = Math.floor(Date.now() / 1000);
+      await waitOverlayDuelCompleteEvent(waitFromSec);
+      return finalMessage;
+    })();
+
+    return {
+      response: introMessage,
+      loser,
+      postOverlayMessage,
+      ...(extraMessages.length > 0 && { extraMessages })
+    };
+  }
+
+  void sendOverlayDuel(player1Username, player2Username, mode);
+
   return {
-    response: `@${player1Username} и @${player2Username} сошлись в дуэли! Победитель @${winner} (+${duelConfig.winPoints}), проигравший @${loser} (-${duelConfig.lossPoints}) и в таймаут на ${duelConfig.timeoutMinutes} мин.`,
+    response: `${introMessage} ${finalMessage}`,
     loser,
     ...(extraMessages.length > 0 && { extraMessages })
   };
@@ -722,7 +855,9 @@ export async function processTwitchDuelCommand(
     twitchUsername: string,
     channel: string,
     targetUsername?: string
-): Promise<{ response: string; loser?: string; loser2?: string; bothLost?: boolean; extraMessages?: string[] }> {
+): Promise<DuelCommandResult> {
+  await ensureDuelOverlaySyncLoadedFromDb();
+
   // Проверяем, включены ли дуэли
   if (!duelsEnabled) {
     return {
@@ -1012,7 +1147,9 @@ export async function pardonDuelUserFromWeb(username: string): Promise<{ success
 export async function acceptDuelChallenge(
   twitchUsername: string,
   channel: string
-): Promise<{ response: string; loser?: string; loser2?: string; bothLost?: boolean; extraMessages?: string[] }> {
+): Promise<DuelCommandResult> {
+  await ensureDuelOverlaySyncLoadedFromDb();
+
   if (!duelsEnabled) {
     return {
       response: ''
@@ -1151,6 +1288,53 @@ export function declineDuelChallenge(
   return {
     response: `@${twitchUsername} отклонил вызов от @${userChallenge.challengerDisplay} 🏳️`
   };
+}
+
+/**
+ * Включить/выключить двухэтапные сообщения дуэли с ожиданием ответа оверлея
+ */
+export function enableDuelOverlaySync(twitchUsername: string): boolean {
+  if (!canManageDuels(twitchUsername)) {
+    return false;
+  }
+  duelOverlaySyncEnabled = true;
+  persistDuelOverlaySyncToDb(true);
+  console.log(`✅ Синхронизация дуэлей с оверлеем включена пользователем ${twitchUsername}`);
+  return true;
+}
+
+export function disableDuelOverlaySync(twitchUsername: string): boolean {
+  if (!canManageDuels(twitchUsername)) {
+    return false;
+  }
+  duelOverlaySyncEnabled = false;
+  persistDuelOverlaySyncToDb(false);
+  console.log(`🛑 Синхронизация дуэлей с оверлеем выключена пользователем ${twitchUsername}`);
+  return true;
+}
+
+export function isDuelOverlaySyncEnabled(): boolean {
+  return duelOverlaySyncEnabled;
+}
+
+/**
+ * Включить/выключить синхронизацию оверлея из веб-админки
+ * (без проверки прав — доступ уже защищён)
+ */
+export function enableDuelOverlaySyncFromWeb(): void {
+  duelOverlaySyncEnabled = true;
+  persistDuelOverlaySyncToDb(true);
+  console.log('✅ Синхронизация дуэлей с оверлеем включена через веб-интерфейс');
+}
+
+export function disableDuelOverlaySyncFromWeb(): void {
+  duelOverlaySyncEnabled = false;
+  persistDuelOverlaySyncToDb(false);
+  console.log('🛑 Синхронизация дуэлей с оверлеем выключена через веб-интерфейс');
+}
+
+export async function initDuelOverlaySyncFromDb(): Promise<void> {
+  await ensureDuelOverlaySyncLoadedFromDb();
 }
 
 /**

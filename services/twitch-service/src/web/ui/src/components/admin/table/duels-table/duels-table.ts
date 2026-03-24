@@ -100,6 +100,7 @@ export class DuelsTableElement extends HTMLElement {
   private setupHandlers(): void {
     const duelsToggle = this.querySelector('#duels-toggle');
     const duelsCooldownToggle = this.querySelector('#duels-cooldown-toggle');
+    const duelsOverlaySyncToggle = this.querySelector('#duels-overlay-sync-toggle');
     const pardonAllBtn = this.querySelector('#pardon-all-btn');
     const duelConfigSaveBtn = this.querySelector('#duel-config-save-btn');
     const duelDailySaveBtn = this.querySelector('#duel-daily-save-btn');
@@ -126,6 +127,21 @@ export class DuelsTableElement extends HTMLElement {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ skip: !skipCooldown }),
+        });
+        if (!res.ok) throw new Error((await res.json().catch(() => ({})) as { error?: string }).error || `HTTP ${res.status}`);
+        await this.loadDuelsStatus();
+      } catch (error) {
+        if (error instanceof Error) showAlert(`Ошибка: ${error.message}`, 'error');
+      }
+    });
+
+    duelsOverlaySyncToggle?.addEventListener('click', async () => {
+      const enabled = (duelsOverlaySyncToggle as HTMLElement).getAttribute('data-enabled') === 'true';
+      try {
+        const res = await authFetch('/api/admin/duels/set-overlay-sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ enabled: !enabled }),
         });
         if (!res.ok) throw new Error((await res.json().catch(() => ({})) as { error?: string }).error || `HTTP ${res.status}`);
         await this.loadDuelsStatus();
@@ -206,7 +222,7 @@ export class DuelsTableElement extends HTMLElement {
   private async loadDuelsStatus(): Promise<void> {
     try {
       const response = await authFetch('/api/admin/duels/status');
-      const data = (await response.json()) as { enabled?: boolean; skipCooldown?: boolean };
+      const data = (await response.json()) as { enabled?: boolean; skipCooldown?: boolean; overlaySyncEnabled?: boolean };
       const toggle = this.querySelector('#duels-toggle');
       if (toggle) {
         const enabled = Boolean(data.enabled);
@@ -225,6 +241,15 @@ export class DuelsTableElement extends HTMLElement {
         cooldownToggle.setAttribute('data-skip-cooldown', String(skipCooldown));
         const cooldownText = cooldownToggle.querySelector('.status-toggle-text');
         if (cooldownText) cooldownText.textContent = cooldownOn ? 'ВКЛ' : 'ВЫКЛ';
+      }
+      const overlaySyncToggle = this.querySelector('#duels-overlay-sync-toggle');
+      if (overlaySyncToggle) {
+        const overlaySyncEnabled = Boolean(data.overlaySyncEnabled);
+        overlaySyncToggle.classList.toggle('on', overlaySyncEnabled);
+        overlaySyncToggle.classList.toggle('off', !overlaySyncEnabled);
+        overlaySyncToggle.setAttribute('data-enabled', String(overlaySyncEnabled));
+        const overlayText = overlaySyncToggle.querySelector('.status-toggle-text');
+        if (overlayText) overlayText.textContent = overlaySyncEnabled ? 'ВКЛ' : 'ВЫКЛ';
       }
     } catch (error) { console.error('Ошибка загрузки статуса дуэлей:', error); }
   }

@@ -212,14 +212,19 @@ export async function initDatabase(): Promise<void> {
           timeout_minutes INTEGER NOT NULL DEFAULT 5,
           win_points INTEGER NOT NULL DEFAULT 25,
           loss_points INTEGER NOT NULL DEFAULT 25,
-          miss_penalty INTEGER NOT NULL DEFAULT 5
+          miss_penalty INTEGER NOT NULL DEFAULT 5,
+          overlay_sync_enabled BOOLEAN NOT NULL DEFAULT TRUE
         )
       `);
       await client.query(`
         ALTER TABLE duel_config ADD COLUMN IF NOT EXISTS miss_penalty INTEGER NOT NULL DEFAULT 5
       `).catch(() => {});
       await client.query(`
-        INSERT INTO duel_config (id, timeout_minutes, win_points, loss_points, miss_penalty) VALUES (1, 5, 25, 25, 5)
+        ALTER TABLE duel_config ADD COLUMN IF NOT EXISTS overlay_sync_enabled BOOLEAN NOT NULL DEFAULT TRUE
+      `).catch(() => {});
+      await client.query(`
+        INSERT INTO duel_config (id, timeout_minutes, win_points, loss_points, miss_penalty, overlay_sync_enabled)
+        VALUES (1, 5, 25, 25, 5, TRUE)
         ON CONFLICT (id) DO NOTHING
       `);
 

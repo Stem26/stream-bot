@@ -7,7 +7,7 @@ import { clearDuelQueue, resetDuelsOnStreamEnd, clearDuelChallenges, setOnDuelBa
 import { clearActiveUsers } from "./commands/twitch-rat";
 import { log } from './utils/event-logger';
 import { initDatabase, closeDatabase, query, queryOne } from './database/database';
-import { startWebServer, getBroadcastDuelBannedChanged, setOnCommandsChangedCallback, setOnCommandExecuteCallback, setOnLinksSendCallback, setOnEnableDuelsCallback, setOnDisableDuelsCallback, setOnPardonAllCallback, setGetDuelBannedListCallback, setPardonDuelUserCallback, setGetDuelsStatusCallback, setGetDuelCooldownSkipCallback, setSetDuelCooldownSkipCallback, setOnDuelConfigUpdatedCallback, setOnDuelDailyConfigUpdatedCallback, setOnLinksConfigUpdatedCallback, setOnRaidConfigUpdatedCallback, setOnChatModerationConfigUpdatedCallback, setOnPartyConfigUpdatedCallback, getRaidMessageFromDb } from './web/server';
+import { startWebServer, getBroadcastDuelBannedChanged, setOnCommandsChangedCallback, setOnCommandExecuteCallback, setOnLinksSendCallback, setOnEnableDuelsCallback, setOnDisableDuelsCallback, setOnPardonAllCallback, setGetDuelBannedListCallback, setPardonDuelUserCallback, setGetDuelsStatusCallback, setGetDuelCooldownSkipCallback, setSetDuelCooldownSkipCallback, setGetDuelOverlaySyncEnabledCallback, setSetDuelOverlaySyncEnabledCallback, setOnDuelConfigUpdatedCallback, setOnDuelDailyConfigUpdatedCallback, setOnLinksConfigUpdatedCallback, setOnRaidConfigUpdatedCallback, setOnChatModerationConfigUpdatedCallback, setOnPartyConfigUpdatedCallback, getRaidMessageFromDb } from './web/server';
 
 async function main() {
     const config = loadConfig();
@@ -160,12 +160,17 @@ async function main() {
     });
     setGetDuelCooldownSkipCallback(() => nightBotMonitor.getDuelCooldownSkip());
     setSetDuelCooldownSkipCallback((skip: boolean) => nightBotMonitor.setDuelCooldownSkip(skip));
+    setGetDuelOverlaySyncEnabledCallback(() => nightBotMonitor.getDuelOverlaySyncEnabled());
+    setSetDuelOverlaySyncEnabledCallback((enabled: boolean) => nightBotMonitor.setDuelOverlaySyncEnabled(enabled));
     setGetDuelBannedListCallback(() => nightBotMonitor.getDuelBannedList());
     setPardonDuelUserCallback((username: string) => nightBotMonitor.pardonDuelUser(username));
     const broadcastDuelBanned = getBroadcastDuelBannedChanged();
     if (broadcastDuelBanned) setOnDuelBannedListChanged(broadcastDuelBanned);
     setOnDuelConfigUpdatedCallback((c) => setDuelConfig(c));
     setOnDuelDailyConfigUpdatedCallback((c) => setDailyQuestConfig(c));
+
+    // Загружаем persisted-флаг синхронизации дуэлей с оверлеем из БД
+    await nightBotMonitor.initDuelOverlaySync();
 
     // Связываем проверку статуса стрима: команды работают только когда стрим онлайн
     nightBotMonitor.setStreamStatusCheck(() => streamMonitor.getStreamStatus());

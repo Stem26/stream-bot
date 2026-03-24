@@ -3,7 +3,7 @@ import { StaticAuthProvider } from '@twurple/auth';
 import { processTwitchDickCommand } from '../commands/twitch-dick';
 import { processTwitchTopDickCommand } from '../commands/twitch-topDick';
 import { processTwitchBottomDickCommand } from '../commands/twitch-bottomDick';
-import { processTwitchDuelCommand, enableDuels, disableDuels, pardonAllDuelTimeouts, enableDuelsFromWeb as enableDuelsFromWebApi, disableDuelsFromWeb as disableDuelsFromWebApi, pardonAllDuelTimeoutsFromWeb, getDuelBannedPlayersFromWeb, pardonDuelUserFromWeb, getDuelCooldownSkipped, setDuelCooldownSkipped, getDuelTimeoutSeconds, acceptDuelChallenge, declineDuelChallenge, clearDuelChallenges, setDuelAdminsFromModerators, setDuelResponderLogin, areDuelsEnabled, canManageDuels } from '../commands/twitch-duel';
+import { processTwitchDuelCommand, enableDuels, disableDuels, pardonAllDuelTimeouts, enableDuelsFromWeb as enableDuelsFromWebApi, disableDuelsFromWeb as disableDuelsFromWebApi, pardonAllDuelTimeoutsFromWeb, getDuelBannedPlayersFromWeb, pardonDuelUserFromWeb, getDuelCooldownSkipped, setDuelCooldownSkipped, getDuelTimeoutSeconds, acceptDuelChallenge, declineDuelChallenge, clearDuelChallenges, setDuelAdminsFromModerators, setDuelResponderLogin, areDuelsEnabled, canManageDuels, enableDuelOverlaySync, disableDuelOverlaySync, isDuelOverlaySyncEnabled, enableDuelOverlaySyncFromWeb, disableDuelOverlaySyncFromWeb, initDuelOverlaySyncFromDb } from '../commands/twitch-duel';
 import { processTwitchRatCommand, processTwitchCutieCommand, addActiveUser, setChattersAPIFunction } from '../commands/twitch-rat';
 import { processTwitchPointsCommand, processTwitchTopPointsCommand } from '../commands/twitch-points';
 import { ENABLE_BOT_FEATURES, ALLOW_LOCAL_COMMANDS } from '../config/features';
@@ -212,7 +212,9 @@ export class NightBotMonitor {
         '!стартдуэль', '!startduel',
         '!стоп_дуэль', '!stop_duel',
         '!стопдуэль', '!stopduel',
-        '!амнистия', '!pardon'
+        '!амнистия', '!pardon',
+        '!оверлейвкл', '!overlayon',
+        '!оверлейвыкл', '!overlayoff'
     ]);
 
     private commands = this.buildCommandsMap('!партия');
@@ -265,6 +267,8 @@ export class NightBotMonitor {
         register(['!стоп_дуэль', '!стопдуэль', '!stop_duel', '!stopduel'], (ch, u, m, msg) => void this.handleDisableDuelsCommand(ch, u, msg));
         register(['!старт_дуэль', '!стартдуэль', '!start_duel', '!startduel'], (ch, u, m, msg) => void this.handleEnableDuelsCommand(ch, u, msg));
         register(['!амнистия'], (ch, u, m, msg) => void this.handleDuelPardonCommand(ch, u, msg));
+        register(['!оверлейвкл', '!overlayon'], (ch, u, m, msg) => void this.handleEnableDuelOverlaySyncCommand(ch, u, msg));
+        register(['!оверлейвыкл', '!overlayoff'], (ch, u, m, msg) => void this.handleDisableDuelOverlaySyncCommand(ch, u, msg));
         register(['!крыса'], (ch, u, m, msg) => void this.handleRatCommand(ch, u, m, msg));
         register(['!милашка'], (ch, u, m, msg) => void this.handleCutieCommand(ch, u, m, msg));
         register(['!vanish'], (ch, u, m, msg) => void this.handleVanishCommand(ch, u, msg));
@@ -947,6 +951,19 @@ export class NightBotMonitor {
 
                     this.handleDuelCommand(channel, user, message, msg);
                     return;
+                }
+
+                // Команда управления синхронизацией оверлея: !оверлей вкл|выкл
+                if (trimmedMessage.startsWith('!оверлей ')) {
+                    const mode = trimmedMessage.slice('!оверлей '.length).trim();
+                    if (mode === 'вкл' || mode === 'on') {
+                        this.handleEnableDuelOverlaySyncCommand(channel, user, msg);
+                        return;
+                    }
+                    if (mode === 'выкл' || mode === 'off') {
+                        this.handleDisableDuelOverlaySyncCommand(channel, user, msg);
+                        return;
+                    }
                 }
 
                 // Команда выбора скина: !скин <имя>
@@ -1704,6 +1721,13 @@ export class NightBotMonitor {
                 await this.sendMessage(channel, result.response);
                 console.log(`✅ Отправлен ответ в чат: ${result.response}`);
             }
+            if (result.postOverlayMessage) {
+                const delayed = await result.postOverlayMessage;
+                if (delayed) {
+                    await this.sendMessage(channel, delayed);
+                    console.log(`✅ Отправлена вторая часть дуэли: ${delayed}`);
+                }
+            }
             const duelBonusMessages = (result as { extraMessages?: string[] }).extraMessages;
             if (duelBonusMessages?.length) {
                 for (const msg of duelBonusMessages) {
@@ -1750,6 +1774,13 @@ export class NightBotMonitor {
             if (result.response) {
                 await this.sendMessage(channel, result.response);
                 console.log(`✅ Отправлен ответ в чат: ${result.response}`);
+            }
+            if (result.postOverlayMessage) {
+                const delayed = await result.postOverlayMessage;
+                if (delayed) {
+                    await this.sendMessage(channel, delayed);
+                    console.log(`✅ Отправлена вторая часть дуэли: ${delayed}`);
+                }
             }
             const bonusMessages = (result as { extraMessages?: string[] }).extraMessages;
             if (bonusMessages?.length) {
@@ -1904,6 +1935,48 @@ export class NightBotMonitor {
             }
         } catch (error) {
             console.error('❌ Ошибка при обработке команды !амнистия:', error);
+        }
+    }
+
+    /**
+     * Обработка команды !оверлейвкл из чата
+     * Включает синхронизацию сообщений дуэли с оверлеем (только для админов)
+     */
+    private async handleEnableDuelOverlaySyncCommand(channel: string, user: string, msg: any) {
+        console.log(`✅ Команда !оверлейвкл от ${user} в ${channel}`);
+        log('COMMAND', { command: '!оверлейвкл', username: user, channel });
+
+        try {
+            const success = enableDuelOverlaySync(user);
+            if (success) {
+                const response = 'Синхронизация дуэлей с оверлеем включена';
+                await this.sendMessage(channel, response);
+                console.log(`✅ Отправлен ответ в чат: ${response}`);
+            }
+            // Если нет прав — молча игнорируем
+        } catch (error) {
+            console.error('❌ Ошибка при обработке команды !оверлейвкл:', error);
+        }
+    }
+
+    /**
+     * Обработка команды !оверлейвыкл из чата
+     * Отключает синхронизацию сообщений дуэли с оверлеем (только для админов)
+     */
+    private async handleDisableDuelOverlaySyncCommand(channel: string, user: string, msg: any) {
+        console.log(`🛑 Команда !оверлейвыкл от ${user} в ${channel}`);
+        log('COMMAND', { command: '!оверлейвыкл', username: user, channel });
+
+        try {
+            const success = disableDuelOverlaySync(user);
+            if (success) {
+                const response = 'Синхронизация дуэлей с оверлеем отключена';
+                await this.sendMessage(channel, response);
+                console.log(`✅ Отправлен ответ в чат: ${response}`);
+            }
+            // Если нет прав — молча игнорируем
+        } catch (error) {
+            console.error('❌ Ошибка при обработке команды !оверлейвыкл:', error);
         }
     }
 
@@ -3147,6 +3220,25 @@ export class NightBotMonitor {
 
     setDuelCooldownSkip(skip: boolean): void {
         setDuelCooldownSkipped(skip);
+    }
+
+    /**
+     * Получить/установить режим синхронизации дуэлей с оверлеем (для веб-интерфейса)
+     */
+    getDuelOverlaySyncEnabled(): boolean {
+        return isDuelOverlaySyncEnabled();
+    }
+
+    setDuelOverlaySyncEnabled(enabled: boolean): void {
+        if (enabled) {
+            enableDuelOverlaySyncFromWeb();
+            return;
+        }
+        disableDuelOverlaySyncFromWeb();
+    }
+
+    async initDuelOverlaySync(): Promise<void> {
+        await initDuelOverlaySyncFromDb();
     }
 
     /**
