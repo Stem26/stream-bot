@@ -19,6 +19,7 @@ import {
     triggerOverlayPlayer,
     amnestyOverlayPlayer,
     jumpOverlayPlayer,
+    type OverlayTriggerRole,
 } from './overlay-api';
 
 const DATA_DIR = (() => {
@@ -104,6 +105,40 @@ async function loadCustomCommandsFromDb(): Promise<CustomCommand[]> {
 }
 
 type CommandHandler = (channel: string, user: string, message: string, msg: any) => void | Promise<void>;
+
+function resolveOverlayRoleFromUserInfo(userInfo: any): OverlayTriggerRole {
+    if (!userInfo) return null;
+
+    const isBroadcaster = Boolean(userInfo.isBroadcaster);
+    if (isBroadcaster) return 'broadcaster';
+
+    const isModerator = Boolean(userInfo.isMod);
+    if (isModerator) return 'moderator';
+
+    // Twurple может не выставлять isVip явно, поэтому учитываем badges/tag как fallback.
+    const isVip = Boolean(userInfo.isVip);
+    if (isVip) return 'vip';
+
+    const badges = userInfo.badges;
+    if (badges instanceof Map) {
+        if (badges.has('vip')) return 'vip';
+        if (badges.has('moderator')) return 'moderator';
+        if (badges.has('broadcaster')) return 'broadcaster';
+    } else if (badges && typeof badges === 'object') {
+        if (typeof badges.vip !== 'undefined') return 'vip';
+        if (typeof badges.moderator !== 'undefined') return 'moderator';
+        if (typeof badges.broadcaster !== 'undefined') return 'broadcaster';
+    }
+
+    const badgeInfo = userInfo.badgeInfo;
+    if (badgeInfo instanceof Map) {
+        if (badgeInfo.has('vip')) return 'vip';
+    } else if (badgeInfo && typeof badgeInfo === 'object') {
+        if (typeof badgeInfo.vip !== 'undefined') return 'vip';
+    }
+
+    return null;
+}
 
 // Blacklist ботов для фильтрации из списка зрителей (нормализован в lowercase + Set для O(1) поиска)
 const BOT_BLACKLIST = new Set([
@@ -883,7 +918,8 @@ export class NightBotMonitor {
                 addActiveUser(channel, username);
 
                 // Триггерим оверлей на каждое сообщение пользователя
-                triggerOverlayPlayer(user).catch((error: any) => {
+                const overlayRole = resolveOverlayRoleFromUserInfo(msg.userInfo);
+                triggerOverlayPlayer(user, overlayRole).catch((error: any) => {
                     console.error(
                         '⚠️ Ошибка Overlay trigger для сообщения:',
                         error?.message || error

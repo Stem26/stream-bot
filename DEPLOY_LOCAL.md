@@ -239,6 +239,7 @@ npm run dev:all
 
 добавить пользователя htpasswd /etc/nginx/.htpasswd user2
 проверить пользователей cat /etc/nginx/.htpasswd
+http://localhost:3000/debug/overlay-triggers
 ```
 ---
 

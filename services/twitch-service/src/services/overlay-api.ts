@@ -89,17 +89,20 @@ async function callOverlay<T = unknown>(
 }
 
 export async function triggerOverlayPlayer(
-  nickname: string
+  nickname: string,
+  role: OverlayTriggerRole = null
 ): Promise<void> {
   if (!nickname) return;
 
   try {
+    const body = {
+      type: 'twitch' as const,
+      nickname,
+      role,
+    };
     await callOverlay('/game/trigger', {
       method: 'POST',
-      body: {
-        type: 'twitch',
-        nickname,
-      },
+      body,
     });
   } catch (error: any) {
     console.error(
@@ -108,6 +111,8 @@ export async function triggerOverlayPlayer(
     );
   }
 }
+
+export type OverlayTriggerRole = null | 'vip' | 'moderator' | 'broadcaster';
 
 export type DuelMode = 'a-win' | 'b-win' | 'all-win' | 'all-lose';
 
