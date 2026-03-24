@@ -591,16 +591,19 @@ link-whitelist-dialog .modal-body {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-top: 6px;
+  margin-bottom: 10px;
 
   .admin-duels-label {
     font-weight: 500;
-    color: #333;
   }
 
   .status-toggle {
     cursor: pointer;
   }
+}
+
+.duels-toggle-block {
+  margin-bottom: 10px;
 }
 
 .admin-duels-config-fields {
@@ -716,7 +719,7 @@ link-whitelist-dialog .modal-body {
 .admin-description {
   color: #6c757d;
   font-size: 0.9em;
-  margin-top: 10px;
+  margin-bottom: 6px;
 }
 
 .admin-hint {
