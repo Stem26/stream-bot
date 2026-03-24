@@ -136,17 +136,22 @@ export function setDuelAdminsFromModerators(usernames: string[]): void {
 let duelsEnabled = true;
 // Флаг синхронизации дуэлей с оверлеем (сообщение в 2 этапа)
 let duelOverlaySyncEnabled = false;
-let duelOverlaySyncLoadedFromDb = false;
+let duelSettingsLoadedFromDb = false;
 
 type DuelConfigDbRow = {
+  duels_enabled?: boolean;
   overlay_sync_enabled?: boolean;
 };
 
-async function loadDuelOverlaySyncFromDb(): Promise<void> {
+async function loadDuelSettingsFromDb(): Promise<void> {
   try {
     const row = await queryOne<DuelConfigDbRow>(
-      'SELECT overlay_sync_enabled FROM duel_config WHERE id = 1'
+      'SELECT duels_enabled, overlay_sync_enabled FROM duel_config WHERE id = 1'
     );
+    if (row && typeof row.duels_enabled === 'boolean') {
+      duelsEnabled = row.duels_enabled;
+      console.log(`✅ Duels enabled загружен из БД: ${duelsEnabled ? 'ВКЛ' : 'ВЫКЛ'}`);
+    }
     if (row && typeof row.overlay_sync_enabled === 'boolean') {
       duelOverlaySyncEnabled = row.overlay_sync_enabled;
       console.log(
@@ -163,13 +168,13 @@ async function loadDuelOverlaySyncFromDb(): Promise<void> {
       error?.message || error
     );
   } finally {
-    duelOverlaySyncLoadedFromDb = true;
+    duelSettingsLoadedFromDb = true;
   }
 }
 
-async function ensureDuelOverlaySyncLoadedFromDb(): Promise<void> {
-  if (duelOverlaySyncLoadedFromDb) return;
-  await loadDuelOverlaySyncFromDb();
+async function ensureDuelSettingsLoadedFromDb(): Promise<void> {
+  if (duelSettingsLoadedFromDb) return;
+  await loadDuelSettingsFromDb();
 }
 
 function persistDuelOverlaySyncToDb(enabled: boolean): void {
@@ -179,6 +184,18 @@ function persistDuelOverlaySyncToDb(enabled: boolean): void {
   ).catch((error: any) => {
     console.error(
       '⚠️ Ошибка сохранения duel overlay sync в БД:',
+      error?.message || error
+    );
+  });
+}
+
+function persistDuelsEnabledToDb(enabled: boolean): void {
+  void query(
+    'UPDATE duel_config SET duels_enabled = $1 WHERE id = 1',
+    [enabled]
+  ).catch((error: any) => {
+    console.error(
+      '⚠️ Ошибка сохранения duels_enabled в БД:',
       error?.message || error
     );
   });
@@ -856,7 +873,7 @@ export async function processTwitchDuelCommand(
     channel: string,
     targetUsername?: string
 ): Promise<DuelCommandResult> {
-  await ensureDuelOverlaySyncLoadedFromDb();
+  await ensureDuelSettingsLoadedFromDb();
 
   // Проверяем, включены ли дуэли
   if (!duelsEnabled) {
@@ -1002,6 +1019,7 @@ export function disableDuels(twitchUsername: string): boolean {
     return false; // Нет прав
   }
   duelsEnabled = false;
+  persistDuelsEnabledToDb(false);
   console.log(`🛑 Дуэли отключены пользователем ${twitchUsername}`);
   return true;
 }
@@ -1014,6 +1032,7 @@ export function enableDuels(twitchUsername: string): boolean {
     return false; // Нет прав
   }
   duelsEnabled = true;
+  persistDuelsEnabledToDb(true);
   console.log(`✅ Дуэли включены пользователем ${twitchUsername}`);
   return true;
 }
@@ -1023,6 +1042,7 @@ export function enableDuels(twitchUsername: string): boolean {
  */
 export function enableDuelsFromWeb(): void {
   duelsEnabled = true;
+  persistDuelsEnabledToDb(true);
   console.log('✅ Дуэли включены через веб-интерфейс');
 }
 
@@ -1031,6 +1051,7 @@ export function enableDuelsFromWeb(): void {
  */
 export function disableDuelsFromWeb(): void {
   duelsEnabled = false;
+  persistDuelsEnabledToDb(false);
   console.log('🛑 Дуэли выключены через веб-интерфейс');
 }
 
@@ -1057,6 +1078,7 @@ export function clearDuelQueue(): void {
  */
 export function resetDuelsOnStreamEnd(): void {
   duelsEnabled = false;
+  persistDuelsEnabledToDb(false);
   console.log('🔄 Дуэли сброшены в состояние "выключены" (окончание стрима)');
 }
 
@@ -1148,7 +1170,7 @@ export async function acceptDuelChallenge(
   twitchUsername: string,
   channel: string
 ): Promise<DuelCommandResult> {
-  await ensureDuelOverlaySyncLoadedFromDb();
+  await ensureDuelSettingsLoadedFromDb();
 
   if (!duelsEnabled) {
     return {
@@ -1334,7 +1356,7 @@ export function disableDuelOverlaySyncFromWeb(): void {
 }
 
 export async function initDuelOverlaySyncFromDb(): Promise<void> {
-  await ensureDuelOverlaySyncLoadedFromDb();
+  await ensureDuelSettingsLoadedFromDb();
 }
 
 /**

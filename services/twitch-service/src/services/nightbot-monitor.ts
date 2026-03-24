@@ -3239,7 +3239,7 @@ export class NightBotMonitor {
         disableDuelOverlaySyncFromWeb();
     }
 
-    async initDuelOverlaySync(): Promise<void> {
+    async initDuelSettings(): Promise<void> {
         await initDuelOverlaySyncFromDb();
     }
 

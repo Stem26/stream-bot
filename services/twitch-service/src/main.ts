@@ -169,8 +169,8 @@ async function main() {
     setOnDuelConfigUpdatedCallback((c) => setDuelConfig(c));
     setOnDuelDailyConfigUpdatedCallback((c) => setDailyQuestConfig(c));
 
-    // Загружаем persisted-флаг синхронизации дуэлей с оверлеем из БД
-    await nightBotMonitor.initDuelOverlaySync();
+    // Загружаем persisted-настройки дуэлей из БД
+    await nightBotMonitor.initDuelSettings();
 
     // Связываем проверку статуса стрима: команды работают только когда стрим онлайн
     nightBotMonitor.setStreamStatusCheck(() => streamMonitor.getStreamStatus());
