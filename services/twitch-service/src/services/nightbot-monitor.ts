@@ -2438,6 +2438,12 @@ export class NightBotMonitor {
     private async timeoutUser(username: string, durationSeconds: number, reason: string): Promise<void> {
         const normalizedUsername = username.toLowerCase();
 
+        // Модераторов/стримера не таймаутим в игровых сценариях (например, !дуэль)
+        if (this.detectedModerators.has(normalizedUsername)) {
+            console.log(`🛡️ Пропускаем таймаут для модератора/стримера: ${username}`);
+            return;
+        }
+
         // Проверяем кеш User ID (уменьшает API нагрузку на ~90%)
         let userId = this.userIdCache.get(normalizedUsername);
 
@@ -2458,16 +2464,32 @@ export class NightBotMonitor {
         }
 
         // Выдаём таймаут через Helix API
-        await this.helix(
-            `https://api.twitch.tv/helix/moderation/bans?broadcaster_id=${this.broadcasterId}&moderator_id=${this.moderatorId}`,
-            {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({
-                    data: {user_id: userId, duration: durationSeconds, reason}
-                })
+        try {
+            await this.helix(
+                `https://api.twitch.tv/helix/moderation/bans?broadcaster_id=${this.broadcasterId}&moderator_id=${this.moderatorId}`,
+                {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        data: {user_id: userId, duration: durationSeconds, reason}
+                    })
+                }
+            );
+        } catch (error: any) {
+            const status = error?.status;
+            const message = String(error?.message || '');
+            const cannotTimeout =
+                status === 400 &&
+                message.includes('The user specified in the user_id field may not be banned/timed out.');
+
+            if (cannotTimeout) {
+                console.warn(
+                    `⚠️ Нельзя выдать таймаут пользователю ${username} (вероятно модератор/владелец канала). Пропускаем.`
+                );
+                return;
             }
-        );
+            throw error;
+        }
 
         console.log(`✅ Таймаут выдан: ${username} на ${durationSeconds} сек.`);
     }

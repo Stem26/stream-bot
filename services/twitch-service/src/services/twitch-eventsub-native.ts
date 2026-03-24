@@ -672,8 +672,8 @@ export class TwitchEventSubNative {
 
         if (this.chatSender && this.channelName) {
             try {
-                await this.chatSender(this.channelName, `${event.user_name} спасибо за follow❤️`);
-                console.log(`✅ Отправлена благодарность за Follow: ${event.user_name}`);
+                await this.chatSender(this.channelName, `@${event.user_name} спасибо за follow❤️`);
+                console.log(`✅ Отправлена благодарность за Follow: @${event.user_name}`);
             } catch (error) {
                 console.error('❌ Ошибка отправки благодарности за Follow:', error);
             }
@@ -1423,10 +1423,14 @@ export class TwitchEventSubNative {
         return this.isStreamOnline;
     }
 
+    // Публичный accessor под будущий диагностический endpoint (/api/diagnostics/eventsub).
+    // Может временно выглядеть "неиспользуемым", пока endpoint не подключен в web/server.ts.
     getEventSubParseMetrics(): { invalidPayload: number; unknownType: number } {
         return getEventSubParseMetrics();
     }
 
+    // Технический reset для диагностических сценариев/ручных health-check тестов.
+    // Аналогично: сейчас это задел под API и может не иметь прямых вызовов в runtime.
     resetEventSubParseMetrics(): void {
         resetEventSubParseMetrics();
     }
