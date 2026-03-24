@@ -16,7 +16,7 @@ function getOverlayEventBusWsUrl(): string | undefined {
 }
 
 function getOverlayDuelCompleteWaitMs(): number {
-  return Math.max(1000, Number(process.env.OVERLAY_DUEL_COMPLETE_WAIT_MS || 60000));
+  return Math.max(1000, Number(process.env.OVERLAY_DUEL_COMPLETE_WAIT_MS || 30000));
 }
 
 type OverlayRequest = {
