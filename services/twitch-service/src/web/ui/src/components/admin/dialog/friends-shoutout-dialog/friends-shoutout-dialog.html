@@ -1,0 +1,26 @@
+<div class="modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2>Друзья-стримеры (авто-шатаут)</h2>
+      <button type="button" class="modal-close-btn" data-close>×</button>
+    </div>
+    <form id="friends-shoutout-form">
+      <div class="modal-body">
+        <p class="friends-shoutout-desc">
+          Как только один из этих ников напишет в чат, бот сделает на него <code>/shoutout</code>.
+          Можно вводить <strong>по одному нику на строку</strong> или <strong>через запятую</strong> (можно с @). Пробелы не считаются разделителем.
+        </p>
+        <div class="form-group">
+          <label for="friends-shoutout-text">Ники</label>
+          <textarea id="friends-shoutout-text"
+            placeholder="@friend1&#10;friend2&#10;another_streamer"></textarea>
+          <small>Совет: лучше указывать логины (lowercase), не display name.</small>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-success">Сохранить</button>
+      </div>
+    </form>
+  </div>
+</div>
+

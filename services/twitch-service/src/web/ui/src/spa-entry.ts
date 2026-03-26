@@ -64,7 +64,7 @@ function render(): void {
   if (route === 'admin') {
     app.innerHTML = '<div class="admin-loading">Загрузка…</div>';
     import('./admin-route').then(() => {
-      app.innerHTML = '<admin-panel></admin-panel><command-dialog></command-dialog><link-dialog></link-dialog><counter-dialog></counter-dialog><party-dialog></party-dialog><moderation-rules-dialog></moderation-rules-dialog><link-whitelist-dialog></link-whitelist-dialog>';
+      app.innerHTML = '<admin-panel></admin-panel><command-dialog></command-dialog><link-dialog></link-dialog><counter-dialog></counter-dialog><party-dialog></party-dialog><moderation-rules-dialog></moderation-rules-dialog><link-whitelist-dialog></link-whitelist-dialog><friends-shoutout-dialog></friends-shoutout-dialog>';
     });
   } else if (route === 'public/duel') {
     app.innerHTML = '<public-duel></public-duel>';

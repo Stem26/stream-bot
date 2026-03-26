@@ -380,6 +380,37 @@ export async function initDatabase(): Promise<void> {
         ON CONFLICT (id) DO NOTHING
       `);
 
+      // Авто-шатаут "друзья-стримеры": список логинов + вкл/выкл (одна строка)
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS friends_shoutout_config (
+          id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+          enabled BOOLEAN NOT NULL DEFAULT FALSE,
+          logins TEXT[] NOT NULL DEFAULT '{}'
+        )
+      `);
+      await client.query(`
+        ALTER TABLE friends_shoutout_config
+          ADD COLUMN IF NOT EXISTS enabled BOOLEAN NOT NULL DEFAULT FALSE
+      `).catch(() => {});
+      await client.query(`
+        ALTER TABLE friends_shoutout_config
+          ADD COLUMN IF NOT EXISTS logins TEXT[] NOT NULL DEFAULT '{}'
+      `).catch(() => {});
+      await client.query(`
+        INSERT INTO friends_shoutout_config (id, enabled, logins) VALUES (1, FALSE, '{}')
+        ON CONFLICT (id) DO NOTHING
+      `);
+
+      // Состояние авто-шатаута "друзья-стримеры": один раз за стрим (переживает рестарт)
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS friends_shoutout_stream_state (
+          twitch_login TEXT PRIMARY KEY,
+          last_stream_start_ms BIGINT NOT NULL DEFAULT 0,
+          last_shoutout_at_ms BIGINT NOT NULL DEFAULT 0
+        )
+      `);
+      await client.query(`CREATE INDEX IF NOT EXISTS idx_friends_shoutout_stream_state_stream ON friends_shoutout_stream_state(last_stream_start_ms)`);
+
       // Добавляем дефолтные элементы партии если таблица пустая (только названия, количество 1–4 генерируется при выдаче)
       const partyCount = await client.query('SELECT COUNT(*)::int AS cnt FROM party_items');
       if (partyCount.rows[0]?.cnt === 0) {

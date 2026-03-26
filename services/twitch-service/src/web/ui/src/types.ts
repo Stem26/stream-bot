@@ -31,6 +31,11 @@ export interface RaidConfig {
   raidMessage: string;
 }
 
+export interface FriendsShoutoutConfig {
+  enabled: boolean;
+  logins: string[];
+}
+
 export interface Counter {
   id: string;
   trigger: string;

@@ -78,6 +78,22 @@
             Сохранить
           </button>
         </div>
+        <div class="admin-section">
+          <h3>Друзья-стримеры</h3>
+          <p class="admin-description">
+            Как только ник из списка напишет в чат, бот автоматически сделает <code>/shoutout</code>.
+          </p>
+          <div class="admin-duels-config-fields">
+            <div class="admin-duels-config-row">
+              <label for="friends-shoutout-enabled">Авто-шатаут включён</label>
+              <input type="checkbox" id="friends-shoutout-enabled">
+            </div>
+            <div class="admin-inline-row">
+              <button type="button" class="btn btn-outline btn-small" id="friends-shoutout-btn">Список ников</button>
+              <button type="button" class="btn btn-success btn-small" id="friends-shoutout-save-btn" disabled>Сохранить</button>
+            </div>
+          </div>
+        </div>
       </div>
       <button class="btn btn-small btn-outline"
               id="all-links-btn">

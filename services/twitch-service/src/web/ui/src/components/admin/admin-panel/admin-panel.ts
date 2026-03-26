@@ -2,10 +2,20 @@
 import template from './admin-panel.html?raw';
 import './admin-panel.scss';
 import { showAlert } from '../../../alerts';
-import { authFetch, fetchLinksConfig, fetchRaidConfig, login, updateLinksConfig, updateRaidConfig } from '../../../api';
+import {
+  authFetch,
+  fetchFriendsShoutoutConfig,
+  fetchLinksConfig,
+  fetchRaidConfig,
+  login,
+  updateFriendsShoutoutConfig,
+  updateLinksConfig,
+  updateRaidConfig,
+} from '../../../api';
 import type { LinkDialogElement } from '../dialog/link-dialog/link-dialog';
 import type { LinkDialogSaveDetail } from '../../../interfaces/link-dialog';
 import { clearAdminAuth, getAdminPassword, setAdminPassword } from '../../../admin-auth';
+import type { FriendsShoutoutDialogElement } from '../dialog/friends-shoutout-dialog/friends-shoutout-dialog';
 
 const VALID_TABS = ['commands', 'counters', 'duels', 'party', 'moderation', 'logs', 'admin-logs'] as const;
 
@@ -24,6 +34,7 @@ export class AdminPanelElement extends HTMLElement {
   private initialized = false;
   private lastLinksRotationMinutes: number | null = null;
   private lastRaidMessage: string | null = null;
+  private lastFriendsShoutoutEnabled: boolean | null = null;
   private hashChangeHandler: (() => void) | null = null;
 
   connectedCallback(): void {
@@ -171,6 +182,16 @@ export class AdminPanelElement extends HTMLElement {
     const linkDialog = document.querySelector<LinkDialogElement>('link-dialog');
     if (!allLinksBtn || !linkDialog) return;
 
+    const friendsBtn = this.querySelector<HTMLButtonElement>('#friends-shoutout-btn');
+    const friendsToggle = this.querySelector<HTMLInputElement>('#friends-shoutout-enabled');
+    const friendsSaveBtn = this.querySelector<HTMLButtonElement>('#friends-shoutout-save-btn');
+    const updateFriendsSaveBtn = (): void => {
+      if (!friendsToggle || !friendsSaveBtn) return;
+      const current = Boolean(friendsToggle.checked);
+      friendsSaveBtn.disabled =
+        this.lastFriendsShoutoutEnabled === null || this.lastFriendsShoutoutEnabled === current;
+    };
+
     const raidMessageInput = this.querySelector<HTMLTextAreaElement>('#raid-message');
     const raidSaveBtn = this.querySelector<HTMLButtonElement>('#raid-save-btn');
     const updateRaidSaveButton = (): void => {
@@ -179,7 +200,7 @@ export class AdminPanelElement extends HTMLElement {
       raidSaveBtn.disabled = this.lastRaidMessage === null || this.lastRaidMessage === current;
     };
 
-    void this.initLinks(linkDialog, updateRaidSaveButton);
+    void this.initLinks(linkDialog, updateRaidSaveButton, updateFriendsSaveBtn);
 
     allLinksBtn.addEventListener('click', async () => {
       try {
@@ -187,6 +208,34 @@ export class AdminPanelElement extends HTMLElement {
         linkDialog.open({ allLinksText: config.allLinksText ?? '' });
       } catch (error) {
         if (error instanceof Error) showAlert(`Ошибка загрузки ссылок: ${error.message}`, 'error');
+      }
+    });
+
+    friendsBtn?.addEventListener('click', () => {
+      // Важно: ищем элемент при клике, чтобы не зависеть от порядка создания DOM в innerHTML
+      const dlg = document.querySelector<FriendsShoutoutDialogElement>('friends-shoutout-dialog');
+      if (!dlg) {
+        showAlert('Диалог не найден на странице (friends-shoutout-dialog)', 'error');
+        return;
+      }
+      void dlg.open();
+    });
+
+    friendsToggle?.addEventListener('change', updateFriendsSaveBtn);
+    friendsToggle?.addEventListener('input', updateFriendsSaveBtn);
+
+    friendsSaveBtn?.addEventListener('click', async () => {
+      if (!friendsToggle) return;
+      const enabled = Boolean(friendsToggle.checked);
+      try {
+        const current = await fetchFriendsShoutoutConfig().catch(() => ({ enabled: false, logins: [] as string[] }));
+        const updated = await updateFriendsShoutoutConfig({ enabled, logins: current.logins ?? [] });
+        this.lastFriendsShoutoutEnabled = Boolean(updated.enabled);
+        friendsToggle.checked = this.lastFriendsShoutoutEnabled;
+        updateFriendsSaveBtn();
+        showAlert('Настройка авто-шатаута сохранена', 'success');
+      } catch (error) {
+        if (error instanceof Error) showAlert(`Ошибка сохранения: ${error.message}`, 'error');
       }
     });
 
@@ -266,11 +315,16 @@ export class AdminPanelElement extends HTMLElement {
     });
   }
 
-  private async initLinks(linkDialog: LinkDialogElement, onLoaded?: () => void): Promise<void> {
+  private async initLinks(
+    linkDialog: LinkDialogElement,
+    onLoaded?: () => void,
+    onFriendsLoaded?: () => void,
+  ): Promise<void> {
     try {
-      const [linksConfig, raidConfig] = await Promise.all([
+      const [linksConfig, raidConfig, friendsConfig] = await Promise.all([
         fetchLinksConfig(),
         fetchRaidConfig(),
+        fetchFriendsShoutoutConfig().catch(() => ({ enabled: false, logins: [] as string[] })),
       ]);
       this.lastLinksRotationMinutes = linksConfig.rotationIntervalMinutes ?? 13;
       const linksIntervalInput = this.querySelector<HTMLInputElement>('#links-rotation-interval-min');
@@ -283,9 +337,15 @@ export class AdminPanelElement extends HTMLElement {
         const raw = raidMessageInput.scrollHeight;
         raidMessageInput.style.height = `${Math.min(Math.max(raw + 4, 40), 160)}px`;
       }
+      const friendsToggle = this.querySelector<HTMLInputElement>('#friends-shoutout-enabled');
+      if (friendsToggle) {
+        friendsToggle.checked = Boolean(friendsConfig.enabled);
+        this.lastFriendsShoutoutEnabled = Boolean(friendsConfig.enabled);
+      }
       linkDialog.open({ allLinksText: linksConfig.allLinksText ?? '' });
       linkDialog.close();
       onLoaded?.();
+      onFriendsLoaded?.();
     } catch (error) {
       if (error instanceof Error) {
         showAlert(`Ошибка загрузки: ${error.message}`, 'error');

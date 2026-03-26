@@ -10,6 +10,7 @@ import type {
   PartyConfig,
   ChatModerationConfig,
   JournalResponse,
+  FriendsShoutoutConfig,
 } from './types';
 import { clearAdminAuth, getAdminHeaders } from './admin-auth';
 
@@ -118,6 +119,20 @@ export async function updateRaidConfig(config: { raidMessage: string }): Promise
     body: JSON.stringify(config),
   });
   return handleJson<RaidConfig>(response, 'Ошибка сохранения настроек рейда');
+}
+
+export async function fetchFriendsShoutoutConfig(): Promise<FriendsShoutoutConfig> {
+  const response = await authFetch('/api/friends-shoutout');
+  return handleJson<FriendsShoutoutConfig>(response, 'Ошибка загрузки настроек авто-шатаута');
+}
+
+export async function updateFriendsShoutoutConfig(config: FriendsShoutoutConfig): Promise<FriendsShoutoutConfig> {
+  const response = await authFetch('/api/friends-shoutout', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(config),
+  });
+  return handleJson<FriendsShoutoutConfig>(response, 'Ошибка сохранения настроек авто-шатаута');
 }
 
 // === API для счётчиков ===

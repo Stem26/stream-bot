@@ -48,30 +48,31 @@
       <label for="duel-miss-penalty">Минус за промах</label>
       <input type="number" id="duel-miss-penalty" min="0" step="1" value="5"/>
     </div>
+
+</div>
+  <div class="duels-toggle-block">
     <h4 class="duels-subsection-title">Рейд → дуэль (буст)</h4>
-    <p class="admin-description">Только лидер рейда. Только против обычных зрителей; со стримером шанс как раньше. У каждого рейдера своё окно; повторный рейд в активное окно не продлевает таймер.</p>
-    <div class="duels-toggle-block">
-      <div class="admin-duels-toggle-row">
-        <span class="admin-duels-label">Буст рейдера</span>
-        <div class="status-toggle off" id="raid-boost-toggle" data-enabled="false" title="Включить повышенный шанс победы в дуэли после рейда">
-          <div class="status-toggle-circle"></div>
-          <span class="status-toggle-text">ВЫКЛ</span>
-        </div>
+    <p class="admin-description">Только лидер рейда. Только против обычных зрителей; У каждого рейдера своё окно; повторный рейд в активное окно не продлевает таймер.</p>
+    <div class="admin-duels-toggle-row">
+      <span class="admin-duels-label">Буст рейдера</span>
+      <div class="status-toggle off" id="raid-boost-toggle" data-enabled="false" title="Включить повышенный шанс победы в дуэли после рейда">
+        <div class="status-toggle-circle"></div>
+        <span class="status-toggle-text">ВЫКЛ</span>
       </div>
     </div>
-    <div class="admin-duels-config-fields">
-      <div class="admin-duels-config-row">
-        <label for="raid-boost-win-percent">Шанс победы рейдера (%)</label>
-        <input type="number" id="raid-boost-win-percent" min="1" max="99" step="1" value="70" title="Только в дуэли зритель vs зритель"/>
-      </div>
-      <div class="admin-duels-config-row">
-        <label for="raid-boost-duration-min">Длительность (мин)</label>
-        <input type="number" id="raid-boost-duration-min" min="1" max="240" step="1" value="10"/>
-      </div>
-      <div class="admin-duels-config-row">
-        <label for="raid-boost-min-viewers">Мин. зрителей в рейде</label>
-        <input type="number" id="raid-boost-min-viewers" min="0" max="100000" step="1" value="5"/>
-      </div>
+  </div>
+  <div class="admin-duels-config-fields">
+    <div class="admin-duels-config-row">
+      <label for="raid-boost-win-percent">Шанс победы рейдера (%)</label>
+      <input type="number" id="raid-boost-win-percent" min="1" max="99" step="1" value="70" title="Только в дуэли зритель vs зритель"/>
+    </div>
+    <div class="admin-duels-config-row">
+      <label for="raid-boost-duration-min">Длительность (мин)</label>
+      <input type="number" id="raid-boost-duration-min" min="1" max="240" step="1" value="10"/>
+    </div>
+    <div class="admin-duels-config-row">
+      <label for="raid-boost-min-viewers">Мин. зрителей в рейде</label>
+      <input type="number" id="raid-boost-min-viewers" min="0" max="100000" step="1" value="5"/>
     </div>
     <button type="button" class="btn btn-success" id="duel-config-save-btn" disabled>Сохранить</button>
   </div>

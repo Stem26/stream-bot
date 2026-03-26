@@ -29,6 +29,20 @@ const DATA_DIR = (() => {
 })();
 const CUSTOM_COMMANDS_FILE = path.join(DATA_DIR, 'custom-commands.json');
 
+const MONOREPO_ROOT = (() => {
+    const cwd = process.cwd();
+    if (fs.existsSync(path.join(cwd, 'services')) && fs.existsSync(path.join(cwd, 'package.json'))) {
+        return cwd;
+    }
+    const projectRoot = path.resolve(cwd, '..', '..');
+    if (fs.existsSync(path.join(projectRoot, 'services')) && fs.existsSync(path.join(projectRoot, 'package.json'))) {
+        return projectRoot;
+    }
+    return cwd;
+})();
+
+const ANNOUNCEMENT_STATE_FILE = path.join(MONOREPO_ROOT, 'announcement-state.json');
+
 interface LinksConfig {
     allLinksText: string;
 }
@@ -174,6 +188,12 @@ export class NightBotMonitor {
     private clientId: string = '';
     /** Токен стримера (broadcaster) — для Helix moderation/moderators (scope: moderation:read) */
     private broadcastAccessToken: string | null = null;
+    private friendsShoutoutEnabled: boolean = false;
+    private friendsShoutoutLogins: Set<string> = new Set();
+    private lastFriendsShoutoutGlobalAt: number = 0;
+    private readonly FRIENDS_SHOUTOUT_GLOBAL_COOLDOWN_MS = 30 * 1000; // 30s
+    private lastStreamStartCache: { value: number | null; at: number } = { value: null, at: 0 };
+    private readonly STREAM_START_CACHE_TTL_MS = 5 * 1000;
     private isStreamOnlineCheck: () => boolean = () => true;
     private syncViewersCallback: ((chattersCount?: number) => Promise<void>) | null = null;
 
@@ -472,6 +492,32 @@ export class NightBotMonitor {
         console.log(`✅ Конфиг ссылок перезагружен (БД), длина=${this.linksConfig.allLinksText.length} символов, превью: ${preview}`);
     }
 
+    public reloadFriendsShoutoutConfig(): void {
+        void this.reloadFriendsShoutoutConfigAsync();
+    }
+
+    private async reloadFriendsShoutoutConfigAsync(): Promise<void> {
+        try {
+            const row = await queryOne<{ enabled: boolean; logins: string[] }>(
+                'SELECT enabled, logins FROM friends_shoutout_config WHERE id = 1'
+            );
+            const enabled = Boolean(row?.enabled);
+            const logins = Array.isArray(row?.logins) ? row!.logins : [];
+            const normalized = logins
+                .map((s) => String(s ?? '').trim().replace(/^@+/, '').toLowerCase())
+                .filter(Boolean);
+            this.friendsShoutoutEnabled = enabled;
+            this.friendsShoutoutLogins = new Set(normalized);
+            console.log(
+                `✅ Конфиг друзей-стримеров перезагружен (БД): enabled=${enabled ? 'ДА' : 'НЕТ'}, nicks=${normalized.length}`
+            );
+        } catch (error: any) {
+            console.error('⚠️ Не удалось загрузить friends_shoutout_config из БД:', error?.message || error);
+            this.friendsShoutoutEnabled = false;
+            this.friendsShoutoutLogins = new Set();
+        }
+    }
+
     /** Вызов перезагрузки конфига ссылок (для колбэка без await) */
     public reloadLinksConfig(): void {
         void this.reloadLinksConfigAsync();
@@ -598,6 +644,95 @@ export class NightBotMonitor {
             return undefined as T;
         }
         return (await res.json()) as T;
+    }
+
+    private async sendShoutout(toBroadcasterId: string, label: string): Promise<boolean> {
+        if (!this.broadcasterId || !this.moderatorId || !toBroadcasterId) return false;
+        const url = new URL('https://api.twitch.tv/helix/chat/shoutouts');
+        url.searchParams.set('from_broadcaster_id', this.broadcasterId);
+        url.searchParams.set('to_broadcaster_id', toBroadcasterId);
+        url.searchParams.set('moderator_id', this.moderatorId);
+        try {
+            await this.helix(url.toString(), { method: 'POST' }, 3);
+            console.log(`✅ Авто-шатаут (друзья-стримеры): ${label}`);
+            return true;
+        } catch (error: any) {
+            console.warn(`⚠️ Авто-шатаут не удался (${label}):`, error?.message || error);
+            return false;
+        }
+    }
+
+    private getCurrentStreamStartMs(): number | null {
+        const now = Date.now();
+        if (now - this.lastStreamStartCache.at < this.STREAM_START_CACHE_TTL_MS) {
+            return this.lastStreamStartCache.value;
+        }
+        try {
+            if (!fs.existsSync(ANNOUNCEMENT_STATE_FILE)) {
+                this.lastStreamStartCache = { value: null, at: now };
+                return null;
+            }
+            const raw = fs.readFileSync(ANNOUNCEMENT_STATE_FILE, 'utf-8');
+            const parsed = JSON.parse(raw) as { currentStreamStartTime?: number | null };
+            const v = typeof parsed?.currentStreamStartTime === 'number' ? parsed.currentStreamStartTime : null;
+            this.lastStreamStartCache = { value: v, at: now };
+            return v;
+        } catch {
+            this.lastStreamStartCache = { value: null, at: now };
+            return null;
+        }
+    }
+
+    private async maybeAutoShoutoutFriend(username: string): Promise<void> {
+        const login = (username ?? '').toLowerCase();
+        if (!login) return;
+        if (!this.friendsShoutoutEnabled) return;
+        if (!this.friendsShoutoutLogins.has(login)) return;
+
+        // Не шатаутим: стримера/бота/ночного бота
+        const botAccount = (this.botUsername || this.channelName || '').toLowerCase();
+        if (login === 'nightbot') return;
+        if (botAccount && login === botAccount) return;
+        if (this.channelName && login === this.channelName.toLowerCase()) return;
+
+        // Один раз за стрим: берём streamStart из announcement-state.json (переживает рестарт)
+        const streamStartMs = this.getCurrentStreamStartMs();
+        if (!streamStartMs) return;
+
+        const now = Date.now();
+        if (now - this.lastFriendsShoutoutGlobalAt < this.FRIENDS_SHOUTOUT_GLOBAL_COOLDOWN_MS) return;
+
+        // Проверяем БД: уже шатаутили этого логина в текущем стриме?
+        try {
+            const row = await queryOne<{ last_stream_start_ms: number }>(
+                'SELECT last_stream_start_ms FROM friends_shoutout_stream_state WHERE twitch_login = $1',
+                [login]
+            );
+            if (row?.last_stream_start_ms && Number(row.last_stream_start_ms) === streamStartMs) {
+                return;
+            }
+        } catch {
+            // Если БД недоступна — не шатаутим (чтобы не спамить при рестартах)
+            return;
+        }
+
+        const toBroadcasterId = await this.getUserIdCached(login);
+        if (!toBroadcasterId) return;
+
+        const ok = await this.sendShoutout(toBroadcasterId, login);
+        if (ok) {
+            this.lastFriendsShoutoutGlobalAt = now;
+            try {
+                await query(
+                    `INSERT INTO friends_shoutout_stream_state (twitch_login, last_stream_start_ms, last_shoutout_at_ms)
+                     VALUES ($1, $2, $3)
+                     ON CONFLICT (twitch_login) DO UPDATE SET last_stream_start_ms = EXCLUDED.last_stream_start_ms, last_shoutout_at_ms = EXCLUDED.last_shoutout_at_ms`,
+                    [login, streamStartMs, now]
+                );
+            } catch {
+                // ignore
+            }
+        }
     }
 
     /**
@@ -770,6 +905,7 @@ export class NightBotMonitor {
 
             await this.loadPartyConfigFromDb();
             this.commands = this.buildCommandsMap(this.partyTrigger);
+            await this.reloadFriendsShoutoutConfigAsync();
 
             console.log('🔄 Начинаем подключение к Twitch чату...');
             console.log('   Канал:', this.channelName);
@@ -917,6 +1053,9 @@ export class NightBotMonitor {
 
                 // Отслеживаем активных пользователей для команды !крыса (fallback)
                 addActiveUser(channel, username);
+
+                // Авто-шатаут: "друзья-стримеры" (как только ник появляется в чате)
+                await this.maybeAutoShoutoutFriend(username);
 
                 // Триггерим оверлей на каждое сообщение пользователя
                 const overlayRole = resolveOverlayRoleFromUserInfo(msg.userInfo);

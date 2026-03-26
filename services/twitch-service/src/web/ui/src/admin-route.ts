@@ -11,3 +11,4 @@ import './components/admin/dialog/counter-dialog/counter-dialog';
 import './components/admin/dialog/party-dialog/party-dialog';
 import './components/admin/dialog/moderation-rules-dialog/moderation-rules-dialog';
 import './components/admin/dialog/link-whitelist-dialog/link-whitelist-dialog';
+import './components/admin/dialog/friends-shoutout-dialog/friends-shoutout-dialog';

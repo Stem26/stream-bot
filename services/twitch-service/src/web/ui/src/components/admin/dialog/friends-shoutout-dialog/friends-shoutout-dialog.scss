@@ -1,0 +1,115 @@
+friends-shoutout-dialog .modal {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 1000;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 60px;
+
+  &.active {
+    display: flex;
+  }
+}
+
+friends-shoutout-dialog .modal-content {
+  background: white;
+  border-radius: 8px;
+  padding: 24px;
+  max-width: 520px;
+  width: 95%;
+  max-height: 85vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+}
+
+friends-shoutout-dialog .modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  flex-shrink: 0;
+}
+
+friends-shoutout-dialog .modal-header h2 {
+  margin: 0;
+  font-size: 1.25rem;
+  color: #333;
+}
+
+friends-shoutout-dialog .modal-close-btn {
+  background: transparent;
+  border: none;
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+  color: #888;
+  padding: 0 0 4px 12px;
+  transition: color 0.2s;
+
+  &:hover {
+    color: #333;
+  }
+}
+
+friends-shoutout-dialog .modal-body {
+  flex: 1;
+  overflow-y: auto;
+}
+
+friends-shoutout-dialog .friends-shoutout-desc {
+  margin: 0 0 12px;
+  color: #555;
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+friends-shoutout-dialog .form-group {
+  margin-bottom: 16px;
+}
+
+friends-shoutout-dialog .form-group label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 600;
+  color: #333;
+}
+
+friends-shoutout-dialog .form-group textarea {
+  width: 100%;
+  min-height: 180px;
+  padding: 12px;
+  font-family: Menlo, Consolas, monospace;
+  font-size: 14px;
+  resize: vertical;
+  white-space: pre-wrap;
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
+  box-sizing: border-box;
+
+  &:focus {
+    outline: none;
+    border-color: #667eea;
+  }
+}
+
+friends-shoutout-dialog .form-group small {
+  display: block;
+  margin-top: 8px;
+  color: #6c757d;
+  font-size: 0.85em;
+}
+
+friends-shoutout-dialog .form-actions {
+  flex-shrink: 0;
+  padding-top: 16px;
+  margin-top: 16px;
+  border-top: 1px solid #e0e0e0;
+}
+

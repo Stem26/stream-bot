@@ -7,7 +7,7 @@ import { clearDuelQueue, resetDuelsOnStreamEnd, clearDuelChallenges, setOnDuelBa
 import { clearActiveUsers } from "./commands/twitch-rat";
 import { log } from './utils/event-logger';
 import { initDatabase, closeDatabase, query, queryOne } from './database/database';
-import { startWebServer, getBroadcastDuelBannedChanged, setOnCommandsChangedCallback, setOnCommandExecuteCallback, setOnLinksSendCallback, setOnEnableDuelsCallback, setOnDisableDuelsCallback, setOnPardonAllCallback, setGetDuelBannedListCallback, setPardonDuelUserCallback, setGetDuelsStatusCallback, setGetDuelCooldownSkipCallback, setSetDuelCooldownSkipCallback, setGetDuelOverlaySyncEnabledCallback, setSetDuelOverlaySyncEnabledCallback, setOnDuelConfigUpdatedCallback, setOnDuelDailyConfigUpdatedCallback, setOnLinksConfigUpdatedCallback, setOnRaidConfigUpdatedCallback, setOnChatModerationConfigUpdatedCallback, setOnPartyConfigUpdatedCallback, getRaidMessageFromDb } from './web/server';
+import { startWebServer, getBroadcastDuelBannedChanged, setOnCommandsChangedCallback, setOnCommandExecuteCallback, setOnLinksSendCallback, setOnEnableDuelsCallback, setOnDisableDuelsCallback, setOnPardonAllCallback, setGetDuelBannedListCallback, setPardonDuelUserCallback, setGetDuelsStatusCallback, setGetDuelCooldownSkipCallback, setSetDuelCooldownSkipCallback, setGetDuelOverlaySyncEnabledCallback, setSetDuelOverlaySyncEnabledCallback, setOnDuelConfigUpdatedCallback, setOnDuelDailyConfigUpdatedCallback, setOnLinksConfigUpdatedCallback, setOnRaidConfigUpdatedCallback, setOnChatModerationConfigUpdatedCallback, setOnPartyConfigUpdatedCallback, setOnFriendsShoutoutConfigUpdatedCallback, getRaidMessageFromDb } from './web/server';
 
 async function main() {
     const config = loadConfig();
@@ -151,6 +151,10 @@ async function main() {
         nightBotMonitor.reloadPartyConfigAndCommands();
     });
     await nightBotMonitor.reloadLinksConfigAsync();
+
+    setOnFriendsShoutoutConfigUpdatedCallback(() => {
+        nightBotMonitor.reloadFriendsShoutoutConfig();
+    });
 
     // Устанавливаем колбэк для перезагрузки команд, счётчиков и ссылок при изменениях через веб-интерфейс
     setOnCommandsChangedCallback(() => {

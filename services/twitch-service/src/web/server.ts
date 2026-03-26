@@ -297,6 +297,7 @@ app.use('/api/commands', requireAdmin);
 app.use('/api/counters', requireAdmin);
 app.use('/api/links', requireAdmin);
 app.use('/api/raid', requireAdmin);
+app.use('/api/friends-shoutout', requireAdmin);
 app.use('/api/party', requireAdmin);
 app.use('/api/journal', requireAdmin);
 app.use('/api/admin-journal', requireAdmin);
@@ -332,6 +333,7 @@ type PartyConfigAuditSnapshot = {
 
 type LinksConfigAuditSnapshot = { all_links_text: string; rotation_interval_minutes: number };
 type RaidConfigAuditSnapshot = { raid_message: string };
+type FriendsShoutoutAuditSnapshot = { enabled: boolean; logins: string[] };
 type DuelConfigAuditSnapshot = {
     timeout_minutes: number;
     win_points: number;
@@ -1189,6 +1191,52 @@ async function saveRaidToDb(config: RaidConfig): Promise<boolean> {
     }
 }
 
+interface FriendsShoutoutConfig {
+    enabled: boolean;
+    logins: string[];
+}
+
+function normalizeTwitchLogin(raw: string): string {
+    return String(raw ?? '')
+        .trim()
+        .replace(/^@+/, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9_]/g, '');
+}
+
+async function getFriendsShoutoutFromDb(): Promise<FriendsShoutoutConfig> {
+    try {
+        const row = await queryOne<{ enabled: boolean; logins: string[] }>(
+            'SELECT enabled, logins FROM friends_shoutout_config WHERE id = 1'
+        );
+        const logins = Array.isArray(row?.logins)
+            ? row!.logins.map(normalizeTwitchLogin).filter(Boolean)
+            : [];
+        return { enabled: Boolean(row?.enabled), logins };
+    } catch (error) {
+        console.error('⚠️ Ошибка загрузки friends_shoutout_config из БД:', error);
+        return { enabled: false, logins: [] };
+    }
+}
+
+async function saveFriendsShoutoutToDb(config: FriendsShoutoutConfig): Promise<boolean> {
+    try {
+        const safeLogins = Array.from(
+            new Set((config.logins ?? []).map(normalizeTwitchLogin).filter(Boolean))
+        ).slice(0, 200);
+        const enabled = Boolean(config.enabled);
+        await query(
+            `INSERT INTO friends_shoutout_config (id, enabled, logins) VALUES (1, $1, $2)
+             ON CONFLICT (id) DO UPDATE SET enabled = EXCLUDED.enabled, logins = EXCLUDED.logins`,
+            [enabled, safeLogins]
+        );
+        return true;
+    } catch (error) {
+        console.error('⚠️ Ошибка сохранения friends_shoutout_config в БД:', error);
+        return false;
+    }
+}
+
 // === API Routes ===
 
 // Получить все команды
@@ -1289,6 +1337,65 @@ app.put('/api/raid', async (req: Request, res: Response) => {
     } catch (error) {
         console.error('❌ Ошибка обновления настроек рейда:', error);
         res.status(500).json({ error: 'Ошибка обновления настроек рейда' });
+    }
+});
+
+// === API для блока "Друзья-стримеры" (авто-shoutout по появлению в чате) ===
+
+app.get('/api/friends-shoutout', async (_req: Request, res: Response) => {
+    try {
+        const config = await getFriendsShoutoutFromDb();
+        res.json(config);
+    } catch {
+        res.status(500).json({ error: 'Ошибка загрузки настроек авто-шатаута' });
+    }
+});
+
+app.put('/api/friends-shoutout', async (req: Request, res: Response) => {
+    try {
+        const body = req.body as Partial<FriendsShoutoutConfig>;
+        const enabled = Boolean(body.enabled);
+        const rawLogins = Array.isArray(body.logins) ? body.logins : [];
+        const logins = rawLogins.map((s) => String(s ?? '')).slice(0, 500);
+
+        const prev = await getFriendsShoutoutFromDb().catch(() => null);
+        const next: FriendsShoutoutConfig = {
+            enabled,
+            logins: Array.from(new Set(logins.map(normalizeTwitchLogin).filter(Boolean))).slice(0, 200),
+        };
+
+        if (await saveFriendsShoutoutToDb(next)) {
+            const admin = (req as any).adminUsername || 'unknown';
+            const prevEnabled = prev?.enabled ?? false;
+            const prevLogins = prev?.logins ?? [];
+            const changedEnabled = prevEnabled !== next.enabled;
+            const changedList = prevLogins.join(',') !== next.logins.join(',');
+            if (changedEnabled || changedList) {
+                const detailsParts: string[] = [];
+                if (changedEnabled) {
+                    detailsParts.push(`Вкл: ${prevEnabled ? 'ДА' : 'НЕТ'} -> ${next.enabled ? 'ДА' : 'НЕТ'}`);
+                }
+                if (changedList) {
+                    detailsParts.push(`Ники: ${prevLogins.length} -> ${next.logins.length}`);
+                }
+                logAdminAction(admin, 'Авто-шатаут (друзья-стримеры)', detailsParts.join(' | '));
+            }
+
+            if (onFriendsShoutoutConfigUpdatedCallback) {
+                try {
+                    onFriendsShoutoutConfigUpdatedCallback(next);
+                } catch (cbError) {
+                    console.error('⚠️ Ошибка в onFriendsShoutoutConfigUpdatedCallback:', cbError);
+                }
+            }
+
+            res.json(next);
+        } else {
+            res.status(500).json({ error: 'Ошибка сохранения настроек авто-шатаута' });
+        }
+    } catch (error) {
+        console.error('❌ Ошибка обновления friends_shoutout_config:', error);
+        res.status(500).json({ error: 'Ошибка обновления настроек авто-шатаута' });
     }
 });
 
@@ -2766,6 +2873,7 @@ let onDuelConfigUpdatedCallback:
 let onDuelDailyConfigUpdatedCallback: ((config: { dailyGamesCount: number; dailyRewardPoints: number; streakWinsCount: number; streakRewardPoints: number }) => void) | null = null;
 let onLinksConfigUpdatedCallback: ((config: LinksConfig) => void) | null = null;
 let onRaidConfigUpdatedCallback: ((config: RaidConfig) => void) | null = null;
+let onFriendsShoutoutConfigUpdatedCallback: ((config: FriendsShoutoutConfig) => void) | null = null;
 let onChatModerationConfigUpdatedCallback: (() => void) | null = null;
 
 export function setOnCommandsChangedCallback(callback: () => void) {
@@ -2786,6 +2894,10 @@ export function setOnLinksConfigUpdatedCallback(callback: (config: LinksConfig) 
 
 export function setOnRaidConfigUpdatedCallback(callback: (config: RaidConfig) => void) {
     onRaidConfigUpdatedCallback = callback;
+}
+
+export function setOnFriendsShoutoutConfigUpdatedCallback(callback: (config: FriendsShoutoutConfig) => void) {
+    onFriendsShoutoutConfigUpdatedCallback = callback;
 }
 
 export async function getRaidMessageFromDb(): Promise<string> {
