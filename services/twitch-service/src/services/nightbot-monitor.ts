@@ -192,6 +192,8 @@ export class NightBotMonitor {
     private friendsShoutoutLogins: Set<string> = new Set();
     private lastFriendsShoutoutGlobalAt: number = 0;
     private readonly FRIENDS_SHOUTOUT_GLOBAL_COOLDOWN_MS = 30 * 1000; // 30s
+    private friendsShoutoutQueue: Promise<void> = Promise.resolve();
+    private pendingFriendsShoutoutTimers = new Map<string, NodeJS.Timeout>();
     private lastStreamStartCache: { value: number | null; at: number } = { value: null, at: 0 };
     private readonly STREAM_START_CACHE_TTL_MS = 5 * 1000;
     private isStreamOnlineCheck: () => boolean = () => true;
@@ -699,9 +701,6 @@ export class NightBotMonitor {
         const streamStartMs = this.getCurrentStreamStartMs();
         if (!streamStartMs) return;
 
-        const now = Date.now();
-        if (now - this.lastFriendsShoutoutGlobalAt < this.FRIENDS_SHOUTOUT_GLOBAL_COOLDOWN_MS) return;
-
         // Проверяем БД: уже шатаутили этого логина в текущем стриме?
         try {
             const row = await queryOne<{ last_stream_start_ms: number }>(
@@ -719,20 +718,67 @@ export class NightBotMonitor {
         const toBroadcasterId = await this.getUserIdCached(login);
         if (!toBroadcasterId) return;
 
-        const ok = await this.sendShoutout(toBroadcasterId, login);
-        if (ok) {
-            this.lastFriendsShoutoutGlobalAt = now;
+        const enqueue = async (): Promise<void> => {
+            // На момент выполнения мог начаться новый стрим/закончиться — перепроверяем.
+            const currentStreamStartMs = this.getCurrentStreamStartMs();
+            if (!currentStreamStartMs || currentStreamStartMs !== streamStartMs) return;
+
+            // Сериализуем shoutout, чтобы не упираться в лимиты Helix и не спамить.
+            // При необходимости ждём остаток глобального кулдауна, но НЕ теряем событие.
+            const now = Date.now();
+            const left = this.FRIENDS_SHOUTOUT_GLOBAL_COOLDOWN_MS - (now - this.lastFriendsShoutoutGlobalAt);
+            if (left > 0) {
+                await new Promise((r) => setTimeout(r, left));
+            }
+
+            // После ожидания перепроверяем, что за этот стрим ещё не шатаутили (на случай гонок).
+            try {
+                const row = await queryOne<{ last_stream_start_ms: number }>(
+                    'SELECT last_stream_start_ms FROM friends_shoutout_stream_state WHERE twitch_login = $1',
+                    [login]
+                );
+                if (row?.last_stream_start_ms && Number(row.last_stream_start_ms) === streamStartMs) {
+                    return;
+                }
+            } catch {
+                return;
+            }
+
+            const ok = await this.sendShoutout(toBroadcasterId, login);
+            if (!ok) return;
+
+            const stampedAt = Date.now();
+            this.lastFriendsShoutoutGlobalAt = stampedAt;
             try {
                 await query(
                     `INSERT INTO friends_shoutout_stream_state (twitch_login, last_stream_start_ms, last_shoutout_at_ms)
                      VALUES ($1, $2, $3)
                      ON CONFLICT (twitch_login) DO UPDATE SET last_stream_start_ms = EXCLUDED.last_stream_start_ms, last_shoutout_at_ms = EXCLUDED.last_shoutout_at_ms`,
-                    [login, streamStartMs, now]
+                    [login, streamStartMs, stampedAt]
                 );
             } catch {
                 // ignore
             }
+        };
+
+        const now = Date.now();
+        const left = this.FRIENDS_SHOUTOUT_GLOBAL_COOLDOWN_MS - (now - this.lastFriendsShoutoutGlobalAt);
+        if (left > 0) {
+            // Уже недавно делали shoutout — планируем на ближайшее окно, чтобы второй/третий друг не "терялся".
+            if (this.pendingFriendsShoutoutTimers.has(login)) return;
+            const t = setTimeout(() => {
+                this.pendingFriendsShoutoutTimers.delete(login);
+                this.friendsShoutoutQueue = this.friendsShoutoutQueue
+                    .then(() => enqueue())
+                    .catch(() => {});
+            }, Math.min(left, this.FRIENDS_SHOUTOUT_GLOBAL_COOLDOWN_MS) + 25);
+            this.pendingFriendsShoutoutTimers.set(login, t);
+            return;
         }
+
+        this.friendsShoutoutQueue = this.friendsShoutoutQueue
+            .then(() => enqueue())
+            .catch(() => {});
     }
 
     /**

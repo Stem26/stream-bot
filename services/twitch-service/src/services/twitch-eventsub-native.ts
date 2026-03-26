@@ -614,6 +614,10 @@ export class TwitchEventSubNative {
 
         if (this.telegramChannelId) {
             await this.sendTelegramStreamNotification(event);
+        } else {
+            console.warn(
+                '⚠️ Telegram уведомление о старте стрима пропущено: не задан CHANNEL_ID (telegram.channelId)'
+            );
         }
 
         const startDate = new Date(event.started_at);
@@ -1105,30 +1109,30 @@ export class TwitchEventSubNative {
         if (!this.telegramChannelId) return;
 
         try {
-            if (!this.twitchApi) return;
-            const streamResult = await this.twitchApi.getStreamByUserId(
-                event.broadcaster_user_id,
-                'telegram:stream_notification'
-            );
-            const status = this.handleApiResult(streamResult, {
-                context: 'telegram:stream_notification',
-                api: 'streams'
-            });
-            if (status !== 'ok') {
-                return;
-            }
-
             let streamData: { game_name?: string | null; title: string } | null = null;
-            if (isApiOk(streamResult) && streamResult.data) {
-                if (streamResult.recovered) {
-                    log('CONNECTION', {
-                        service: 'TwitchEventSubNative.streamsApi',
-                        status: 'recovered',
-                        reason: 'telegram:stream_notification',
-                        failureCount: streamResult.failureCountBeforeRecover ?? 0
-                    });
+            if (this.twitchApi) {
+                const streamResult = await this.twitchApi.getStreamByUserId(
+                    event.broadcaster_user_id,
+                    'telegram:stream_notification'
+                );
+                const status = this.handleApiResult(streamResult, {
+                    context: 'telegram:stream_notification',
+                    api: 'streams'
+                });
+                if (status === 'ok' && isApiOk(streamResult) && streamResult.data) {
+                    if (streamResult.recovered) {
+                        log('CONNECTION', {
+                            service: 'TwitchEventSubNative.streamsApi',
+                            status: 'recovered',
+                            reason: 'telegram:stream_notification',
+                            failureCount: streamResult.failureCountBeforeRecover ?? 0
+                        });
+                    }
+                    streamData = streamResult.data;
+                } else {
+                    // Даже если streams API временно недоступен/пропущен — уведомление о старте стрима в TG всё равно отправляем.
+                    streamData = null;
                 }
-                streamData = streamResult.data;
             }
             const message = this.telegramMessageBuilder.buildStreamOnlineMessage({ event, stream: streamData });
 
