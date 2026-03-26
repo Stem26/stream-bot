@@ -29,17 +29,23 @@ const DATA_DIR = (() => {
 })();
 const CUSTOM_COMMANDS_FILE = path.join(DATA_DIR, 'custom-commands.json');
 
-const MONOREPO_ROOT = (() => {
-    const cwd = process.cwd();
-    if (fs.existsSync(path.join(cwd, 'services')) && fs.existsSync(path.join(cwd, 'package.json'))) {
-        return cwd;
+function resolveMonorepoRoot(): string {
+    // PM2 может запускать процесс с cwd внутри services/twitch-service.
+    // Ищем вверх по дереву папку, где есть package.json И папка services/.
+    let dir = process.cwd();
+    for (let i = 0; i < 8; i++) {
+        if (fs.existsSync(path.join(dir, 'package.json')) && fs.existsSync(path.join(dir, 'services'))) {
+            return dir;
+        }
+        const parent = path.resolve(dir, '..');
+        if (parent === dir) break;
+        dir = parent;
     }
-    const projectRoot = path.resolve(cwd, '..', '..');
-    if (fs.existsSync(path.join(projectRoot, 'services')) && fs.existsSync(path.join(projectRoot, 'package.json'))) {
-        return projectRoot;
-    }
-    return cwd;
-})();
+    // Fallback: если не нашли monorepo root, остаёмся в текущем cwd.
+    return process.cwd();
+}
+
+const MONOREPO_ROOT = resolveMonorepoRoot();
 
 const ANNOUNCEMENT_STATE_FILE = path.join(MONOREPO_ROOT, 'announcement-state.json');
 
@@ -699,7 +705,13 @@ export class NightBotMonitor {
 
         // Один раз за стрим: берём streamStart из announcement-state.json (переживает рестарт)
         const streamStartMs = this.getCurrentStreamStartMs();
-        if (!streamStartMs) return;
+        if (!streamStartMs) {
+            console.warn(
+                `⚠️ Авто-шатаут пропущен (${login}): стрим не распознан (currentStreamStartTime отсутствует). ` +
+                `Проверь путь к announcement-state.json: ${ANNOUNCEMENT_STATE_FILE}`
+            );
+            return;
+        }
 
         // Проверяем БД: уже шатаутили этого логина в текущем стриме?
         try {
