@@ -30,17 +30,22 @@ import { computeStreamStats, formatDuration } from './twitch/stream-tracker';
 import { TelegramMessageBuilder, TelegramSender } from './twitch/telegram';
 import { isApiOk, type ApiCallResult } from './twitch/twitch-api.types';
 
-const MONOREPO_ROOT = (() => {
-    let root = process.cwd();
-    if (fs.existsSync(path.join(root, 'package.json'))) {
-        return root;
-    }
-    root = path.resolve(process.cwd(), '../..');
-    if (fs.existsSync(path.join(root, 'package.json'))) {
-        return root;
+function resolveMonorepoRoot(): string {
+    // PM2 может запускать процесс из services/twitch-service (там тоже есть package.json),
+    // поэтому ищем именно корень монорепы: package.json + папка services/.
+    let dir = process.cwd();
+    for (let i = 0; i < 8; i++) {
+        if (fs.existsSync(path.join(dir, 'package.json')) && fs.existsSync(path.join(dir, 'services'))) {
+            return dir;
+        }
+        const parent = path.resolve(dir, '..');
+        if (parent === dir) break;
+        dir = parent;
     }
     return process.cwd();
-})();
+}
+
+const MONOREPO_ROOT = resolveMonorepoRoot();
 
 const ANNOUNCEMENT_STATE_FILE = path.join(MONOREPO_ROOT, 'announcement-state.json');
 
