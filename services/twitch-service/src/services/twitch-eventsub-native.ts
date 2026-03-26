@@ -600,7 +600,19 @@ export class TwitchEventSubNative {
         }
 
         if (this.isStreamOnline) {
-            console.error(`⚠️ Стрим уже онлайн, пропускаем дубль события`);
+            // Важно: иногда стрим "детектится" по polling до EventSub notification,
+            // из-за чего isStreamOnline уже true и мы пропускаем обработчик.
+            // Но нам всё равно нужно зафиксировать старт стрима в announcement-state.json,
+            // иначе функции "раз за стрим" (например, авто-шатаут) не будут работать.
+            if (!this.announcementState.currentStreamStartTime) {
+                this.announcementState.currentStreamStartTime = Date.now();
+                saveAnnouncementState(this.announcementState);
+                console.warn(
+                    `⚠️ Стрим уже онлайн, но currentStreamStartTime был пуст — записали ${this.announcementState.currentStreamStartTime}`
+                );
+            } else {
+                console.error(`⚠️ Стрим уже онлайн, пропускаем дубль события`);
+            }
             return;
         }
 
@@ -982,6 +994,14 @@ export class TwitchEventSubNative {
                 this.startLinkRotation();
 
                 const startDate = new Date(stream.started_at);
+                // Фиксируем "идентификатор стрима" в announcement-state.json, даже если поднялись в середине стрима.
+                // Это нужно для логики "раз за стрим" (например, авто-шатаут друзей-стримеров).
+                const startedAtMs = Number.isFinite(startDate.getTime()) ? startDate.getTime() : Date.now();
+                if (!this.announcementState.currentStreamStartTime) {
+                    this.announcementState.currentStreamStartTime = startedAtMs;
+                    saveAnnouncementState(this.announcementState);
+                    console.warn(`📝 currentStreamStartTime записан из streams API: ${startedAtMs}`);
+                }
                 this.startViewerCountTracking(this.broadcasterId, this.broadcasterName, startDate);
             } else {
                 console.error(`📊 Статус стрима: 🔴 Оффлайн`);

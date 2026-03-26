@@ -681,8 +681,11 @@ export class NightBotMonitor {
                 return null;
             }
             const raw = fs.readFileSync(ANNOUNCEMENT_STATE_FILE, 'utf-8');
-            const parsed = JSON.parse(raw) as { currentStreamStartTime?: number | null };
-            const v = typeof parsed?.currentStreamStartTime === 'number' ? parsed.currentStreamStartTime : null;
+            const parsed = JSON.parse(raw) as { currentStreamStartTime?: unknown };
+            const v =
+                typeof parsed?.currentStreamStartTime === 'number'
+                    ? parsed.currentStreamStartTime
+                    : null;
             this.lastStreamStartCache = { value: v, at: now };
             return v;
         } catch {
