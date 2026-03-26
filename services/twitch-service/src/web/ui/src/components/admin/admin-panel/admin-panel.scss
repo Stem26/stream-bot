@@ -101,6 +101,12 @@ admin-panel .controls {
   }
 }
 
+admin-panel .friends-actions-row {
+  margin-top: 10px;
+  margin-bottom: 0;
+  justify-content: flex-start;
+}
+
 admin-panel .empty-state {
   display: none;
 }

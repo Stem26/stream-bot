@@ -34,7 +34,6 @@ export class AdminPanelElement extends HTMLElement {
   private initialized = false;
   private lastLinksRotationMinutes: number | null = null;
   private lastRaidMessage: string | null = null;
-  private lastFriendsShoutoutEnabled: boolean | null = null;
   private hashChangeHandler: (() => void) | null = null;
 
   connectedCallback(): void {
@@ -183,14 +182,7 @@ export class AdminPanelElement extends HTMLElement {
     if (!allLinksBtn || !linkDialog) return;
 
     const friendsBtn = this.querySelector<HTMLButtonElement>('#friends-shoutout-btn');
-    const friendsToggle = this.querySelector<HTMLInputElement>('#friends-shoutout-enabled');
-    const friendsSaveBtn = this.querySelector<HTMLButtonElement>('#friends-shoutout-save-btn');
-    const updateFriendsSaveBtn = (): void => {
-      if (!friendsToggle || !friendsSaveBtn) return;
-      const current = Boolean(friendsToggle.checked);
-      friendsSaveBtn.disabled =
-        this.lastFriendsShoutoutEnabled === null || this.lastFriendsShoutoutEnabled === current;
-    };
+    const friendsToggle = this.querySelector<HTMLElement>('#friends-shoutout-enabled');
 
     const raidMessageInput = this.querySelector<HTMLTextAreaElement>('#raid-message');
     const raidSaveBtn = this.querySelector<HTMLButtonElement>('#raid-save-btn');
@@ -200,7 +192,7 @@ export class AdminPanelElement extends HTMLElement {
       raidSaveBtn.disabled = this.lastRaidMessage === null || this.lastRaidMessage === current;
     };
 
-    void this.initLinks(linkDialog, updateRaidSaveButton, updateFriendsSaveBtn);
+    void this.initLinks(linkDialog, updateRaidSaveButton);
 
     allLinksBtn.addEventListener('click', async () => {
       try {
@@ -221,22 +213,36 @@ export class AdminPanelElement extends HTMLElement {
       void dlg.open();
     });
 
-    friendsToggle?.addEventListener('change', updateFriendsSaveBtn);
-    friendsToggle?.addEventListener('input', updateFriendsSaveBtn);
-
-    friendsSaveBtn?.addEventListener('click', async () => {
+    friendsToggle?.addEventListener('click', () => {
       if (!friendsToggle) return;
-      const enabled = Boolean(friendsToggle.checked);
-      try {
-        const current = await fetchFriendsShoutoutConfig().catch(() => ({ enabled: false, logins: [] as string[] }));
-        const updated = await updateFriendsShoutoutConfig({ enabled, logins: current.logins ?? [] });
-        this.lastFriendsShoutoutEnabled = Boolean(updated.enabled);
-        friendsToggle.checked = this.lastFriendsShoutoutEnabled;
-        updateFriendsSaveBtn();
-        showAlert('Настройка авто-шатаута сохранена', 'success');
-      } catch (error) {
-        if (error instanceof Error) showAlert(`Ошибка сохранения: ${error.message}`, 'error');
-      }
+      const enabled = friendsToggle.getAttribute('data-enabled') === 'true';
+      const next = !enabled;
+      friendsToggle.classList.toggle('on', next);
+      friendsToggle.classList.toggle('off', !next);
+      friendsToggle.setAttribute('data-enabled', String(next));
+      const textEl = friendsToggle.querySelector('.status-toggle-text');
+      if (textEl) textEl.textContent = next ? 'ВКЛ' : 'ВЫКЛ';
+      void (async () => {
+        try {
+          const current = await fetchFriendsShoutoutConfig().catch(() => ({ enabled: false, logins: [] as string[] }));
+          const updated = await updateFriendsShoutoutConfig({ enabled: next, logins: current.logins ?? [] });
+          const applied = Boolean(updated.enabled);
+          friendsToggle.classList.toggle('on', applied);
+          friendsToggle.classList.toggle('off', !applied);
+          friendsToggle.setAttribute('data-enabled', String(applied));
+          const t = friendsToggle.querySelector('.status-toggle-text');
+          if (t) t.textContent = applied ? 'ВКЛ' : 'ВЫКЛ';
+          showAlert('Настройка авто-шатаута сохранена', 'success');
+        } catch (error) {
+          // Откат UI обратно
+          friendsToggle.classList.toggle('on', enabled);
+          friendsToggle.classList.toggle('off', !enabled);
+          friendsToggle.setAttribute('data-enabled', String(enabled));
+          const t = friendsToggle.querySelector('.status-toggle-text');
+          if (t) t.textContent = enabled ? 'ВКЛ' : 'ВЫКЛ';
+          if (error instanceof Error) showAlert(`Ошибка сохранения: ${error.message}`, 'error');
+        }
+      })();
     });
 
     linkDialog.addEventListener('save', async (event: Event) => {
@@ -318,7 +324,6 @@ export class AdminPanelElement extends HTMLElement {
   private async initLinks(
     linkDialog: LinkDialogElement,
     onLoaded?: () => void,
-    onFriendsLoaded?: () => void,
   ): Promise<void> {
     try {
       const [linksConfig, raidConfig, friendsConfig] = await Promise.all([
@@ -338,14 +343,18 @@ export class AdminPanelElement extends HTMLElement {
         raidMessageInput.style.height = `${Math.min(Math.max(raw + 4, 40), 160)}px`;
       }
       const friendsToggle = this.querySelector<HTMLInputElement>('#friends-shoutout-enabled');
-      if (friendsToggle) {
-        friendsToggle.checked = Boolean(friendsConfig.enabled);
-        this.lastFriendsShoutoutEnabled = Boolean(friendsConfig.enabled);
+      const friendsToggleEl = this.querySelector<HTMLElement>('#friends-shoutout-enabled');
+      if (friendsToggleEl) {
+        const enabled = Boolean(friendsConfig.enabled);
+        friendsToggleEl.classList.toggle('on', enabled);
+        friendsToggleEl.classList.toggle('off', !enabled);
+        friendsToggleEl.setAttribute('data-enabled', String(enabled));
+        const textEl = friendsToggleEl.querySelector('.status-toggle-text');
+        if (textEl) textEl.textContent = enabled ? 'ВКЛ' : 'ВЫКЛ';
       }
       linkDialog.open({ allLinksText: linksConfig.allLinksText ?? '' });
       linkDialog.close();
       onLoaded?.();
-      onFriendsLoaded?.();
     } catch (error) {
       if (error instanceof Error) {
         showAlert(`Ошибка загрузки: ${error.message}`, 'error');

@@ -86,12 +86,14 @@
           <div class="admin-duels-config-fields">
             <div class="admin-duels-config-row">
               <label for="friends-shoutout-enabled">Авто-шатаут включён</label>
-              <input type="checkbox" id="friends-shoutout-enabled">
+              <div class="status-toggle off" id="friends-shoutout-enabled" data-enabled="false" title="Включить/выключить авто-шатаут">
+                <div class="status-toggle-circle"></div>
+                <span class="status-toggle-text">ВЫКЛ</span>
+              </div>
             </div>
-            <div class="admin-inline-row">
-              <button type="button" class="btn btn-outline btn-small" id="friends-shoutout-btn">Список ников</button>
-              <button type="button" class="btn btn-success btn-small" id="friends-shoutout-save-btn" disabled>Сохранить</button>
-            </div>
+          </div>
+          <div class="admin-inline-row friends-actions-row">
+            <button type="button" class="btn btn-outline btn-small" id="friends-shoutout-btn">Список ников</button>
           </div>
         </div>
       </div>
