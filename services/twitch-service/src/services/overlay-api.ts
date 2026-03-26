@@ -212,10 +212,15 @@ export async function waitOverlayDuelCompleteEvent(
     const deadline = Date.now() + OVERLAY_DUEL_COMPLETE_WAIT_MS;
     let ws: WebSocket | null = null;
     let reconnectTimer: NodeJS.Timeout | null = null;
+    let hardTimeout: NodeJS.Timeout | null = null;
 
     const finish = (ok: boolean, reason?: string): void => {
       if (settled) return;
       settled = true;
+      if (hardTimeout) {
+        clearTimeout(hardTimeout);
+        hardTimeout = null;
+      }
       if (reconnectTimer) {
         clearTimeout(reconnectTimer);
         reconnectTimer = null;
@@ -231,6 +236,12 @@ export async function waitOverlayDuelCompleteEvent(
       }
       resolve(ok);
     };
+
+    // Жёсткий таймаут: если соединение держится открытым, но нужное событие не пришло —
+    // всё равно завершаем ожидание, чтобы чат не "зависал" без финального сообщения.
+    hardTimeout = setTimeout(() => {
+      finish(false, `таймаут ${OVERLAY_DUEL_COMPLETE_WAIT_MS}ms`);
+    }, OVERLAY_DUEL_COMPLETE_WAIT_MS);
 
     const scheduleReconnect = (): void => {
       if (settled) return;
