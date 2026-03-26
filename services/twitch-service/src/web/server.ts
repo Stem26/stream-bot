@@ -384,6 +384,7 @@ type AdminAuditContext = {
     previousPartyConfig?: PartyConfigAuditSnapshot | null;
     previousLinksConfig?: LinksConfigAuditSnapshot | null;
     previousRaidConfig?: RaidConfigAuditSnapshot | null;
+    previousFriendsShoutoutConfig?: FriendsShoutoutAuditSnapshot | null;
     previousDuelConfig?: DuelConfigAuditSnapshot | null;
     previousDuelDailyConfig?: DuelDailyConfigAuditSnapshot | null;
     previousChatModerationConfig?: ChatModerationAuditSnapshot | null;
@@ -414,6 +415,11 @@ async function loadAdminAuditContext(req: Request): Promise<AdminAuditContext> {
     if (method === 'PUT' && pathOnly === '/api/raid') {
         ctx.previousRaidConfig = await queryOne<RaidConfigAuditSnapshot>(
             'SELECT raid_message FROM raid_config WHERE id = 1'
+        );
+    }
+    if (method === 'PUT' && pathOnly === '/api/friends-shoutout') {
+        ctx.previousFriendsShoutoutConfig = await queryOne<FriendsShoutoutAuditSnapshot>(
+            'SELECT enabled, logins FROM friends_shoutout_config WHERE id = 1'
         );
     }
     if (method === 'POST' && pathOnly === '/api/admin/duels/config') {
@@ -547,6 +553,23 @@ function describeAdminAction(req: Request, context?: AdminAuditContext): { actio
             return { action: 'сохранил сообщение рейда без изменений' };
         }
         return { action: 'обновил сообщение при рейде' };
+    }
+    if (method === 'PUT' && pathOnly === '/api/friends-shoutout') {
+        const prev = context?.previousFriendsShoutoutConfig;
+        const enabled = Boolean(body.enabled);
+        const logins = Array.isArray(body.logins) ? (body.logins as unknown[]).map((x) => String(x ?? '')) : [];
+        const nextCount = logins.length;
+        const prevEnabled = prev ? Boolean(prev.enabled) : false;
+        const prevCount = prev?.logins?.length ?? 0;
+        const changes: string[] = [];
+        if (!prev || enabled !== prevEnabled) {
+            changes.push(prev ? `вкл: ${prevEnabled ? 'ДА' : 'НЕТ'} -> ${enabled ? 'ДА' : 'НЕТ'}` : `вкл: ${enabled ? 'ДА' : 'НЕТ'}`);
+        }
+        if (!prev || nextCount !== prevCount) {
+            changes.push(prev ? `ников: ${prevCount} -> ${nextCount}` : `ников: ${nextCount}`);
+        }
+        if (changes.length === 0) return { action: 'сохранил авто-шатаут друзей без изменений' };
+        return { action: 'обновил авто-шатаут друзей-стримеров', details: changes.join(', ') };
     }
     if (method === 'POST' && pathOnly === '/api/commands') {
         return { action: 'создал команду', details: `ID: ${String(body.id ?? '').slice(0, 80)}` };
@@ -1365,22 +1388,6 @@ app.put('/api/friends-shoutout', async (req: Request, res: Response) => {
         };
 
         if (await saveFriendsShoutoutToDb(next)) {
-            const admin = (req as any).adminUsername || 'unknown';
-            const prevEnabled = prev?.enabled ?? false;
-            const prevLogins = prev?.logins ?? [];
-            const changedEnabled = prevEnabled !== next.enabled;
-            const changedList = prevLogins.join(',') !== next.logins.join(',');
-            if (changedEnabled || changedList) {
-                const detailsParts: string[] = [];
-                if (changedEnabled) {
-                    detailsParts.push(`Вкл: ${prevEnabled ? 'ДА' : 'НЕТ'} -> ${next.enabled ? 'ДА' : 'НЕТ'}`);
-                }
-                if (changedList) {
-                    detailsParts.push(`Ники: ${prevLogins.length} -> ${next.logins.length}`);
-                }
-                logAdminAction(admin, 'Авто-шатаут (друзья-стримеры)', detailsParts.join(' | '));
-            }
-
             if (onFriendsShoutoutConfigUpdatedCallback) {
                 try {
                     onFriendsShoutoutConfigUpdatedCallback(next);
