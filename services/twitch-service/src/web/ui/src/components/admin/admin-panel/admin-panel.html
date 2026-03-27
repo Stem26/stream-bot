@@ -61,7 +61,8 @@
           Chatting)</p>
         <p class="admin-hint"><strong>!tags</strong> [теги] — управление тегами стрима: <code>!tags</code> — показать,
           <code>!tags tag1, tag2</code> — задать</p>
-        <p class="admin-hint"><strong class="raid-label">Рейд</strong> — при входящем рейде бот отправит сообщение в чат и сделает шатаут.
+        <p class="admin-hint"><strong class="raid-label">Рейд</strong> — при входящем рейде бот отправит сообщение в чат
+          и сделает шатаут.
           Плейсхолдеры: <code class="placeholder-accent">{from}</code>, <code
               class="placeholder-accent">{viewers}</code></p>
         <div class="admin-inline-row">
@@ -78,22 +79,40 @@
             Сохранить
           </button>
         </div>
-        <div class="admin-section">
-          <h3>Друзья-стримеры</h3>
-          <p class="admin-description">
-            Как только ник из списка напишет в чат, бот автоматически сделает <code>/shoutout</code>.
-          </p>
-          <div class="admin-duels-config-fields">
-            <div class="admin-duels-config-row">
-              <label for="friends-shoutout-enabled">Авто-шатаут включён</label>
-              <div class="status-toggle off" id="friends-shoutout-enabled" data-enabled="false" title="Включить/выключить авто-шатаут">
-                <div class="status-toggle-circle"></div>
-                <span class="status-toggle-text">ВЫКЛ</span>
+        <div class="admin-section friends-shoutout-section"
+             id="friends-shoutout-section">
+          <div class="friends-shoutout-header">
+            <h3>Друзья-стримеры</h3>
+            <button type="button"
+                class="btn btn-outline btn-small"
+                id="friends-shoutout-collapse-btn"
+                aria-expanded="true">
+              Скрыть
+            </button>
+          </div>
+          <div id="friends-shoutout-content">
+            <p class="admin-description">
+              Как только ник из списка напишет в чат, бот автоматически сделает <code>/shoutout</code>.
+            </p>
+            <div class="admin-duels-config-fields">
+              <div class="admin-duels-config-row">
+                <label for="friends-shoutout-enabled">Авто-шатаут включён</label>
+                <div class="status-toggle off"
+                     id="friends-shoutout-enabled"
+                     data-enabled="false"
+                     title="Включить/выключить авто-шатаут">
+                  <div class="status-toggle-circle"></div>
+                  <span class="status-toggle-text">ВЫКЛ</span>
+                </div>
               </div>
             </div>
-          </div>
-          <div class="admin-inline-row friends-actions-row">
-            <button type="button" class="btn btn-outline btn-small" id="friends-shoutout-btn">Список ников</button>
+            <div class="admin-inline-row friends-actions-row">
+              <button type="button"
+                      class="btn btn-outline btn-small"
+                      id="friends-shoutout-btn">
+                Список ников
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -148,9 +167,9 @@
   <div class="tab-content"
        id="tab-admin-logs">
     <journal-table
-      data-source="admin"
-      data-open-event="admin-admin-logs-open"
-      data-title="Журнал действий админов"
-      data-description="Показывает изменения из админ-панели (кто, когда и что изменил)."></journal-table>
+        data-source="admin"
+        data-open-event="admin-admin-logs-open"
+        data-title="Журнал действий админов"
+        data-description="Показывает изменения из админ-панели (кто, когда и что изменил)."></journal-table>
   </div>
 </div>

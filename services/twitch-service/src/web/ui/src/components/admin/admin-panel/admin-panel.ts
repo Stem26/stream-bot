@@ -35,6 +35,7 @@ export class AdminPanelElement extends HTMLElement {
   private lastLinksRotationMinutes: number | null = null;
   private lastRaidMessage: string | null = null;
   private hashChangeHandler: (() => void) | null = null;
+  private readonly friendsShoutoutCollapseStorageKey = 'admin.friendsShoutoutCollapsed';
 
   connectedCallback(): void {
     if (this.initialized) return;
@@ -183,6 +184,7 @@ export class AdminPanelElement extends HTMLElement {
 
     const friendsBtn = this.querySelector<HTMLButtonElement>('#friends-shoutout-btn');
     const friendsToggle = this.querySelector<HTMLElement>('#friends-shoutout-enabled');
+    this.setupFriendsShoutoutCollapse();
 
     const raidMessageInput = this.querySelector<HTMLTextAreaElement>('#raid-message');
     const raidSaveBtn = this.querySelector<HTMLButtonElement>('#raid-save-btn');
@@ -318,6 +320,29 @@ export class AdminPanelElement extends HTMLElement {
       } catch (error) {
         if (error instanceof Error) showAlert(`Ошибка сохранения: ${error.message}`, 'error');
       }
+    });
+  }
+
+  private setupFriendsShoutoutCollapse(): void {
+    const section = this.querySelector<HTMLElement>('#friends-shoutout-section');
+    const content = this.querySelector<HTMLElement>('#friends-shoutout-content');
+    const collapseBtn = this.querySelector<HTMLButtonElement>('#friends-shoutout-collapse-btn');
+    if (!section || !content || !collapseBtn) return;
+
+    const apply = (collapsed: boolean): void => {
+      section.classList.toggle('collapsed', collapsed);
+      content.style.display = collapsed ? 'none' : '';
+      collapseBtn.textContent = collapsed ? 'Показать' : 'Скрыть';
+      collapseBtn.setAttribute('aria-expanded', String(!collapsed));
+    };
+
+    const stored = window.localStorage.getItem(this.friendsShoutoutCollapseStorageKey);
+    apply(stored === 'true');
+
+    collapseBtn.addEventListener('click', () => {
+      const nextCollapsed = !section.classList.contains('collapsed');
+      apply(nextCollapsed);
+      window.localStorage.setItem(this.friendsShoutoutCollapseStorageKey, String(nextCollapsed));
     });
   }
 

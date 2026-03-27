@@ -107,6 +107,22 @@ admin-panel .friends-actions-row {
   justify-content: flex-start;
 }
 
+admin-panel .friends-shoutout-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+
+  h3 {
+    margin: 0;
+  }
+}
+
+admin-panel .friends-shoutout-section {
+  padding: 10px;
+  margin-bottom: 0;
+}
+
 admin-panel .empty-state {
   display: none;
 }
