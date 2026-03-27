@@ -136,7 +136,8 @@ body.theme-dark {
       background: linear-gradient(135deg, #6d28d9 0%, #7c3aed 100%);
       &:hover:not(:disabled) { box-shadow: 0 4px 16px rgba(124, 58, 237, 0.5); }
     }
-    #all-links-btn {
+    #all-links-btn,
+    #friends-shoutout-collapse-btn {
       border: 1px solid $dark-border;
       color: $dark-text-muted;
       background: rgba(139, 92, 246, 0.12);

@@ -122,7 +122,8 @@ link-whitelist-dialog .modal-body {
   margin-bottom: 20px;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
 
-  #all-links-btn.btn-outline {
+  #all-links-btn.btn-outline,
+  #friends-shoutout-collapse-btn.btn-outline {
     border: 1px solid #adb5bd;
     color: #495057;
     background: rgba(255, 255, 255, 0.5);
