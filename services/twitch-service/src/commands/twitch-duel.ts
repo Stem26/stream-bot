@@ -1199,6 +1199,46 @@ export function resetDuelsOnStreamEnd(): void {
 }
 
 /**
+ * Сброс прогресса дуэлей, привязанного к СТРИМУ (а не к дню).
+ * Нужно чтобы:
+ * - "5 побед за стрим" не переносились между стримами
+ * - "серия 3 побед подряд" не переносилась между стримами
+ *
+ * Вызывать на stream.offline (и можно вручную при необходимости).
+ */
+export async function resetDuelStreamProgressOnStreamEnd(): Promise<{ resetPlayers: number }> {
+  const players = await storage.loadTwitchPlayers();
+  let resetPlayers = 0;
+
+  for (const [, p] of players) {
+    const hadAny =
+      (p.duelsToday ?? 0) > 0 ||
+      Boolean(p.lastDuelDate) ||
+      Boolean(p.lastDailyQuestRewardDate) ||
+      (p.duelWinStreak ?? 0) > 0 ||
+      Boolean(p.streakRewardActive);
+
+    if (!hadAny) continue;
+
+    p.duelsToday = 0;
+    p.lastDuelDate = undefined;
+    p.lastDailyQuestRewardDate = undefined;
+    p.duelWinStreak = 0;
+    p.streakRewardActive = false;
+    resetPlayers += 1;
+  }
+
+  if (resetPlayers > 0) {
+    await storage.saveTwitchPlayers(players);
+    console.log(`🧹 Сброшен дуэль-прогресс за стрим: игроков=${resetPlayers}`);
+  } else {
+    console.log('🧹 Сброс дуэль-прогресса за стрим: нечего сбрасывать');
+  }
+
+  return { resetPlayers };
+}
+
+/**
  * Снимает таймауты дуэлей со всех игроков (амнистия)
  * Доступно только админам
  * Возвращает список игроков для снятия реальных таймаутов в Twitch

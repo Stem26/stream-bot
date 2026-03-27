@@ -635,6 +635,13 @@ export class TwitchEventSubNative {
             console.warn(
                 '⚠️ Telegram уведомление о старте стрима пропущено: не задан CHANNEL_ID (telegram.channelId)'
             );
+            log('TELEGRAM_STREAM_ONLINE_SKIPPED_NO_CHANNEL_ID', {
+                source: 'eventsub',
+                broadcasterUserId: event.broadcaster_user_id,
+                broadcasterUserLogin: event.broadcaster_user_login,
+                broadcasterUserName: event.broadcaster_user_name,
+                startedAt: event.started_at,
+            });
         }
 
         const startDate = new Date(event.started_at);
@@ -1002,6 +1009,31 @@ export class TwitchEventSubNative {
                     saveAnnouncementState(this.announcementState);
                     console.warn(`📝 currentStreamStartTime записан из streams API: ${startedAtMs}`);
                 }
+
+                // Если EventSub не прислал stream.online (или мы стартовали в середине стрима),
+                // отправляем Telegram-уведомление о старте при первом обнаружении "онлайн" через polling.
+                if (wasOffline) {
+                    const pseudoEvent: TwitchEventSubStreamOnlineEvent = {
+                        broadcaster_user_id: this.broadcasterId,
+                        broadcaster_user_login: (stream.user_login ?? stream.user_name ?? this.broadcasterName ?? '').toLowerCase(),
+                        broadcaster_user_name: stream.user_name || this.broadcasterName,
+                        started_at: stream.started_at,
+                    };
+                    if (this.telegramChannelId) {
+                        await this.sendTelegramStreamNotification(pseudoEvent);
+                    } else {
+                        console.warn(
+                            '⚠️ Telegram уведомление о старте стрима пропущено: не задан CHANNEL_ID (telegram.channelId)'
+                        );
+                        log('TELEGRAM_STREAM_ONLINE_SKIPPED_NO_CHANNEL_ID', {
+                            source: 'polling',
+                            broadcasterUserId: pseudoEvent.broadcaster_user_id,
+                            broadcasterUserLogin: pseudoEvent.broadcaster_user_login,
+                            broadcasterUserName: pseudoEvent.broadcaster_user_name,
+                            startedAt: pseudoEvent.started_at,
+                        });
+                    }
+                }
                 this.startViewerCountTracking(this.broadcasterId, this.broadcasterName, startDate);
             } else {
                 console.error(`📊 Статус стрима: 🔴 Оффлайн`);
@@ -1167,8 +1199,24 @@ export class TwitchEventSubNative {
             });
 
             console.error('✅ Уведомление о начале стрима отправлено в Telegram');
+            log('TELEGRAM_STREAM_ONLINE_SENT', {
+                broadcasterUserId: event.broadcaster_user_id,
+                broadcasterUserLogin: event.broadcaster_user_login,
+                broadcasterUserName: event.broadcaster_user_name,
+                startedAt: event.started_at,
+                telegramChannelId: this.telegramChannelId,
+                streamsApi: streamData ? 'ok' : 'skip_or_failed',
+            });
         } catch (error) {
             console.error('❌ Ошибка при отправке уведомления:', error);
+            log('TELEGRAM_STREAM_ONLINE_FAILED', {
+                broadcasterUserId: event.broadcaster_user_id,
+                broadcasterUserLogin: event.broadcaster_user_login,
+                broadcasterUserName: event.broadcaster_user_name,
+                startedAt: event.started_at,
+                telegramChannelId: this.telegramChannelId,
+                error: error instanceof Error ? error.message : String(error),
+            });
         }
     }
 

@@ -200,6 +200,9 @@ export class NightBotMonitor {
     private readonly FRIENDS_SHOUTOUT_GLOBAL_COOLDOWN_MS = 30 * 1000; // 30s
     private friendsShoutoutQueue: Promise<void> = Promise.resolve();
     private pendingFriendsShoutoutTimers = new Map<string, NodeJS.Timeout>();
+    private friendsShoutoutRetryCounts = new Map<string, number>();
+    private readonly FRIENDS_SHOUTOUT_COOLDOWN_RETRY_MS = 140 * 1000; // ~2m20s, запас к Twitch cooldown
+    private readonly FRIENDS_SHOUTOUT_MAX_RETRIES_PER_STREAM = 10;
     private lastStreamStartCache: { value: number | null; at: number } = { value: null, at: 0 };
     private readonly STREAM_START_CACHE_TTL_MS = 5 * 1000;
     private isStreamOnlineCheck: () => boolean = () => true;
@@ -654,19 +657,38 @@ export class NightBotMonitor {
         return (await res.json()) as T;
     }
 
-    private async sendShoutout(toBroadcasterId: string, label: string): Promise<boolean> {
-        if (!this.broadcasterId || !this.moderatorId || !toBroadcasterId) return false;
+    private async sendShoutout(
+        toBroadcasterId: string,
+        label: string
+    ): Promise<{ ok: true } | { ok: false; retryAfterMs?: number }> {
+        if (!this.broadcasterId || !this.moderatorId || !toBroadcasterId) return { ok: false };
         const url = new URL('https://api.twitch.tv/helix/chat/shoutouts');
         url.searchParams.set('from_broadcaster_id', this.broadcasterId);
         url.searchParams.set('to_broadcaster_id', toBroadcasterId);
         url.searchParams.set('moderator_id', this.moderatorId);
         try {
-            await this.helix(url.toString(), { method: 'POST' }, 3);
+            // Для shoutout 429 часто означает "внутренний cooldown" Twitch, короткие ретраи (3/6/9с) бесполезны.
+            await this.helix(url.toString(), { method: 'POST' }, 1);
             console.log(`✅ Авто-шатаут (друзья-стримеры): ${label}`);
-            return true;
+            return { ok: true };
         } catch (error: any) {
-            console.warn(`⚠️ Авто-шатаут не удался (${label}):`, error?.message || error);
-            return false;
+            const msg = String(error?.message || error || '');
+            const status = (error as any)?.status;
+            const isCooldown429 =
+                status === 429 ||
+                msg.includes('HTTP 429') ||
+                msg.includes('"status":429') ||
+                msg.includes('Too Many Requests');
+            const isShoutoutCooldown =
+                isCooldown429 && msg.toLowerCase().includes('shoutout') || msg.includes('cooldown period expires');
+
+            if (isShoutoutCooldown) {
+                console.warn(`⏳ Авто-шатаут на кулдауне Twitch (${label}) — поставим повтор позже`);
+                return { ok: false, retryAfterMs: this.FRIENDS_SHOUTOUT_COOLDOWN_RETRY_MS };
+            }
+
+            console.warn(`⚠️ Авто-шатаут не удался (${label}):`, msg);
+            return { ok: false };
         }
     }
 
@@ -759,11 +781,34 @@ export class NightBotMonitor {
                 return;
             }
 
-            const ok = await this.sendShoutout(toBroadcasterId, login);
-            if (!ok) return;
+            const result = await this.sendShoutout(toBroadcasterId, login);
+            if (!result.ok) {
+                // Если это именно Twitch cooldown на shoutout — не теряем ник, планируем повтор.
+                if (result.retryAfterMs) {
+                    const attempts = (this.friendsShoutoutRetryCounts.get(login) ?? 0) + 1;
+                    this.friendsShoutoutRetryCounts.set(login, attempts);
+                    if (attempts > this.FRIENDS_SHOUTOUT_MAX_RETRIES_PER_STREAM) {
+                        console.warn(`⚠️ Авто-шатаут: превышен лимит ретраев за стрим для ${login}, прекращаем попытки`);
+                        return;
+                    }
+                    if (!this.pendingFriendsShoutoutTimers.has(login)) {
+                        const retryMs = Math.max(10_000, result.retryAfterMs);
+                        const t = setTimeout(() => {
+                            this.pendingFriendsShoutoutTimers.delete(login);
+                            this.friendsShoutoutQueue = this.friendsShoutoutQueue
+                                .then(() => enqueue())
+                                .catch(() => {});
+                        }, retryMs);
+                        this.pendingFriendsShoutoutTimers.set(login, t);
+                        console.log(`⏳ Авто-шатаут: повтор для ${login} через ${Math.round(retryMs / 1000)} сек.`);
+                    }
+                }
+                return;
+            }
 
             const stampedAt = Date.now();
             this.lastFriendsShoutoutGlobalAt = stampedAt;
+            this.friendsShoutoutRetryCounts.delete(login);
             try {
                 await query(
                     `INSERT INTO friends_shoutout_stream_state (twitch_login, last_stream_start_ms, last_shoutout_at_ms)
@@ -2875,7 +2920,7 @@ export class NightBotMonitor {
             '!jump/!j/!прыжок'
         ];
 
-        const response = `📋Список доступных команд в чате:\n${commandsList.join(' • ')}`;
+        const response = `📋Список доступных команд в чате: ${commandsList.join(' • ')}`;
 
         try {
             await this.sendMessage(channel, response);

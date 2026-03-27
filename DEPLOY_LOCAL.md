@@ -240,6 +240,11 @@ npm run dev:all
 добавить пользователя htpasswd /etc/nginx/.htpasswd user2
 проверить пользователей cat /etc/nginx/.htpasswd
 http://localhost:3000/debug/overlay-triggers
+
+В файле событий (главное место для диагностики): /root/stream-bot/logs/events.log
+Удобные фильтры на сервере:
+tail -n 200 /root/stream-bot/logs/events.log | grep -E "TELEGRAM_STREAM_ONLINE_|STREAM_ONLINE|STREAM_ONLINE_RECOVERED|EVENTSUB_NOTIFICATION|STREAM_STATUS_PROBE"
+
 ```
 ---
 

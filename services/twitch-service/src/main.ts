@@ -3,7 +3,7 @@ import { NightBotMonitor } from './services/nightbot-monitor';
 import { TwitchEventSubNative } from './services/twitch-eventsub-native';
 import { Telegraf } from 'telegraf';
 import { loadConfig } from './config/env';
-import { clearDuelQueue, resetDuelsOnStreamEnd, clearDuelChallenges, setOnDuelBannedListChanged, setDuelConfig, setDailyQuestConfig, initRaidDuelBoostsFromDb, clearAllRaidDuelBoosts, registerRaidDuelBoostFromRaidEvent } from "./commands/twitch-duel";
+import { clearDuelQueue, resetDuelsOnStreamEnd, resetDuelStreamProgressOnStreamEnd, clearDuelChallenges, setOnDuelBannedListChanged, setDuelConfig, setDailyQuestConfig, initRaidDuelBoostsFromDb, clearAllRaidDuelBoosts, registerRaidDuelBoostFromRaidEvent } from "./commands/twitch-duel";
 import { clearActiveUsers } from "./commands/twitch-rat";
 import { log } from './utils/event-logger';
 import { initDatabase, closeDatabase, query, queryOne } from './database/database';
@@ -221,6 +221,7 @@ async function main() {
         clearDuelQueue();
         clearDuelChallenges();
         resetDuelsOnStreamEnd();
+        void resetDuelStreamProgressOnStreamEnd();
         clearActiveUsers(config.twitch.channel);
         nightBotMonitor.clearChattersCache();
         nightBotMonitor.clearDetectedModerators();
