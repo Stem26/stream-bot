@@ -6,14 +6,8 @@ import { AppConfig } from '../types/config';
 const NODE_ENV = process.env.NODE_ENV || 'development';
 const IS_LOCAL = NODE_ENV === 'development';
 
-// Путь к корню репозитория (работает и из src/, и из dist/)
-// __dirname:
-// - src:  services/telegram-service/src/config (4 уровня до корня)
-// - dist: services/telegram-service/dist/src/config (5 уровней до корня)
-// Определяем корень проверкой наличия package.json
 let MONOREPO_ROOT = path.resolve(__dirname, '../../../../');
 if (!fs.existsSync(path.join(MONOREPO_ROOT, 'package.json'))) {
-  // Если не нашли package.json, значит мы в dist/, поднимаемся ещё выше
   MONOREPO_ROOT = path.resolve(__dirname, '../../../../../');
 }
 
