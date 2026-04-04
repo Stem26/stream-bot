@@ -1317,7 +1317,8 @@ export class NightBotMonitor {
                 }
 
                 // Кастомные счётчики: !{trigger}инфо, !{trigger}сброс, !{trigger}откат, !{trigger}[число]
-                const variantMatch = trimmedMessage.match(/^(![a-zа-яё0-9_]+)(инфо|сброс|откат|\d+)$/);
+                // +? у первой группы: иначе !крик20 целиком попадает в триггер (там разрешены цифры) и число не парсится
+                const variantMatch = trimmedMessage.match(/^(![a-zа-яё0-9_]+?)(инфо|сброс|откат|\d+)$/);
                 if (variantMatch) {
                     const base = variantMatch[1];
                     const suffix = variantMatch[2];

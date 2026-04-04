@@ -259,6 +259,7 @@ npm run twitch:announcement:test "@Kunilika666 милый стример"
 # Команды: /dick /top_dick /bottom_dick
 # Twitch: !dick !top_dick !bottomdick !vanish
 # ssh -v -N -D 127.0.0.1:1080 root@194.87.55.131
+# kunikoka666
 
 
 cd /d D:\Projects\alltalk_tts

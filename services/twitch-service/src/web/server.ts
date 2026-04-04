@@ -1737,6 +1737,7 @@ app.post('/api/counters', async (req: Request, res: Response) => {
 
         await createCounterInDb(toSave);
         console.log(`✅ Счётчик "${toSave.id}" создан`);
+        notifyCommandsChanged();
         res.status(201).json(toSave);
     } catch (error) {
         console.error('❌ Ошибка создания счётчика:', error);
@@ -1768,6 +1769,7 @@ app.put('/api/counters/:id', async (req: Request, res: Response) => {
         }
 
         console.log(`✅ Счётчик "${id}" обновлён`);
+        notifyCommandsChanged();
         res.json(merged);
     } catch (error) {
         console.error('❌ Ошибка обновления счётчика:', error);
@@ -1786,6 +1788,7 @@ app.delete('/api/counters/:id', async (req: Request, res: Response) => {
 
         await deleteCounterInDb(id);
         console.log(`✅ Счётчик "${id}" удалён`);
+        notifyCommandsChanged();
         res.json({ success: true, message: 'Счётчик удалён' });
     } catch (error) {
         console.error('❌ Ошибка удаления счётчика:', error);
@@ -1804,6 +1807,7 @@ app.patch('/api/counters/:id/toggle', async (req: Request, res: Response) => {
         }
 
         console.log(`✅ Счётчик "${id}" ${updated.enabled ? 'включён' : 'отключён'}`);
+        notifyCommandsChanged();
         res.json(updated);
     } catch (error) {
         console.error('❌ Ошибка переключения счётчика:', error);
@@ -1822,6 +1826,7 @@ app.patch('/api/counters/:id/increment', async (req: Request, res: Response) => 
         }
 
         console.log(`✅ Счётчик "${id}" увеличен до ${updated.value}`);
+        notifyCommandsChanged();
         res.json(updated);
     } catch (error) {
         console.error('❌ Ошибка инкремента счётчика:', error);
