@@ -249,6 +249,10 @@ tail -n 200 /root/stream-bot/logs/events.log | grep -E "TELEGRAM_STREAM_ONLINE_|
 
 ```
 ---
+#cd /root/stream-bot
+#node scripts/test-telegram.js
+Отправка уведомления об окончании стрима вручную:
+node scripts/send-stream-end.js
 
 ## Прочее
 
