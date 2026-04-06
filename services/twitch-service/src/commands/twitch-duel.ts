@@ -26,6 +26,8 @@ export interface TwitchPlayerData {
   lastDailyQuestRewardDate?: string;
   duelWinStreak?: number;
   streakRewardActive?: boolean;
+  /** Один бонус за серию побед на стрим; сброс в resetDuelStreamProgressOnStreamEnd */
+  streakBonusAwardedThisStream?: boolean;
 }
 
 type DuelQueueEntry = {
@@ -354,7 +356,8 @@ function ensurePlayer(players: Map<string, TwitchPlayerData>, twitchUsername: st
       lastDuelDate: undefined,
       lastDailyQuestRewardDate: undefined,
       duelWinStreak: 0,
-      streakRewardActive: false
+      streakRewardActive: false,
+      streakBonusAwardedThisStream: false
     };
     players.set(normalized, player);
     return player;
@@ -377,6 +380,9 @@ function ensurePlayer(players: Map<string, TwitchPlayerData>, twitchUsername: st
   }
   if (player.streakRewardActive === undefined) {
     player.streakRewardActive = false;
+  }
+  if (player.streakBonusAwardedThisStream === undefined) {
+    player.streakBonusAwardedThisStream = false;
   }
   player.twitchUsername = twitchUsername;
   players.set(normalized, player);
@@ -704,9 +710,11 @@ async function executeDuel(
       let added = 0;
       if (
         winner.duelWinStreak >= dailyQuestConfig.streakWinsCount &&
-        !winner.streakRewardActive
+        !winner.streakRewardActive &&
+        !(winner.streakBonusAwardedThisStream ?? false)
       ) {
         winner.streakRewardActive = true;
+        winner.streakBonusAwardedThisStream = true;
         winner.points = (winner.points ?? DEFAULT_POINTS) + dailyQuestConfig.streakRewardPoints;
         added = dailyQuestConfig.streakRewardPoints;
       }
@@ -1203,6 +1211,7 @@ export function resetDuelsOnStreamEnd(): void {
  * Нужно чтобы:
  * - "5 побед за стрим" не переносились между стримами
  * - "серия 3 побед подряд" не переносилась между стримами
+ * - бонус за серию — не чаще одного раза за стрим (даже после проигрыша и новой серии)
  *
  * Вызывать на stream.offline (и можно вручную при необходимости).
  */
@@ -1216,7 +1225,8 @@ export async function resetDuelStreamProgressOnStreamEnd(): Promise<{ resetPlaye
       Boolean(p.lastDuelDate) ||
       Boolean(p.lastDailyQuestRewardDate) ||
       (p.duelWinStreak ?? 0) > 0 ||
-      Boolean(p.streakRewardActive);
+      Boolean(p.streakRewardActive) ||
+      Boolean(p.streakBonusAwardedThisStream);
 
     if (!hadAny) continue;
 
@@ -1225,6 +1235,7 @@ export async function resetDuelStreamProgressOnStreamEnd(): Promise<{ resetPlaye
     p.lastDailyQuestRewardDate = undefined;
     p.duelWinStreak = 0;
     p.streakRewardActive = false;
+    p.streakBonusAwardedThisStream = false;
     resetPlayers += 1;
   }
 

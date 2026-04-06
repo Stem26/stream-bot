@@ -18,6 +18,7 @@ interface TwitchPlayerData {
   lastDailyQuestRewardDate?: string;
   duelWinStreak?: number;
   streakRewardActive?: boolean;
+  streakBonusAwardedThisStream?: boolean;
 }
 
 interface StreamHistoryEntry {
@@ -95,9 +96,9 @@ async function migrateTwitchPlayers(): Promise<number> {
         `INSERT INTO twitch_player_stats (twitch_username, size, last_used, last_used_date, points,
           duel_timeout_until, duel_cooldown_until, duel_wins, duel_losses, duel_draws,
           duels_today, last_duel_date, last_daily_quest_reward_date,
-          duel_win_streak, streak_reward_active)
+          duel_win_streak, streak_reward_active, streak_bonus_awarded_this_stream)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-                $11, $12, $13, $14, $15)`,
+                $11, $12, $13, $14, $15, $16)`,
         [
           norm,
           player.size,
@@ -113,7 +114,8 @@ async function migrateTwitchPlayers(): Promise<number> {
           player.lastDuelDate || null,
           player.lastDailyQuestRewardDate || null,
           player.duelWinStreak ?? 0,
-          player.streakRewardActive ?? false
+          player.streakRewardActive ?? false,
+          player.streakBonusAwardedThisStream ?? false
         ]
       );
 

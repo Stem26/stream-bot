@@ -557,6 +557,15 @@ export class TwitchEventSubNative {
         }
     }
 
+    /** Стабильный маркер эфира: время из Twitch started_at (ISO), не Date.now(). */
+    private streamStartedAtToUnixMs(startedAt: string | undefined | null): number {
+        if (startedAt == null || startedAt === '') {
+            return Date.now();
+        }
+        const t = new Date(startedAt).getTime();
+        return Number.isFinite(t) ? t : Date.now();
+    }
+
     private async handleNotification(message: any): Promise<void> {
         const payload = parseEventSubNotification(message);
         if (!payload) {
@@ -592,6 +601,31 @@ export class TwitchEventSubNative {
     }
 
     private async handleStreamOnline(event: TwitchEventSubStreamOnlineEvent): Promise<void> {
+        const startedAtMs = this.streamStartedAtToUnixMs(event.started_at);
+
+        if (this.isStreamOnline) {
+            const cur = this.announcementState.currentStreamStartTime;
+            if (cur === startedAtMs) {
+                log('STREAM_ONLINE_DEDUP', {
+                    channel: event.broadcaster_user_name,
+                    startedAtMs
+                });
+                return;
+            }
+            this.announcementState.currentStreamStartTime = startedAtMs;
+            saveAnnouncementState(this.announcementState);
+            if (cur != null) {
+                console.warn(
+                    `⚠️ stream.online при уже онлайн: маркер стрима ${cur} -> ${startedAtMs} (started_at Twitch)`
+                );
+            } else {
+                console.warn(
+                    `⚠️ Стрим уже онлайн, currentStreamStartTime был пуст — записали started_at: ${startedAtMs}`
+                );
+            }
+            return;
+        }
+
         try {
             this.onStreamOnlineCallback?.();
             console.log('✅ Синхронизация зрителей запущена при начале стрима');
@@ -599,31 +633,14 @@ export class TwitchEventSubNative {
             console.error('❌ Ошибка при запуске синхронизации зрителей:', e);
         }
 
-        if (this.isStreamOnline) {
-            // Важно: иногда стрим "детектится" по polling до EventSub notification,
-            // из-за чего isStreamOnline уже true и мы пропускаем обработчик.
-            // Но нам всё равно нужно зафиксировать старт стрима в announcement-state.json,
-            // иначе функции "раз за стрим" (например, авто-шатаут) не будут работать.
-            if (!this.announcementState.currentStreamStartTime) {
-                this.announcementState.currentStreamStartTime = Date.now();
-                saveAnnouncementState(this.announcementState);
-                console.warn(
-                    `⚠️ Стрим уже онлайн, но currentStreamStartTime был пуст — записали ${this.announcementState.currentStreamStartTime}`
-                );
-            } else {
-                console.error(`⚠️ Стрим уже онлайн, пропускаем дубль события`);
-            }
-            return;
-        }
-
         console.error(`🔴 Стрим начался на канале ${event.broadcaster_user_name}!`);
         this.isStreamOnline = true;
 
         this.announcementState.currentStreamPeak = null;
-        this.announcementState.currentStreamStartTime = Date.now();
+        this.announcementState.currentStreamStartTime = startedAtMs;
         saveAnnouncementState(this.announcementState);
 
-        log('STREAM_ONLINE', { channel: event.broadcaster_user_name });
+        log('STREAM_ONLINE', { channel: event.broadcaster_user_name, startedAtMs });
 
         await this.sendWelcomeMessage();
         this.startWelcomeMessageInterval();
@@ -1001,13 +1018,19 @@ export class TwitchEventSubNative {
                 this.startLinkRotation();
 
                 const startDate = new Date(stream.started_at);
-                // Фиксируем "идентификатор стрима" в announcement-state.json, даже если поднялись в середине стрима.
-                // Это нужно для логики "раз за стрим" (например, авто-шатаут друзей-стримеров).
-                const startedAtMs = Number.isFinite(startDate.getTime()) ? startDate.getTime() : Date.now();
-                if (!this.announcementState.currentStreamStartTime) {
+                // Идентификатор эфира = started_at из Helix (как в EventSub), не Date.now().
+                const startedAtMs = this.streamStartedAtToUnixMs(stream.started_at);
+                const curStart = this.announcementState.currentStreamStartTime;
+                if (curStart !== startedAtMs) {
                     this.announcementState.currentStreamStartTime = startedAtMs;
                     saveAnnouncementState(this.announcementState);
-                    console.warn(`📝 currentStreamStartTime записан из streams API: ${startedAtMs}`);
+                    if (curStart != null) {
+                        console.warn(
+                            `📝 currentStreamStartTime выровнен по streams API started_at: ${startedAtMs} (было ${curStart})`
+                        );
+                    } else {
+                        console.warn(`📝 currentStreamStartTime записан из streams API: ${startedAtMs}`);
+                    }
                 }
 
                 // Если EventSub не прислал stream.online (или мы стартовали в середине стрима),

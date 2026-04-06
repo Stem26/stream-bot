@@ -2767,6 +2767,7 @@ app.post('/api/admin/duels/reset-reward-flags', async (req: Request, res: Respon
             UPDATE twitch_player_stats
             SET last_daily_quest_reward_date = NULL,
                 streak_reward_active = false,
+                streak_bonus_awarded_this_stream = false,
                 duels_today = 0,
                 duel_win_streak = 0
         `);

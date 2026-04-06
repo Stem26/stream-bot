@@ -90,6 +90,7 @@ export async function initDatabase(): Promise<void> {
           -- серия побед в дуэлях
           duel_win_streak INTEGER DEFAULT 0,
           streak_reward_active BOOLEAN DEFAULT FALSE,
+          streak_bonus_awarded_this_stream BOOLEAN DEFAULT FALSE,
           updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
         )
       `);
@@ -114,6 +115,10 @@ export async function initDatabase(): Promise<void> {
       await client.query(
         `ALTER TABLE twitch_player_stats
          ADD COLUMN IF NOT EXISTS streak_reward_active BOOLEAN DEFAULT FALSE`
+      );
+      await client.query(
+        `ALTER TABLE twitch_player_stats
+         ADD COLUMN IF NOT EXISTS streak_bonus_awarded_this_stream BOOLEAN DEFAULT FALSE`
       );
 
       await client.query(`

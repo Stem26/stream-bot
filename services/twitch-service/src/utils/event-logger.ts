@@ -23,7 +23,8 @@ if (!fs.existsSync(LOGS_DIR)) {
 }
 
 type EventType = 
-  | 'STREAM_ONLINE' 
+  | 'STREAM_ONLINE'
+  | 'STREAM_ONLINE_DEDUP'
   | 'STREAM_ONLINE_RECOVERED'
   | 'STREAM_OFFLINE' 
   | 'STREAM_STATUS_PROBE'

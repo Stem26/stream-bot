@@ -18,6 +18,8 @@ export interface TwitchPlayerData {
   // серия побед
   duelWinStreak?: number;
   streakRewardActive?: boolean;
+  /** Бонус за N побед подряд уже выдан на текущем стриме (сброс только при stream.offline) */
+  streakBonusAwardedThisStream?: boolean;
 }
 
 interface TwitchPlayerStatsRow {
@@ -36,6 +38,7 @@ interface TwitchPlayerStatsRow {
   last_daily_quest_reward_date: string | null;
   duel_win_streak: number | null;
   streak_reward_active: boolean | null;
+  streak_bonus_awarded_this_stream: boolean | null;
 }
 
 function rowToPlayer(r: TwitchPlayerStatsRow): TwitchPlayerData {
@@ -54,7 +57,8 @@ function rowToPlayer(r: TwitchPlayerStatsRow): TwitchPlayerData {
     lastDuelDate: r.last_duel_date || undefined,
     lastDailyQuestRewardDate: r.last_daily_quest_reward_date || undefined,
     duelWinStreak: r.duel_win_streak ?? 0,
-    streakRewardActive: r.streak_reward_active ?? false
+    streakRewardActive: r.streak_reward_active ?? false,
+    streakBonusAwardedThisStream: r.streak_bonus_awarded_this_stream ?? false
   };
 }
 
@@ -64,7 +68,7 @@ export class TwitchPlayersStorageDB {
       SELECT twitch_username, size, last_used, last_used_date, points,
         duel_timeout_until, duel_cooldown_until, duel_wins, duel_losses, duel_draws,
         duels_today, last_duel_date, last_daily_quest_reward_date,
-        duel_win_streak, streak_reward_active
+        duel_win_streak, streak_reward_active, streak_bonus_awarded_this_stream
       FROM twitch_player_stats
     `);
     const map = new Map<string, TwitchPlayerData>();
@@ -84,14 +88,14 @@ export class TwitchPlayersStorageDB {
           `INSERT INTO twitch_player_stats (twitch_username, size, last_used, last_used_date, points,
             duel_timeout_until, duel_cooldown_until, duel_wins, duel_losses, duel_draws,
             duels_today, last_duel_date, last_daily_quest_reward_date,
-            duel_win_streak, streak_reward_active)
+            duel_win_streak, streak_reward_active, streak_bonus_awarded_this_stream)
           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-                  $11, $12, $13, $14, $15)
+                  $11, $12, $13, $14, $15, $16)
           ON CONFLICT (twitch_username) DO UPDATE SET
             size=$2, last_used=$3, last_used_date=$4, points=$5,
             duel_timeout_until=$6, duel_cooldown_until=$7, duel_wins=$8, duel_losses=$9, duel_draws=$10,
             duels_today=$11, last_duel_date=$12, last_daily_quest_reward_date=$13,
-            duel_win_streak=$14, streak_reward_active=$15,
+            duel_win_streak=$14, streak_reward_active=$15, streak_bonus_awarded_this_stream=$16,
             updated_at=CURRENT_TIMESTAMP`,
           [
             norm,
@@ -108,7 +112,8 @@ export class TwitchPlayersStorageDB {
             player.lastDuelDate || null,
             player.lastDailyQuestRewardDate || null,
             player.duelWinStreak ?? 0,
-            player.streakRewardActive ?? false
+            player.streakRewardActive ?? false,
+            player.streakBonusAwardedThisStream ?? false
           ]
         );
       }
