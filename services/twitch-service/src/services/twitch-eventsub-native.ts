@@ -1700,27 +1700,39 @@ export class TwitchEventSubNative {
         try {
             let streamData: { game_name?: string | null; title: string } | null = null;
             if (this.twitchApi) {
-                const streamResult = await this.twitchApi.getStreamByUserId(
-                    event.broadcaster_user_id,
-                    'telegram:stream_notification'
-                );
-                const status = this.handleApiResult(streamResult, {
-                    context: 'telegram:stream_notification',
-                    api: 'streams'
-                });
-                if (status === 'ok' && isApiOk(streamResult) && streamResult.data) {
-                    if (streamResult.recovered) {
-                        log('CONNECTION', {
-                            service: 'TwitchEventSubNative.streamsApi',
-                            status: 'recovered',
-                            reason: 'telegram:stream_notification',
-                            failureCount: streamResult.failureCountBeforeRecover ?? 0
-                        });
+                // Пытаемся получить данные стрима с retry (до 3 попыток с задержкой)
+                for (let attempt = 1; attempt <= 3; attempt++) {
+                    const streamResult = await this.twitchApi.getStreamByUserId(
+                        event.broadcaster_user_id,
+                        `telegram:stream_notification:attempt${attempt}`
+                    );
+                    const status = this.handleApiResult(streamResult, {
+                        context: `telegram:stream_notification:attempt${attempt}`,
+                        api: 'streams'
+                    });
+                    if (status === 'ok' && isApiOk(streamResult) && streamResult.data) {
+                        if (streamResult.recovered) {
+                            log('CONNECTION', {
+                                service: 'TwitchEventSubNative.streamsApi',
+                                status: 'recovered',
+                                reason: `telegram:stream_notification:attempt${attempt}`,
+                                failureCount: streamResult.failureCountBeforeRecover ?? 0
+                            });
+                        }
+                        streamData = streamResult.data;
+                        if (attempt > 1) {
+                            console.log(`✅ Данные стрима получены с попытки ${attempt}`);
+                        }
+                        break;
+                    } else if (attempt < 3) {
+                        // Ждем 2 секунды перед следующей попыткой
+                        console.warn(`⚠️ Попытка ${attempt}/3 получить данные стрима не удалась, повтор через 2с...`);
+                        await new Promise(resolve => setTimeout(resolve, 2000));
+                    } else {
+                        // Последняя попытка не удалась - отправляем без данных
+                        console.warn('⚠️ Не удалось получить данные стрима после 3 попыток — отправляем упрощенное уведомление');
+                        streamData = null;
                     }
-                    streamData = streamResult.data;
-                } else {
-                    // Даже если streams API временно недоступен/пропущен — уведомление о старте стрима в TG всё равно отправляем.
-                    streamData = null;
                 }
             }
             const message = this.telegramMessageBuilder.buildStreamOnlineMessage({ event, stream: streamData });
