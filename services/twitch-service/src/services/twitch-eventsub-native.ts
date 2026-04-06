@@ -1737,22 +1737,47 @@ export class TwitchEventSubNative {
             }
             const message = this.telegramMessageBuilder.buildStreamOnlineMessage({ event, stream: streamData });
 
-            await this.telegramSender.sendMessage(this.telegramChannelId, message, {
-                parse_mode: 'HTML',
-                link_preview_options: { is_disabled: false }
-            });
+            // Пытаемся отправить уведомление с retry (до 3 попыток)
+            let lastError: Error | null = null;
+            for (let attempt = 1; attempt <= 3; attempt++) {
+                try {
+                    await this.telegramSender.sendMessage(this.telegramChannelId, message, {
+                        parse_mode: 'HTML',
+                        link_preview_options: { is_disabled: false }
+                    });
 
-            this.markTelegramStreamStartNotified(event.started_at);
+                    this.markTelegramStreamStartNotified(event.started_at);
 
-            console.error('✅ Уведомление о начале стрима отправлено в Telegram');
-            log('TELEGRAM_STREAM_ONLINE_SENT', {
-                broadcasterUserId: event.broadcaster_user_id,
-                broadcasterUserLogin: event.broadcaster_user_login,
-                broadcasterUserName: event.broadcaster_user_name,
-                startedAt: event.started_at,
-                telegramChannelId: this.telegramChannelId,
-                streamsApi: streamData ? 'ok' : 'skip_or_failed',
-            });
+                    console.error('✅ Уведомление о начале стрима отправлено в Telegram');
+                    if (attempt > 1) {
+                        console.log(`   (успешно с попытки ${attempt}/3)`);
+                    }
+                    
+                    log('TELEGRAM_STREAM_ONLINE_SENT', {
+                        broadcasterUserId: event.broadcaster_user_id,
+                        broadcasterUserLogin: event.broadcaster_user_login,
+                        broadcasterUserName: event.broadcaster_user_name,
+                        startedAt: event.started_at,
+                        telegramChannelId: this.telegramChannelId,
+                        streamsApi: streamData ? 'ok' : 'skip_or_failed',
+                        attempt
+                    });
+                    return; // Успешно отправлено
+                } catch (err) {
+                    lastError = err instanceof Error ? err : new Error(String(err));
+                    
+                    if (attempt < 3) {
+                        const delay = attempt * 2000; // 2с, 4с
+                        console.warn(`⚠️ Попытка ${attempt}/3 отправить уведомление о начале стрима не удалась`);
+                        console.warn(`   Причина: ${lastError.message}`);
+                        console.warn(`   Повтор через ${delay/1000}с...`);
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                    }
+                }
+            }
+            
+            // Все 3 попытки не удались
+            throw lastError || new Error('Failed to send stream notification after 3 attempts');
         } catch (error) {
             console.error('❌ Ошибка при отправке уведомления:', error);
             log('TELEGRAM_STREAM_ONLINE_FAILED', {
@@ -1762,6 +1787,7 @@ export class TwitchEventSubNative {
                 startedAt: event.started_at,
                 telegramChannelId: this.telegramChannelId,
                 error: error instanceof Error ? error.message : String(error),
+                errorType: (error as any).code || 'UNKNOWN'
             });
         }
     }
@@ -1772,33 +1798,78 @@ export class TwitchEventSubNative {
     ): Promise<void> {
         if (!this.telegramChatId) return;
 
-        try {
-            const { stats } = result;
-            const message = this.telegramMessageBuilder.buildStreamOfflineMessage({ event, stats });
+        const { stats } = result;
+        const message = this.telegramMessageBuilder.buildStreamOfflineMessage({ event, stats });
 
-            await this.telegramSender.sendMessage(this.telegramChatId, message, {
-                parse_mode: 'HTML',
-                link_preview_options: { is_disabled: true }
-            });
+        // Пытаемся отправить до 3 раз с задержкой
+        let lastError: Error | null = null;
+        for (let attempt = 1; attempt <= 3; attempt++) {
+            try {
+                await this.telegramSender.sendMessage(this.telegramChatId, message, {
+                    parse_mode: 'HTML',
+                    link_preview_options: { is_disabled: true }
+                });
 
-            console.error('✅ Уведомление об окончании стрима отправлено в Telegram');
+                console.error('✅ Уведомление об окончании стрима отправлено в Telegram');
+                if (attempt > 1) {
+                    console.log(`   (успешно с попытки ${attempt}/3)`);
+                }
 
-            const adminChatId = process.env.BACKUP_ADMIN_ID;
-            if (adminChatId) {
-                console.log('📦 Создание бэкапа БД после окончания стрима...');
-                const { exec } = require('child_process');
-                const backupScript = require('path').join(MONOREPO_ROOT, 'scripts', 'backup-db.js');
-                exec(`node "${backupScript}" ${adminChatId}`, (error: Error | null, stdout: string) => {
-                    if (error) {
-                        console.error('❌ Ошибка создания бэкапа:', error.message);
-                    } else {
-                        console.log('✅ Бэкап БД создан и отправлен админу');
-                        if (stdout) console.log(stdout);
+                log('TELEGRAM_STREAM_OFFLINE_SENT', {
+                    broadcasterUserId: event.broadcaster_user_id,
+                    broadcasterUserName: event.broadcaster_user_name,
+                    telegramChatId: this.telegramChatId,
+                    attempt,
+                    stats: {
+                        duration: stats.duration,
+                        peak: stats.peak,
+                        followsCount: stats.followsCount
                     }
                 });
+
+                // Успех - создаём бэкап и выходим
+                const adminChatId = process.env.BACKUP_ADMIN_ID;
+                if (adminChatId) {
+                    console.log('📦 Создание бэкапа БД после окончания стрима...');
+                    const { exec } = require('child_process');
+                    const backupScript = require('path').join(MONOREPO_ROOT, 'scripts', 'backup-db.js');
+                    exec(`node "${backupScript}" ${adminChatId}`, (error: Error | null, stdout: string) => {
+                        if (error) {
+                            console.error('❌ Ошибка создания бэкапа:', error.message);
+                        } else {
+                            console.log('✅ Бэкап БД создан и отправлен админу');
+                            if (stdout) console.log(stdout);
+                        }
+                    });
+                }
+                return; // Успешно отправлено
+            } catch (err) {
+                lastError = err instanceof Error ? err : new Error(String(err));
+                
+                if (attempt < 3) {
+                    const delay = attempt * 2000; // 2с, 4с
+                    console.warn(`⚠️ Попытка ${attempt}/3 отправить уведомление об окончании не удалась`);
+                    console.warn(`   Причина: ${lastError.message}`);
+                    console.warn(`   Повтор через ${delay/1000}с...`);
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                } else {
+                    // Последняя попытка не удалась
+                    console.error('❌ Ошибка при отправке уведомления об окончании:', lastError);
+                    log('TELEGRAM_STREAM_OFFLINE_FAILED', {
+                        broadcasterUserId: event.broadcaster_user_id,
+                        broadcasterUserName: event.broadcaster_user_name,
+                        telegramChatId: this.telegramChatId,
+                        attempts: 3,
+                        error: lastError.message,
+                        errorType: (lastError as any).code || 'UNKNOWN',
+                        stats: {
+                            duration: stats.duration,
+                            peak: stats.peak,
+                            followsCount: stats.followsCount
+                        }
+                    });
+                }
             }
-        } catch (error) {
-            console.error('❌ Ошибка при отправке уведомления об окончании:', error);
         }
     }
 
