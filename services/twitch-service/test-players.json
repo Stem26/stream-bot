@@ -1,0 +1,26 @@
+{
+  "1": {
+    "userId": 1,
+    "username": "user1",
+    "firstName": "User1",
+    "size": 10,
+    "lastUsed": 0,
+    "lastUsedDate": ""
+  },
+  "2": {
+    "userId": 2,
+    "username": "user2",
+    "firstName": "User2",
+    "size": 50,
+    "lastUsed": 0,
+    "lastUsedDate": ""
+  },
+  "3": {
+    "userId": 3,
+    "username": "user3",
+    "firstName": "User3",
+    "size": 25,
+    "lastUsed": 0,
+    "lastUsedDate": ""
+  }
+}

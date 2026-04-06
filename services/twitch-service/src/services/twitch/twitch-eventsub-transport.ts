@@ -76,6 +76,112 @@ export async function createEventSubSubscription(input: {
     }
 }
 
+const EVENTSUB_TYPES_OUR_BROADCASTER = new Set([
+    'stream.online',
+    'stream.offline',
+    'channel.raid',
+    'channel.follow'
+]);
+
+function subscriptionTargetsBroadcaster(
+    sub: { type: string; condition?: Record<string, string> },
+    broadcasterId: string
+): boolean {
+    if (!EVENTSUB_TYPES_OUR_BROADCASTER.has(sub.type)) {
+        return false;
+    }
+    const c = sub.condition || {};
+    return (
+        c.broadcaster_user_id === broadcasterId || c.to_broadcaster_user_id === broadcasterId
+    );
+}
+
+const EVENTSUB_DELETE_CHUNK_SIZE = 10;
+const EVENTSUB_DELETE_CHUNK_PAUSE_MS = 200;
+
+/**
+ * Удаляет все WebSocket-подписки на наши типы для данного broadcaster_id.
+ * Вызывать перед пересозданием подписок на новой session_id — снижает 429 / дубли после partial failure.
+ */
+export async function deleteWebsocketSubscriptionsForOurChannelTypes(input: {
+    accessToken: string;
+    clientId: string;
+    broadcasterId: string;
+}): Promise<{ deleted: number; failed: number }> {
+    let deleted = 0;
+    let failed = 0;
+    let cursor: string | undefined;
+    const idSet = new Set<string>();
+
+    do {
+        const url = new URL('https://api.twitch.tv/helix/eventsub/subscriptions');
+        url.searchParams.set('first', '100');
+        if (cursor) {
+            url.searchParams.set('after', cursor);
+        }
+        const res = await fetch(url.toString(), {
+            headers: {
+                Authorization: `Bearer ${input.accessToken}`,
+                'Client-Id': input.clientId
+            }
+        });
+        if (!res.ok) {
+            throw new Error(`GET eventsub/subscriptions: ${res.status} ${await res.text()}`);
+        }
+        const body = (await res.json()) as {
+            data: Array<{
+                id: string;
+                type: string;
+                transport?: { method?: string };
+                condition?: Record<string, string>;
+            }>;
+            pagination?: { cursor?: string };
+        };
+        for (const sub of body.data || []) {
+            if (sub.transport?.method !== 'websocket') {
+                continue;
+            }
+            if (!subscriptionTargetsBroadcaster(sub, input.broadcasterId)) {
+                continue;
+            }
+            idSet.add(sub.id);
+        }
+        cursor = body.pagination?.cursor;
+    } while (cursor);
+
+    const ids = Array.from(idSet);
+    for (let i = 0; i < ids.length; i += EVENTSUB_DELETE_CHUNK_SIZE) {
+        const chunk = ids.slice(i, i + EVENTSUB_DELETE_CHUNK_SIZE);
+        const outcomes = await Promise.all(
+            chunk.map(async (id) => {
+                const delRes = await fetch(
+                    `https://api.twitch.tv/helix/eventsub/subscriptions?id=${encodeURIComponent(id)}`,
+                    {
+                        method: 'DELETE',
+                        headers: {
+                            Authorization: `Bearer ${input.accessToken}`,
+                            'Client-Id': input.clientId
+                        }
+                    }
+                );
+                return delRes.ok || delRes.status === 404;
+            })
+        );
+        for (const ok of outcomes) {
+            if (ok) {
+                deleted++;
+            } else {
+                failed++;
+            }
+        }
+        if (i + EVENTSUB_DELETE_CHUNK_SIZE < ids.length) {
+            await sleep(EVENTSUB_DELETE_CHUNK_PAUSE_MS);
+        }
+    }
+
+    return { deleted, failed };
+}
+
 export type EventSubRawMessage = {
     metadata?: {
         message_type?: string;

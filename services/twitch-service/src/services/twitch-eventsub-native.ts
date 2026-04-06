@@ -5,7 +5,7 @@
 
 import WebSocket from 'ws';
 import type { Telegram } from 'telegraf';
-import { ENABLE_BOT_FEATURES } from '../config/features';
+import { ALLOW_LOCAL_COMMANDS, ENABLE_BOT_FEATURES } from '../config/features';
 import { IS_LOCAL } from '../config/env';
 import { addStreamToHistory } from '../storage/stream-history';
 import { log } from '../utils/event-logger';
@@ -16,6 +16,7 @@ import { API_SKIP_EVENTS, handleApiResult as handleApiResultPolicy } from './twi
 import {
     buildEventSubRawEntry,
     createEventSubSubscription,
+    deleteWebsocketSubscriptionsForOurChannelTypes,
     getEventSubParseMetrics,
     resetEventSubParseMetrics,
     parseEventSubNotification
@@ -29,6 +30,13 @@ import type {
 import { computeStreamStats, formatDuration } from './twitch/stream-tracker';
 import { TelegramMessageBuilder, TelegramSender } from './twitch/telegram';
 import { isApiOk, type ApiCallResult } from './twitch/twitch-api.types';
+import {
+    assertEventSubSubscribeBatchSession,
+    computeEventSubWatchdogIssues,
+    shouldSendTelegramStreamOnlineForStartedAt,
+    shouldSkipEventSubSubscribeCooldown,
+    streamStartedAtToMs
+} from './twitch/eventsub-regression-guards';
 
 function resolveMonorepoRoot(): string {
     // PM2 может запускать процесс из services/twitch-service (там тоже есть package.json),
@@ -56,6 +64,7 @@ interface AnnouncementState {
     currentStreamPeak: number | null;
     currentStreamStartTime: number | null;
     currentStreamFollowsCount: number | null;
+    lastNotifiedStreamStartedAt: number | null;
 }
 
 function loadAnnouncementState(): AnnouncementState {
@@ -65,7 +74,8 @@ function loadAnnouncementState(): AnnouncementState {
         currentLinkIndex: 0,
         currentStreamPeak: null,
         currentStreamStartTime: null,
-        currentStreamFollowsCount: null
+        currentStreamFollowsCount: null,
+        lastNotifiedStreamStartedAt: null
     };
 
     try {
@@ -103,11 +113,27 @@ const OFFLINE_STATUS_POLL_MS = 30 * 1000;
 const OFFLINE_EVENT_TRIGGER_PROBE_COOLDOWN_MS = 15 * 1000;
 const WATCHDOG_CHECK_INTERVAL_MS = 30 * 1000;
 const WATCHDOG_DEGRADED_GRACE_MS = 7 * 60 * 1000;
-const EVENTSUB_SILENCE_TIMEOUT_MS = 90 * 1000;
 const STREAMS_API_MIN_INTERVAL_MS = 10 * 1000;
 const STREAMS_API_MAX_BACKOFF_MS = 5 * 60 * 1000;
 const ANNOUNCEMENTS_API_MAX_BACKOFF_MS = 2 * 60 * 1000;
 const SKIP_LOG_THROTTLE_MS = 30_000;
+/** Ожидание session_welcome после открытия WebSocket. */
+const EVENTSUB_WELCOME_TIMEOUT_MS = 30_000;
+/** Не дергать reconnect из keepalive чаще (защита от шторма при лагах). */
+const KEEPALIVE_RECONNECT_DEBOUNCE_MS = 5_000;
+/** Потолок задержки между попытками reconnect (экспоненциальный backoff). */
+const EVENTSUB_RECONNECT_DELAY_CAP_MS = 30_000;
+/** Случайный разброс к задержке reconnect (мс), чтобы инстансы не били API синхронно. */
+const EVENTSUB_RECONNECT_JITTER_MAX_MS = 1000;
+/** Логируем, если subscribeToEvents длится дольше (мс); флаг subscribeInFlight снимается только в finally. */
+const EVENTSUB_SUBSCRIBE_INFLIGHT_GUARD_MS = 15_000;
+/** Слияние повторных handleDisconnect(socket_close) (двойной close / гонка). */
+const HANDLE_DISCONNECT_SOCKET_COALESCE_MS = 400;
+/** Минимум между полными subscribeToEvents для одной и той же session_id (анти-429 при reconnect-шторме). */
+const EVENTSUB_SUBSCRIBE_COOLDOWN_MS = 10_000;
+
+/** Кто инициировал handleDisconnect('keepalive') — для логов (watchdog vs интервал монитора). */
+type EventSubKeepaliveDisconnectTrigger = 'watchdog' | 'keepalive_monitor';
 
 export type LinkRotationItem = { message: string; color: string };
 
@@ -161,6 +187,7 @@ export class TwitchEventSubNative {
     private announcementState: AnnouncementState;
 
     private welcomeInterval: NodeJS.Timeout | null = null;
+    private welcomeTimeout: ReturnType<typeof setTimeout> | null = null;
     private linkRotationInterval: NodeJS.Timeout | null = null;
     private linkRotationTimeout: NodeJS.Timeout | null = null;
     private currentLinkIndex: number = 0;
@@ -188,12 +215,30 @@ export class TwitchEventSubNative {
     private statusProbeInFlight: boolean = false;
     private lastOfflineEventProbeAt: number = 0;
     private lastEventSubMessageAt: number = 0;
+    /** Только `notification` — для диагностики; watchdog не использует для kill. */
+    private lastEventSubNotificationAt: number = 0;
     private lastKeepaliveAt: number = 0;
     private expectedKeepaliveTimeoutMs: number = 30 * 1000;
     private watchdogInterval: NodeJS.Timeout | null = null;
     private degradedSinceAt: number | null = null;
+    /** Когда watchdog в этом эпизоде деградации уже дернул мягкий reconnect (трассировка / отладка). */
+    private watchdogReconnectTriggeredAt: number | null = null;
     private watchdogExitScheduled: boolean = false;
     private isShuttingDown: boolean = false;
+
+    /** Жизненный цикл сокета EventSub: защита от параллельных connect и лишних подписок. */
+    private connectionState: 'idle' | 'connecting' | 'connected' = 'idle';
+    private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
+    /** Пока идём на URL из session_reconnect — не планируем параллельный connect на основной endpoint. */
+    private isUsingReconnectUrl = false;
+    private subscribeInFlight = false;
+    private lastKeepaliveReconnectAt = 0;
+    /** Таймаут session_welcome только для ветки handleReconnect (основной connect — свой таймер в Promise). */
+    private reconnectWelcomeTimer: ReturnType<typeof setTimeout> | null = null;
+    private lastSocketCloseDisconnectScheduleAt = 0;
+    private lastSubscribeAt = 0;
+    private lastSubscribeCooldownSessionId: string | null = null;
+
     private streamsApiGate = new ApiBackoffGate(STREAMS_API_MIN_INTERVAL_MS, STREAMS_API_MAX_BACKOFF_MS);
     private announcementsApiGate = new ApiBackoffGate(0, ANNOUNCEMENTS_API_MAX_BACKOFF_MS);
     private twitchApi: TwitchApiClient | null = null;
@@ -290,26 +335,119 @@ export class TwitchEventSubNative {
         }
     }
 
+    private clearReconnectTimeout(): void {
+        if (this.reconnectTimeout) {
+            clearTimeout(this.reconnectTimeout);
+            this.reconnectTimeout = null;
+        }
+    }
+
+    private clearReconnectWelcomeTimer(): void {
+        if (this.reconnectWelcomeTimer) {
+            clearTimeout(this.reconnectWelcomeTimer);
+            this.reconnectWelcomeTimer = null;
+        }
+    }
+
+    /** Снять обработчики и закрыть сокет (не трогать другой инстанс, уже назначенный в this.ws). */
+    private teardownWebSocket(ws: WebSocket | null): void {
+        if (!ws) {
+            return;
+        }
+        try {
+            ws.removeAllListeners();
+            if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+                ws.close();
+            }
+        } catch {
+            /* ignore */
+        }
+    }
+
     private async connectWebSocket(): Promise<void> {
+        if (this.isShuttingDown) {
+            throw new Error('EventSub: shutdown');
+        }
+        if (this.connectionState === 'connecting') {
+            console.log('⏭️ EventSub: уже идёт подключение — пропуск дублирующего connectWebSocket');
+            return;
+        }
+        if (
+            this.connectionState === 'connected'
+            && this.ws
+            && this.ws.readyState === WebSocket.OPEN
+        ) {
+            console.log('⏭️ EventSub: соединение уже активно');
+            return;
+        }
+
+        this.connectionState = 'connecting';
+        this.clearReconnectTimeout();
+        this.clearReconnectWelcomeTimer();
+
+        const previousWs = this.ws;
+        this.teardownWebSocket(previousWs);
+        this.ws = null;
+
         return new Promise((resolve, reject) => {
+            let settled = false;
+            let welcomeTimer: ReturnType<typeof setTimeout>;
+            let sock: WebSocket;
+
+            const succeed = () => {
+                if (settled) {
+                    return;
+                }
+                settled = true;
+                clearTimeout(welcomeTimer);
+                resolve();
+            };
+
+            const fail = (err: Error) => {
+                if (settled) {
+                    return;
+                }
+                settled = true;
+                clearTimeout(welcomeTimer);
+                this.connectionState = 'idle';
+                if (this.ws === sock) {
+                    this.ws = null;
+                    this.teardownWebSocket(sock);
+                }
+                reject(err);
+            };
+
             console.log('🔌 Подключаемся к Twitch EventSub WebSocket...');
+            sock = new WebSocket('wss://eventsub.wss.twitch.tv/ws');
+            this.ws = sock;
 
-            this.ws = new WebSocket('wss://eventsub.wss.twitch.tv/ws');
+            welcomeTimer = setTimeout(() => {
+                if (settled) {
+                    return;
+                }
+                settled = true;
+                this.connectionState = 'idle';
+                if (this.ws === sock) {
+                    this.ws = null;
+                    this.teardownWebSocket(sock);
+                }
+                reject(new Error('WebSocket connection timeout'));
+            }, EVENTSUB_WELCOME_TIMEOUT_MS);
 
-            this.ws.on('open', () => {
+            sock.on('open', () => {
                 console.log('✅ WebSocket соединение установлено');
                 log('EVENTSUB_WEBSOCKET', { status: 'connected' });
                 this.lastKeepaliveStatus = 'active';
                 this.lastEventSubMessageAt = Date.now();
             });
 
-            this.ws.on('message', async (data: WebSocket.Data) => {
+            sock.on('message', async (data: WebSocket.Data) => {
                 try {
                     const message = JSON.parse(data.toString());
                     await this.handleMessage(message);
 
                     if (message.metadata?.message_type === 'session_welcome') {
-                        resolve();
+                        succeed();
                     }
                 } catch (error) {
                     const rawText = data?.toString ? data.toString() : String(data);
@@ -322,17 +460,21 @@ export class TwitchEventSubNative {
                 }
             });
 
-            this.ws.on('error', (error) => {
+            sock.on('error', (error) => {
                 console.error('❌ WebSocket ошибка:', error);
                 log('ERROR', {
                     context: 'TwitchEventSubNative.WebSocket',
                     error: error.message
                 });
                 this.lastKeepaliveStatus = 'error';
-                reject(error);
+                fail(error instanceof Error ? error : new Error(String(error)));
             });
 
-            this.ws.on('close', (code, reason) => {
+            sock.on('close', (code, reason) => {
+                if (this.ws !== sock) {
+                    console.log('⏭️ EventSub: close устаревшего сокета — игнор');
+                    return;
+                }
                 console.log(`⚫ WebSocket закрыт: ${code} ${reason.toString()}`);
                 log('EVENTSUB_WEBSOCKET', {
                     status: 'closed',
@@ -340,16 +482,21 @@ export class TwitchEventSubNative {
                     reason: reason.toString()
                 });
                 this.lastKeepaliveStatus = null;
-                this.handleDisconnect();
+                this.connectionState = 'idle';
+                if (!settled) {
+                    fail(new Error(`closed before welcome: ${code} ${reason.toString()}`));
+                }
+                this.handleDisconnect('socket_close');
             });
-
-            setTimeout(() => reject(new Error('WebSocket connection timeout')), 30000);
         });
     }
 
     private async handleMessage(message: any): Promise<void> {
         const messageType = message.metadata?.message_type;
-        this.lastEventSubMessageAt = Date.now();
+        // Для watchdog «тишины» не считаем welcome/keepalive — иначе после одного welcome таймер «активности» сбрасывается.
+        if (messageType !== 'session_keepalive' && messageType !== 'session_welcome') {
+            this.lastEventSubMessageAt = Date.now();
+        }
 
         if (messageType !== 'session_keepalive') {
             log('EVENTSUB_RAW', buildEventSubRawEntry(message));
@@ -372,6 +519,7 @@ export class TwitchEventSubNative {
                 break;
 
             case 'notification':
+                this.lastEventSubNotificationAt = Date.now();
                 await this.handleNotification(message);
                 break;
 
@@ -386,6 +534,10 @@ export class TwitchEventSubNative {
     }
 
     private async handleSessionWelcome(message: any): Promise<void> {
+        this.clearReconnectWelcomeTimer();
+        this.reconnectAttempts = 0;
+        this.subscribeInFlight = false;
+
         this.sessionId = message.payload.session.id;
         const keepaliveTimeout = message.payload.session.keepalive_timeout_seconds;
 
@@ -395,20 +547,45 @@ export class TwitchEventSubNative {
 
         this.startKeepAliveMonitor(keepaliveTimeout);
 
-        // Подписки привязаны к session_id. При новом session_id их нужно создавать заново,
-        // иначе Twitch закрывает соединение как "connection unused".
-        if (!this.sessionId) {
-            console.warn('⚠️ session_id пустой — пропускаем создание подписок');
-        } else if (this.subscriptionsSessionId !== this.sessionId) {
-            this.subscriptionsCreated = false;
-            await this.subscribeToEvents();
-            this.subscriptionsCreated = true;
-            this.subscriptionsSessionId = this.sessionId;
-        } else {
-            console.log('ℹ️ Подписки уже созданы для текущей сессии, пропускаем');
-        }
+        try {
+            // Подписки привязаны к session_id. При новом session_id их нужно создавать заново,
+            // иначе Twitch закрывает соединение как "connection unused".
+            if (!this.sessionId) {
+                console.warn('⚠️ session_id пустой — пропускаем создание подписок');
+            } else if (this.subscriptionsSessionId !== this.sessionId) {
+                if (this.subscribeInFlight) {
+                    console.log('⏭️ Подписки EventSub уже создаются — пропуск параллельного вызова');
+                } else {
+                    this.subscriptionsCreated = false;
+                    this.subscribeInFlight = true;
+                    const flightGuard = setTimeout(() => {
+                        if (this.subscribeInFlight) {
+                            console.warn(
+                                '⚠️ subscribeToEvents: нет завершения дольше ' +
+                                    `${EVENTSUB_SUBSCRIBE_INFLIGHT_GUARD_MS / 1000}s (ждём finally, флаг не сбрасываем)`
+                            );
+                        }
+                    }, EVENTSUB_SUBSCRIBE_INFLIGHT_GUARD_MS);
+                    try {
+                        const applied = await this.subscribeToEvents();
+                        if (applied) {
+                            this.subscriptionsCreated = true;
+                            this.subscriptionsSessionId = this.sessionId;
+                        }
+                    } finally {
+                        clearTimeout(flightGuard);
+                        this.subscribeInFlight = false;
+                    }
+                }
+            } else {
+                console.log('ℹ️ Подписки уже созданы для текущей сессии, пропускаем');
+            }
 
-        await this.checkCurrentStreamStatus();
+            await this.checkCurrentStreamStatus();
+            this.connectionState = 'connected';
+        } finally {
+            this.isUsingReconnectUrl = false;
+        }
     }
 
     private startKeepAliveMonitor(timeoutSeconds: number): void {
@@ -426,13 +603,16 @@ export class TwitchEventSubNative {
                     this.lastKeepaliveStatus = 'active';
                 }
             } else {
+                if (this.connectionState !== 'connected') {
+                    return;
+                }
                 // Логируем только появление ошибки
                 if (this.lastKeepaliveStatus !== 'error') {
                     console.error('⚠️ WebSocket не активен, требуется переподключение');
                     log('EVENTSUB_KEEPALIVE', { status: 'error', message: 'WebSocket not active' });
                     this.lastKeepaliveStatus = 'error';
                 }
-                this.handleDisconnect();
+                this.handleDisconnect('keepalive', 'keepalive_monitor');
             }
         }, checkInterval);
     }
@@ -448,6 +628,7 @@ export class TwitchEventSubNative {
             this.watchdogInterval = null;
         }
         this.degradedSinceAt = null;
+        this.watchdogReconnectTriggeredAt = null;
         this.watchdogExitScheduled = false;
     }
 
@@ -455,29 +636,30 @@ export class TwitchEventSubNative {
         if (this.isShuttingDown) return;
 
         const now = Date.now();
-        const issues: string[] = [];
-
-        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-            issues.push('websocket_not_open');
-        }
-        if (this.lastEventSubMessageAt > 0 && now - this.lastEventSubMessageAt > EVENTSUB_SILENCE_TIMEOUT_MS) {
-            issues.push(`eventsub_silence>${Math.floor((now - this.lastEventSubMessageAt) / 1000)}s`);
-        }
-        if (this.lastKeepaliveAt > 0 && now - this.lastKeepaliveAt > this.expectedKeepaliveTimeoutMs * 3) {
-            issues.push(`keepalive_stale>${Math.floor((now - this.lastKeepaliveAt) / 1000)}s`);
-        }
+        const wsSocketOpen = Boolean(this.ws && this.ws.readyState === WebSocket.OPEN);
+        const issues = computeEventSubWatchdogIssues({
+            now,
+            connectionState: this.connectionState,
+            wsSocketOpen,
+            lastKeepaliveAt: this.lastKeepaliveAt,
+            lastEventSubMessageAt: this.lastEventSubMessageAt,
+            expectedKeepaliveTimeoutMs: this.expectedKeepaliveTimeoutMs
+        });
 
         if (issues.length === 0) {
             if (this.degradedSinceAt) {
                 const degradedForSec = Math.floor((now - this.degradedSinceAt) / 1000);
+                const watchdogHadReconnectNudge = this.watchdogReconnectTriggeredAt !== null;
                 console.log(`✅ Watchdog: состояние восстановлено (degraded ${degradedForSec}s)`);
                 log('CONNECTION', {
                     service: 'TwitchEventSubNative',
                     status: 'recovered',
-                    degradedForSec
+                    degradedForSec,
+                    watchdogHadReconnectNudge
                 });
             }
             this.degradedSinceAt = null;
+            this.watchdogReconnectTriggeredAt = null;
             this.watchdogExitScheduled = false;
             return;
         }
@@ -490,6 +672,12 @@ export class TwitchEventSubNative {
                 status: 'degraded',
                 issues
             });
+            // «Тихо умершее» соединение может оставаться OPEN — сразу пробуем reconnect, не ждём только grace + kill.
+            if (this.connectionState === 'connected') {
+                this.watchdogReconnectTriggeredAt = now;
+                console.log('🔧 Watchdog: мягкий reconnect (keepalive) при первой деградации');
+                this.handleDisconnect('keepalive', 'watchdog');
+            }
             return;
         }
 
@@ -511,26 +699,90 @@ export class TwitchEventSubNative {
         setTimeout(() => process.exit(1), 1500);
     }
 
-    private async subscribeToEvents(): Promise<void> {
+    private assertSubscribeBatchSession(batchSessionId: string): void {
+        assertEventSubSubscribeBatchSession(this.sessionId, batchSessionId);
+    }
+
+    /** @returns true если подписки созданы; false при cooldown (повтор для той же session_id слишком рано). */
+    private async subscribeToEvents(): Promise<boolean> {
         console.log('📝 Подписываемся на события...');
 
-        await this.subscribe('stream.online', { broadcaster_user_id: this.broadcasterId });
-        await this.subscribe('stream.offline', { broadcaster_user_id: this.broadcasterId });
-        await this.subscribe('channel.raid', { to_broadcaster_user_id: this.broadcasterId });
-        
+        const batchSessionId = this.sessionId;
+        if (!batchSessionId) {
+            throw new Error('EventSub: нет sessionId для подписок');
+        }
+
+        const now = Date.now();
+        if (
+            shouldSkipEventSubSubscribeCooldown({
+                now,
+                batchSessionId,
+                lastSubscribeAt: this.lastSubscribeAt,
+                lastSubscribeCooldownSessionId: this.lastSubscribeCooldownSessionId,
+                cooldownMs: EVENTSUB_SUBSCRIBE_COOLDOWN_MS
+            })
+        ) {
+            console.warn(
+                `⏭️ subscribeToEvents: cooldown ${EVENTSUB_SUBSCRIBE_COOLDOWN_MS / 1000}s для этой session_id — пропуск`
+            );
+            return false;
+        }
+
+        this.assertSubscribeBatchSession(batchSessionId);
+
+        try {
+            const cleanup = await deleteWebsocketSubscriptionsForOurChannelTypes({
+                accessToken: this.accessToken,
+                clientId: this.clientId,
+                broadcasterId: this.broadcasterId
+            });
+            this.assertSubscribeBatchSession(batchSessionId);
+            if (cleanup.deleted > 0 || cleanup.failed > 0) {
+                console.log(
+                    `🧹 EventSub: перед подпиской удалено ${cleanup.deleted} старых websocket-подписок (ошибок DELETE: ${cleanup.failed})`
+                );
+            }
+        } catch (e) {
+            console.warn(
+                '⚠️ Предочистка websocket-подписок EventSub пропущена:',
+                e instanceof Error ? e.message : e
+            );
+        }
+
+        this.assertSubscribeBatchSession(batchSessionId);
+
+        try {
+            await this.subscribe('stream.online', { broadcaster_user_id: this.broadcasterId });
+            this.assertSubscribeBatchSession(batchSessionId);
+            await this.subscribe('stream.offline', { broadcaster_user_id: this.broadcasterId });
+            this.assertSubscribeBatchSession(batchSessionId);
+            await this.subscribe('channel.raid', { to_broadcaster_user_id: this.broadcasterId });
+            this.assertSubscribeBatchSession(batchSessionId);
+        } catch (e) {
+            console.warn(
+                '⚠️ Частично созданные подписки EventSub возможны после ошибки; повтор может дублировать типы на сессии (при 429 см. eventsub:cleanup)'
+            );
+            throw e;
+        }
+
         // channel.follow требует scope: moderator:read:followers
         // Если токен не имеет этого scope, подписка будет пропущена
         try {
+            this.assertSubscribeBatchSession(batchSessionId);
             await this.subscribe('channel.follow', {
                 broadcaster_user_id: this.broadcasterId,
                 moderator_user_id: this.moderatorId
             });
+            this.assertSubscribeBatchSession(batchSessionId);
             console.log('📋 Подписки EventSub зарегистрированы:');
             console.log('   • stream.online');
             console.log('   • stream.offline');
             console.log('   • channel.raid');
             console.log('   • channel.follow');
         } catch (error: any) {
+            if (error instanceof Error && error.message === 'EventSub: session_id changed during subscribe batch') {
+                throw error;
+            }
             console.warn('⚠️ Не удалось подписаться на channel.follow (возможно нет scope: moderator:read:followers)');
             console.warn(`   Причина: ${error.message}`);
             console.log('📋 Подписки EventSub зарегистрированы:');
@@ -538,17 +790,30 @@ export class TwitchEventSubNative {
             console.log('   • stream.offline');
             console.log('   • channel.raid');
         }
+
+        // Cooldown только после полного успеха: throw / return false выше не обновляют эти поля.
+        this.lastSubscribeAt = Date.now();
+        this.lastSubscribeCooldownSessionId = batchSessionId;
+        return true;
     }
 
     private async subscribe(type: string, condition: any): Promise<void> {
+        const sessionAtStart = this.sessionId;
         try {
             await createEventSubSubscription({
                 accessToken: this.accessToken,
                 clientId: this.clientId,
-                sessionId: this.sessionId,
+                sessionId: sessionAtStart,
                 type,
                 condition
             });
+
+            if (this.sessionId !== sessionAtStart) {
+                console.warn(
+                    `⚠️ Подписка ${type} относится к устаревшей session_id (смена сессии во время запроса) — результат игнорируем`
+                );
+                return;
+            }
 
             console.log(`✅ Подписка на ${type} создана`);
         } catch (error: any) {
@@ -647,7 +912,16 @@ export class TwitchEventSubNative {
         this.startLinkRotation(true);
 
         if (this.telegramChannelId) {
-            await this.sendTelegramStreamNotification(event);
+            if (this.shouldSendTelegramStreamStartForStartedAt(event.started_at)) {
+                await this.sendTelegramStreamNotification(event);
+            } else {
+                console.error('⏭️ Уведомление о старте стрима в Telegram уже отправляли для этого started_at — пропуск');
+                log('TELEGRAM_STREAM_ONLINE_SKIPPED_DUPLICATE', {
+                    source: 'eventsub',
+                    broadcasterUserId: event.broadcaster_user_id,
+                    startedAt: event.started_at,
+                });
+            }
         } else {
             console.warn(
                 '⚠️ Telegram уведомление о старте стрима пропущено: не задан CHANNEL_ID (telegram.channelId)'
@@ -689,6 +963,9 @@ export class TwitchEventSubNative {
 
         if (result) {
             await this.saveStreamHistory(result);
+        } else {
+            this.announcementState.lastNotifiedStreamStartedAt = null;
+            saveAnnouncementState(this.announcementState);
         }
     }
 
@@ -711,7 +988,6 @@ export class TwitchEventSubNative {
             return;
         }
 
-        const { ALLOW_LOCAL_COMMANDS } = require('../config/features');
         if (IS_LOCAL && !ALLOW_LOCAL_COMMANDS) {
             console.log('🔒 Локально благодарности за Follow заблокированы');
             return;
@@ -738,7 +1014,6 @@ export class TwitchEventSubNative {
             return;
         }
 
-        const { ALLOW_LOCAL_COMMANDS } = require('../config/features');
         if (IS_LOCAL && !ALLOW_LOCAL_COMMANDS) {
             console.log('🔒 Локально сообщения при рейде заблокированы');
             return;
@@ -808,19 +1083,47 @@ export class TwitchEventSubNative {
     private async handleReconnect(reconnectUrl: string): Promise<void> {
         console.log('🔄 Переподключение к новому WebSocket...');
 
-        if (this.ws) {
-            this.ws.close();
-        }
+        this.clearReconnectTimeout();
+        this.clearReconnectWelcomeTimer();
+        this.subscribeInFlight = false;
+        this.isUsingReconnectUrl = true;
+        this.connectionState = 'connecting';
 
-        this.ws = new WebSocket(reconnectUrl);
+        const previousWs = this.ws;
+        this.teardownWebSocket(previousWs);
+        this.ws = null;
 
-        this.ws.on('open', () => {
+        const sock = new WebSocket(reconnectUrl);
+        this.ws = sock;
+
+        this.reconnectWelcomeTimer = setTimeout(() => {
+            if (this.isShuttingDown) {
+                return;
+            }
+            if (this.ws !== sock) {
+                return;
+            }
+            console.error(
+                `❌ EventSub reconnect: нет session_welcome за ${EVENTSUB_WELCOME_TIMEOUT_MS / 1000}s — закрываем сокет`
+            );
+            this.clearReconnectWelcomeTimer();
+            this.isUsingReconnectUrl = false;
+            this.connectionState = 'idle';
+            this.teardownWebSocket(sock);
+            if (this.ws === sock) {
+                this.ws = null;
+            }
+            this.handleDisconnect('socket_close');
+        }, EVENTSUB_WELCOME_TIMEOUT_MS);
+
+        sock.on('open', () => {
             console.log('✅ Переподключение успешно');
             log('EVENTSUB_WEBSOCKET', { status: 'reconnected' });
             this.lastKeepaliveStatus = 'active';
+            this.lastEventSubMessageAt = Date.now();
         });
 
-        this.ws.on('message', async (data: WebSocket.Data) => {
+        sock.on('message', async (data: WebSocket.Data) => {
             try {
                 const message = JSON.parse(data.toString());
                 await this.handleMessage(message);
@@ -829,7 +1132,7 @@ export class TwitchEventSubNative {
             }
         });
 
-        this.ws.on('error', (error) => {
+        sock.on('error', (error) => {
             console.error('❌ WebSocket ошибка:', error);
             log('ERROR', {
                 context: 'TwitchEventSubNative.Reconnect',
@@ -838,7 +1141,12 @@ export class TwitchEventSubNative {
             this.lastKeepaliveStatus = 'error';
         });
 
-        this.ws.on('close', (code, reason) => {
+        sock.on('close', (code, reason) => {
+            if (this.ws !== sock) {
+                console.log('⏭️ EventSub reconnect: close устаревшего сокета — игнор');
+                return;
+            }
+            this.clearReconnectWelcomeTimer();
             console.log(`⚫ WebSocket закрыт: ${code} ${reason.toString()}`);
             log('EVENTSUB_WEBSOCKET', {
                 status: 'closed_after_reconnect',
@@ -846,48 +1154,130 @@ export class TwitchEventSubNative {
                 reason: reason.toString()
             });
             this.lastKeepaliveStatus = null;
-            this.handleDisconnect();
+            this.isUsingReconnectUrl = false;
+            this.connectionState = 'idle';
+            this.handleDisconnect('socket_close');
         });
     }
 
-    private handleDisconnect(): void {
+    private handleDisconnect(
+        source: 'socket_close' | 'keepalive' = 'socket_close',
+        keepaliveTrigger?: EventSubKeepaliveDisconnectTrigger
+    ): void {
+        if (this.isShuttingDown) {
+            return;
+        }
+
+        // Нельзя требовать connectionState === 'connected': после close мы уже в idle, иначе reconnect никогда не запланируется.
+
+        if (this.isUsingReconnectUrl) {
+            console.log('⏭️ EventSub: идёт переход на reconnect_url — не планируем параллельный reconnect');
+            return;
+        }
+
+        if (this.connectionState === 'connecting') {
+            console.log('⏭️ EventSub: уже идёт connectWebSocket — пропуск лишнего handleDisconnect');
+            return;
+        }
+
+        if (source === 'socket_close') {
+            const coalesceNow = Date.now();
+            if (
+                coalesceNow - this.lastSocketCloseDisconnectScheduleAt
+                < HANDLE_DISCONNECT_SOCKET_COALESCE_MS
+            ) {
+                console.log('⏭️ EventSub: coalesce повторного handleDisconnect(socket_close)');
+                return;
+            }
+            this.lastSocketCloseDisconnectScheduleAt = coalesceNow;
+        }
+
+        if (this.reconnectTimeout !== null) {
+            console.log('⏭️ EventSub: reconnect уже запланирован — пропуск handleDisconnect');
+            return;
+        }
+
         if (this.keepAliveInterval) {
             clearInterval(this.keepAliveInterval);
             this.keepAliveInterval = null;
         }
 
-        if (this.reconnectAttempts < this.maxReconnectAttempts) {
-            this.reconnectAttempts++;
-            const delay = this.reconnectDelay * this.reconnectAttempts;
+        if (source === 'keepalive') {
+            if (this.connectionState !== 'connected') {
+                return;
+            }
+            const now = Date.now();
+            if (now - this.lastKeepaliveReconnectAt < KEEPALIVE_RECONNECT_DEBOUNCE_MS) {
+                const from = keepaliveTrigger ?? 'keepalive';
+                console.log(
+                    `⏭️ EventSub keepalive: debounce reconnect — пропуск (вызов от ${from})`
+                );
+                return;
+            }
+        }
 
-            console.log(`🔄 Попытка переподключения ${this.reconnectAttempts}/${this.maxReconnectAttempts} через ${delay}ms`);
-            log('EVENTSUB_RECONNECT', {
-                attempt: this.reconnectAttempts,
-                maxAttempts: this.maxReconnectAttempts,
-                delayMs: delay
-            });
-
-            setTimeout(async () => {
-                try {
-                    await this.connectWebSocket();
-                    this.reconnectAttempts = 0;
-                    console.log('✅ Переподключение успешно завершено');
-                    log('EVENTSUB_RECONNECT', { status: 'success' });
-                } catch (error) {
-                    console.error('❌ Ошибка переподключения:', error);
-                    log('ERROR', {
-                        context: 'TwitchEventSubNative.handleDisconnect',
-                        error: error instanceof Error ? error.message : String(error)
-                    });
-                }
-            }, delay);
-        } else {
-            console.error('❌ Превышено максимальное количество попыток переподключения');
+        if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+            console.error('❌ Превышено максимальное количество попыток переподключения — выход для перезапуска PM2');
             log('ERROR', {
                 context: 'TwitchEventSubNative.handleDisconnect',
-                error: 'Max reconnect attempts exceeded'
+                error: 'Max reconnect attempts exceeded, process exit for PM2 recovery'
             });
+            if (!this.watchdogExitScheduled) {
+                this.watchdogExitScheduled = true;
+                setTimeout(() => process.exit(1), 1500);
+            }
+            return;
         }
+
+        this.reconnectAttempts++;
+        const baseDelay = Math.min(
+            EVENTSUB_RECONNECT_DELAY_CAP_MS,
+            this.reconnectDelay * 2 ** (this.reconnectAttempts - 1)
+        );
+        const jitterMs = Math.floor(
+            Math.random() * EVENTSUB_RECONNECT_JITTER_MAX_MS * this.reconnectAttempts
+        );
+        const delay = baseDelay + jitterMs;
+
+        if (source === 'keepalive') {
+            this.lastKeepaliveReconnectAt = Date.now();
+        }
+
+        const triggerSuffix =
+            source === 'keepalive' && keepaliveTrigger ? ` [${keepaliveTrigger}]` : '';
+        console.log(
+            `🔄 Попытка переподключения ${this.reconnectAttempts}/${this.maxReconnectAttempts} через ${delay}ms (base ${baseDelay}+jitter ${jitterMs})${triggerSuffix}`
+        );
+        log('EVENTSUB_RECONNECT', {
+            attempt: this.reconnectAttempts,
+            maxAttempts: this.maxReconnectAttempts,
+            delayMs: delay,
+            baseDelayMs: baseDelay,
+            jitterMs,
+            source,
+            ...(keepaliveTrigger ? { keepaliveTrigger } : {})
+        });
+
+        this.reconnectTimeout = setTimeout(async () => {
+            this.reconnectTimeout = null;
+            if (this.connectionState === 'connecting' || this.isUsingReconnectUrl) {
+                console.log(
+                    '⏭️ EventSub: таймер reconnect отменён — уже идёт connectWebSocket или session_reconnect'
+                );
+                return;
+            }
+            try {
+                await this.connectWebSocket();
+                console.log('✅ Переподключение успешно завершено');
+                log('EVENTSUB_RECONNECT', { status: 'success' });
+            } catch (error) {
+                console.error('❌ Ошибка переподключения:', error);
+                log('ERROR', {
+                    context: 'TwitchEventSubNative.handleDisconnect',
+                    error: error instanceof Error ? error.message : String(error)
+                });
+            }
+        }, delay);
     }
 
     private startOfflineProbeLoop(): void {
@@ -1043,7 +1433,19 @@ export class TwitchEventSubNative {
                         started_at: stream.started_at,
                     };
                     if (this.telegramChannelId) {
-                        await this.sendTelegramStreamNotification(pseudoEvent);
+                        if (this.shouldSendTelegramStreamStartForStartedAt(stream.started_at)) {
+                            await this.sendTelegramStreamNotification(pseudoEvent);
+                        } else {
+                            console.error(
+                                '⏭️ Уведомление о старте стрима в Telegram уже отправляли для этого started_at — пропуск (polling)'
+                            );
+                            log('TELEGRAM_STREAM_ONLINE_SKIPPED_DUPLICATE', {
+                                source: 'polling',
+                                broadcasterUserId: pseudoEvent.broadcaster_user_id,
+                                startedAt: pseudoEvent.started_at,
+                                reason,
+                            });
+                        }
                     } else {
                         console.warn(
                             '⚠️ Telegram уведомление о старте стрима пропущено: не задан CHANNEL_ID (telegram.channelId)'
@@ -1075,9 +1477,22 @@ export class TwitchEventSubNative {
     }
 
     private startViewerCountTracking(broadcasterId: string, broadcasterName: string, startDate: Date): void {
-        if (this.currentStreamStats) {
-            console.error('⚠️ Отслеживание зрителей уже запущено, пропускаем');
+        const startMs = startDate.getTime();
+        if (!Number.isFinite(startMs)) {
+            console.warn('⚠️ startViewerCountTracking: невалидный started_at, пропуск');
             return;
+        }
+        if (this.currentStreamStats?.startTime.getTime() === startMs) {
+            console.error('ℹ️ Отслеживание зрителей уже для этого started_at — пропуск');
+            return;
+        }
+        if (this.currentStreamStats) {
+            const prev = this.currentStreamStats;
+            console.warn('⚠️ Viewer tracking reset due to new started_at', {
+                prevStart: prev.startTime.toISOString(),
+                newStart: startDate.toISOString()
+            });
+            this.currentStreamStats = null;
         }
 
         const initialCounts: number[] = [];
@@ -1185,6 +1600,23 @@ export class TwitchEventSubNative {
         }
     }
 
+    /** Не дублировать TG при recovery/polling для того же эфира (одинаковый `started_at` у Twitch). */
+    private shouldSendTelegramStreamStartForStartedAt(startedAt: string): boolean {
+        return shouldSendTelegramStreamOnlineForStartedAt(
+            this.announcementState.lastNotifiedStreamStartedAt,
+            startedAt
+        );
+    }
+
+    private markTelegramStreamStartNotified(startedAt: string): void {
+        const ms = streamStartedAtToMs(startedAt);
+        if (ms === null) {
+            return;
+        }
+        this.announcementState.lastNotifiedStreamStartedAt = ms;
+        saveAnnouncementState(this.announcementState);
+    }
+
     private async sendTelegramStreamNotification(event: TwitchEventSubStreamOnlineEvent): Promise<void> {
         if (!this.telegramChannelId) return;
 
@@ -1220,6 +1652,8 @@ export class TwitchEventSubNative {
                 parse_mode: 'HTML',
                 link_preview_options: { is_disabled: false }
             });
+
+            this.markTelegramStreamStartNotified(event.started_at);
 
             console.error('✅ Уведомление о начале стрима отправлено в Telegram');
             log('TELEGRAM_STREAM_ONLINE_SENT', {
@@ -1298,6 +1732,7 @@ export class TwitchEventSubNative {
             this.announcementState.currentStreamPeak = null;
             this.announcementState.currentStreamStartTime = null;
             this.announcementState.currentStreamFollowsCount = null;
+            this.announcementState.lastNotifiedStreamStartedAt = null;
             saveAnnouncementState(this.announcementState);
             console.log('🔄 Статистика текущего стрима сброшена (стрим завершён)');
         } catch (error) {
@@ -1309,7 +1744,6 @@ export class TwitchEventSubNative {
         if (!this.isStreamOnline) return;
         if (!ENABLE_BOT_FEATURES) return;
 
-        const { ALLOW_LOCAL_COMMANDS } = require('../config/features');
         if (IS_LOCAL && !ALLOW_LOCAL_COMMANDS) return;
 
         if (!this.chatSender || !this.channelName) return;
@@ -1317,10 +1751,11 @@ export class TwitchEventSubNative {
         const now = Date.now();
         const lastSent = this.announcementState.lastWelcomeAnnouncementAt;
         const timeSinceLastSent = lastSent ? now - lastSent : Infinity;
-        const minInterval = ANNOUNCEMENT_REPEAT_INTERVAL_MS * 0.9;
 
-        if (!force && lastSent && timeSinceLastSent < minInterval) {
-            const remainingMins = Math.ceil((minInterval - timeSinceLastSent) / 60000);
+        if (!force && lastSent && timeSinceLastSent < ANNOUNCEMENT_REPEAT_INTERVAL_MS) {
+            const remainingMins = Math.ceil(
+                (ANNOUNCEMENT_REPEAT_INTERVAL_MS - timeSinceLastSent) / 60000
+            );
             console.log(`⏳ Welcome сообщение пропущено: осталось ~${remainingMins} мин`);
             return;
         }
@@ -1360,13 +1795,18 @@ export class TwitchEventSubNative {
             await this.sendWelcomeMessage(true);
         };
 
-        setTimeout(async () => {
+        this.welcomeTimeout = setTimeout(async () => {
+            this.welcomeTimeout = null;
             await runMessage();
             this.welcomeInterval = setInterval(runMessage, ANNOUNCEMENT_REPEAT_INTERVAL_MS);
         }, initialDelay);
     }
 
     private stopWelcomeMessageInterval(): void {
+        if (this.welcomeTimeout) {
+            clearTimeout(this.welcomeTimeout);
+            this.welcomeTimeout = null;
+        }
         if (this.welcomeInterval) {
             clearInterval(this.welcomeInterval);
             this.welcomeInterval = null;
@@ -1374,6 +1814,13 @@ export class TwitchEventSubNative {
     }
 
     private startLinkRotation(force: boolean = false): void {
+        if (
+            !force
+            && (this.linkRotationInterval !== null || this.linkRotationTimeout !== null)
+        ) {
+            console.log('⏭️ Ротация ссылок уже активна — пропуск повторного startLinkRotation');
+            return;
+        }
         // При обычном запуске / переподключении не сбрасываем индекс — он хранится в файле
         // При полном рестарте (например, новый процесс) индекс уже восстановлен из состояния
         this.stopLinkRotation(false);
@@ -1403,6 +1850,14 @@ export class TwitchEventSubNative {
                 }, intervalMs);
             } catch (e) {
                 console.error('❌ Ошибка запуска ротации ссылок:', e);
+                if (this.linkRotationTimeout) {
+                    clearTimeout(this.linkRotationTimeout);
+                    this.linkRotationTimeout = null;
+                }
+                if (this.linkRotationInterval) {
+                    clearInterval(this.linkRotationInterval);
+                    this.linkRotationInterval = null;
+                }
             }
         })();
     }
@@ -1453,7 +1908,6 @@ export class TwitchEventSubNative {
         if (!this.isStreamOnline) return;
         if (!ENABLE_BOT_FEATURES) return;
 
-        const { ALLOW_LOCAL_COMMANDS } = require('../config/features');
         if (IS_LOCAL && !ALLOW_LOCAL_COMMANDS) return;
 
         if (!this.accessToken || !this.clientId || !this.broadcasterId || !this.moderatorId) return;
@@ -1555,6 +2009,11 @@ export class TwitchEventSubNative {
         try {
             this.isShuttingDown = true;
             this.isStreamOnline = false;
+            this.clearReconnectTimeout();
+            this.clearReconnectWelcomeTimer();
+            this.connectionState = 'idle';
+            this.isUsingReconnectUrl = false;
+            this.subscribeInFlight = false;
             this.stopWelcomeMessageInterval();
             // При явном отключении (рестарт бота) не сбрасываем индекс ротации,
             // чтобы при быстром перезапуске во время стрима продолжить с того же места
@@ -1567,10 +2026,9 @@ export class TwitchEventSubNative {
             this.stopOfflineProbeLoop();
             this.stopWatchdog();
 
-            if (this.ws) {
-                this.ws.close();
-                this.ws = null;
-            }
+            const w = this.ws;
+            this.ws = null;
+            this.teardownWebSocket(w);
 
             console.error('🛑 Отключено от Twitch EventSub');
             log('CONNECTION', {
