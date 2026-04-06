@@ -91,12 +91,32 @@ function loadAnnouncementState(): AnnouncementState {
     return defaultState;
 }
 
+let saveAnnouncementStateTimer: NodeJS.Timeout | null = null;
+let pendingSaveState: AnnouncementState | null = null;
+
 function saveAnnouncementState(state: AnnouncementState): void {
-    try {
-        fs.writeFileSync(ANNOUNCEMENT_STATE_FILE, JSON.stringify(state, null, 2));
-    } catch (error) {
-        console.error('⚠️ Ошибка сохранения состояния announcements:', error);
+    pendingSaveState = state;
+    
+    if (saveAnnouncementStateTimer !== null) {
+        return;
     }
+    
+    saveAnnouncementStateTimer = setTimeout(() => {
+        saveAnnouncementStateTimer = null;
+        if (pendingSaveState === null) {
+            return;
+        }
+        const stateToSave = pendingSaveState;
+        pendingSaveState = null;
+        
+        setImmediate(() => {
+            try {
+                fs.writeFileSync(ANNOUNCEMENT_STATE_FILE, JSON.stringify(stateToSave, null, 2));
+            } catch (error) {
+                console.error('⚠️ Ошибка сохранения состояния announcements:', error);
+            }
+        });
+    }, 500);
 }
 
 // Fallback welcome-текст: используется только если links_config.all_links_text пустой.
@@ -183,6 +203,7 @@ export class TwitchEventSubNative {
     private telegramChatId?: string;
 
     private isStreamOnline: boolean = false;
+    private isInitialStartup: boolean = true;
     private currentStreamStats: StreamStats | null = null;
     private announcementState: AnnouncementState;
 
@@ -229,6 +250,7 @@ export class TwitchEventSubNative {
     /** Жизненный цикл сокета EventSub: защита от параллельных connect и лишних подписок. */
     private connectionState: 'idle' | 'connecting' | 'connected' = 'idle';
     private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
+    private reconnectScheduled = false;
     /** Пока идём на URL из session_reconnect — не планируем параллельный connect на основной endpoint. */
     private isUsingReconnectUrl = false;
     private subscribeInFlight = false;
@@ -261,6 +283,19 @@ export class TwitchEventSubNative {
         console.log(`🛑 ${signal} — закрываем EventSub WebSocket`);
         await this.disconnect();
         console.log('✅ EventSub WebSocket остановлен');
+    }
+
+    private async gracefulExit(reason: string): Promise<void> {
+        console.error(`❌ Критическая ошибка: ${reason} — выполняем graceful shutdown для PM2`);
+        try {
+            await Promise.race([
+                this.disconnect(),
+                new Promise(resolve => setTimeout(resolve, 3000))
+            ]);
+        } catch (error) {
+            console.error('⚠️ Ошибка при graceful shutdown:', error);
+        }
+        process.exit(1);
     }
 
     async connect(
@@ -412,8 +447,8 @@ export class TwitchEventSubNative {
                 this.connectionState = 'idle';
                 if (this.ws === sock) {
                     this.ws = null;
-                    this.teardownWebSocket(sock);
                 }
+                this.teardownWebSocket(sock);
                 reject(err);
             };
 
@@ -429,8 +464,8 @@ export class TwitchEventSubNative {
                 this.connectionState = 'idle';
                 if (this.ws === sock) {
                     this.ws = null;
-                    this.teardownWebSocket(sock);
                 }
+                this.teardownWebSocket(sock);
                 reject(new Error('WebSocket connection timeout'));
             }, EVENTSUB_WELCOME_TIMEOUT_MS);
 
@@ -688,7 +723,6 @@ export class TwitchEventSubNative {
 
         this.watchdogExitScheduled = true;
         const degradedSec = Math.floor(degradedMs / 1000);
-        console.error(`💥 Watchdog: деградация держится ${degradedSec}s, завершаем процесс для автоперезапуска PM2`);
         log('ERROR', {
             context: 'TwitchEventSubNative.watchdog',
             error: 'Degraded too long, process exit for PM2 recovery',
@@ -696,7 +730,7 @@ export class TwitchEventSubNative {
             issues
         });
 
-        setTimeout(() => process.exit(1), 1500);
+        void this.gracefulExit(`Watchdog: деградация держится ${degradedSec}s`);
     }
 
     private assertSubscribeBatchSession(batchSessionId: string): void {
@@ -710,6 +744,12 @@ export class TwitchEventSubNative {
         const batchSessionId = this.sessionId;
         if (!batchSessionId) {
             throw new Error('EventSub: нет sessionId для подписок');
+        }
+
+        if (this.subscriptionsSessionId !== batchSessionId) {
+            console.log(`🔄 Session ID изменился (${this.subscriptionsSessionId} → ${batchSessionId}) — сброс subscriptionsCreated`);
+            this.subscriptionsCreated = false;
+            this.subscriptionsSessionId = batchSessionId;
         }
 
         const now = Date.now();
@@ -912,7 +952,18 @@ export class TwitchEventSubNative {
         this.startLinkRotation(true);
 
         if (this.telegramChannelId) {
-            if (this.shouldSendTelegramStreamStartForStartedAt(event.started_at)) {
+            // Если это первый запуск и EventSub прислал stream.online для уже идущего стрима - не отправляем уведомление
+            if (this.isInitialStartup) {
+                console.error(
+                    '⏭️ Стрим уже онлайн при старте бота — уведомление в Telegram не отправляем (initial startup, eventsub)'
+                );
+                log('TELEGRAM_STREAM_ONLINE_SKIPPED_INITIAL_STARTUP', {
+                    source: 'eventsub',
+                    broadcasterUserId: event.broadcaster_user_id,
+                    startedAt: event.started_at,
+                });
+                this.markTelegramStreamStartNotified(event.started_at);
+            } else if (this.shouldSendTelegramStreamStartForStartedAt(event.started_at)) {
                 await this.sendTelegramStreamNotification(event);
             } else {
                 console.error('⏭️ Уведомление о старте стрима в Telegram уже отправляли для этого started_at — пропуск');
@@ -933,6 +984,11 @@ export class TwitchEventSubNative {
                 broadcasterUserName: event.broadcaster_user_name,
                 startedAt: event.started_at,
             });
+        }
+        
+        // Сбрасываем флаг первого запуска после обработки stream.online
+        if (this.isInitialStartup) {
+            this.isInitialStartup = false;
         }
 
         const startDate = new Date(event.started_at);
@@ -1192,10 +1248,12 @@ export class TwitchEventSubNative {
             this.lastSocketCloseDisconnectScheduleAt = coalesceNow;
         }
 
-        if (this.reconnectTimeout !== null) {
+        if (this.reconnectTimeout !== null || this.reconnectScheduled) {
             console.log('⏭️ EventSub: reconnect уже запланирован — пропуск handleDisconnect');
             return;
         }
+
+        this.reconnectScheduled = true;
 
         if (this.keepAliveInterval) {
             clearInterval(this.keepAliveInterval);
@@ -1217,14 +1275,14 @@ export class TwitchEventSubNative {
         }
 
         if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-            console.error('❌ Превышено максимальное количество попыток переподключения — выход для перезапуска PM2');
             log('ERROR', {
                 context: 'TwitchEventSubNative.handleDisconnect',
                 error: 'Max reconnect attempts exceeded, process exit for PM2 recovery'
             });
             if (!this.watchdogExitScheduled) {
                 this.watchdogExitScheduled = true;
-                setTimeout(() => process.exit(1), 1500);
+                this.reconnectScheduled = false;
+                void this.gracefulExit('Превышено максимальное количество попыток переподключения');
             }
             return;
         }
@@ -1260,6 +1318,7 @@ export class TwitchEventSubNative {
 
         this.reconnectTimeout = setTimeout(async () => {
             this.reconnectTimeout = null;
+            this.reconnectScheduled = false;
             if (this.connectionState === 'connecting' || this.isUsingReconnectUrl) {
                 console.log(
                     '⏭️ EventSub: таймер reconnect отменён — уже идёт connectWebSocket или session_reconnect'
@@ -1433,7 +1492,20 @@ export class TwitchEventSubNative {
                         started_at: stream.started_at,
                     };
                     if (this.telegramChannelId) {
-                        if (this.shouldSendTelegramStreamStartForStartedAt(stream.started_at)) {
+                        // При первом запуске бота не отправляем уведомление, если стрим уже идет
+                        if (this.isInitialStartup) {
+                            console.error(
+                                '⏭️ Стрим уже онлайн при старте бота — уведомление в Telegram не отправляем (initial startup)'
+                            );
+                            log('TELEGRAM_STREAM_ONLINE_SKIPPED_INITIAL_STARTUP', {
+                                source: 'polling',
+                                broadcasterUserId: pseudoEvent.broadcaster_user_id,
+                                startedAt: pseudoEvent.started_at,
+                                reason,
+                            });
+                            // Сохраняем started_at, чтобы не отправлять уведомление при последующих проверках
+                            this.markTelegramStreamStartNotified(stream.started_at);
+                        } else if (this.shouldSendTelegramStreamStartForStartedAt(stream.started_at)) {
                             await this.sendTelegramStreamNotification(pseudoEvent);
                         } else {
                             console.error(
@@ -1463,6 +1535,11 @@ export class TwitchEventSubNative {
             } else {
                 console.error(`📊 Статус стрима: 🔴 Оффлайн`);
                 log('STREAM_STATUS_PROBE', { reason, online: false });
+            }
+            
+            // Сбрасываем флаг первого запуска после первой проверки статуса
+            if (this.isInitialStartup) {
+                this.isInitialStartup = false;
             }
         } catch (error) {
             console.error('⚠️ Не удалось получить статус стрима:', error);
