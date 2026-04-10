@@ -207,12 +207,15 @@ export async function waitOverlayDuelCompleteEvent(
   const OVERLAY_EVENTBUS_WS_URL = getOverlayEventBusWsUrl();
   const OVERLAY_DUEL_COMPLETE_WAIT_MS = getOverlayDuelCompleteWaitMs();
 
+  console.log(`🔌 Начало ожидания DuelCompleteEvent (minEventUnixSec: ${minEventUnixSec}, таймаут: ${OVERLAY_DUEL_COMPLETE_WAIT_MS}ms)`);
+
   return await new Promise<boolean>((resolve) => {
     let settled = false;
     const deadline = Date.now() + OVERLAY_DUEL_COMPLETE_WAIT_MS;
     let ws: WebSocket | null = null;
     let reconnectTimer: NodeJS.Timeout | null = null;
     let hardTimeout: NodeJS.Timeout | null = null;
+    let messagesReceived = 0;
 
     const finish = (ok: boolean, reason?: string): void => {
       if (settled) return;
@@ -231,8 +234,10 @@ export async function waitOverlayDuelCompleteEvent(
       } catch {
         // ignore
       }
-      if (!ok && reason) {
-        console.warn(`⚠️ Overlay DuelCompleteEvent не получен: ${reason}`);
+      if (ok) {
+        console.log(`✅ DuelCompleteEvent получен (всего сообщений WS: ${messagesReceived})`);
+      } else {
+        console.warn(`⚠️ Overlay DuelCompleteEvent не получен: ${reason} (получено сообщений WS: ${messagesReceived})`);
       }
       resolve(ok);
     };
@@ -274,6 +279,7 @@ export async function waitOverlayDuelCompleteEvent(
       }
 
       const pusherMode = isPusherStyleUrl(eventbusUrl);
+      console.log(`🔌 Подключение к WebSocket: ${eventbusUrl} (Pusher: ${pusherMode})`);
 
       try {
         ws = new WebSocket(
@@ -293,6 +299,7 @@ export async function waitOverlayDuelCompleteEvent(
       }
 
       ws.on('open', () => {
+        console.log(`✅ WebSocket подключен, Pusher режим: ${pusherMode}`);
         if (pusherMode) {
           const subscribePayload = {
             event: 'pusher:subscribe',
@@ -300,29 +307,61 @@ export async function waitOverlayDuelCompleteEvent(
               channel: 'eventbus',
             },
           };
+          console.log(`📤 Отправка подписки на канал 'eventbus'`);
           ws?.send(JSON.stringify(subscribePayload));
         }
       });
 
       ws.on('message', (msg) => {
+        messagesReceived++;
         const raw = typeof msg === 'string' ? msg : msg.toString('utf8');
         const payload = parseOverlayEvent(raw);
-        if (!payload) return;
+        
+        if (!payload) {
+          console.log(`📨 Сообщение #${messagesReceived}: не удалось распарсить`);
+          return;
+        }
 
         // Pusher service events
-        if (payload.event === 'pusher:connection_established') return;
-        if (payload.event === 'pusher_internal:subscription_succeeded') return;
+        if (payload.event === 'pusher:connection_established') {
+          console.log(`📨 Сообщение #${messagesReceived}: pusher:connection_established`);
+          return;
+        }
+        if (payload.event === 'pusher_internal:subscription_succeeded') {
+          console.log(`📨 Сообщение #${messagesReceived}: подписка на канал успешна`);
+          return;
+        }
         if (payload.event === 'pusher:ping') {
+          console.log(`📨 Сообщение #${messagesReceived}: ping -> отвечаем pong`);
           ws?.send(JSON.stringify({ event: 'pusher:pong', data: {} }));
           return;
         }
 
-        if (payload.channel !== 'eventbus') return;
-        if (payload.event !== OVERLAY_DUEL_COMPLETE_EVENT) return;
+        console.log(`📨 Сообщение #${messagesReceived}:`, {
+          event: payload.event,
+          channel: payload.channel,
+          dataPreview: typeof payload.data === 'string' ? payload.data.slice(0, 100) : JSON.stringify(payload.data).slice(0, 100)
+        });
+
+        if (payload.channel !== 'eventbus') {
+          console.log(`   ❌ Пропущено: неправильный канал (ожидается 'eventbus', получен '${payload.channel}')`);
+          return;
+        }
+        
+        if (payload.event !== OVERLAY_DUEL_COMPLETE_EVENT) {
+          console.log(`   ❌ Пропущено: неправильное событие (ожидается '${OVERLAY_DUEL_COMPLETE_EVENT}', получено '${payload.event}')`);
+          return;
+        }
 
         const eventSec = extractEventTimeSec(payload);
-        if (eventSec !== null && eventSec < minEventUnixSec) return;
+        console.log(`   🎯 Событие DuelCompleteEvent! time=${eventSec}, minTime=${minEventUnixSec}`);
+        
+        if (eventSec !== null && eventSec < minEventUnixSec) {
+          console.log(`   ❌ Пропущено: событие слишком старое (${eventSec} < ${minEventUnixSec})`);
+          return;
+        }
 
+        console.log(`   ✅ Событие принято!`);
         finish(true);
       });
 
@@ -342,7 +381,8 @@ export async function waitOverlayDuelCompleteEvent(
         }
       });
 
-      ws.on('close', () => {
+      ws.on('close', (code, reason) => {
+        console.log(`🔌 WebSocket закрыт (код: ${code}, причина: ${reason || 'не указана'}), попытка переподключения...`);
         try {
           ws?.removeAllListeners();
           ws = null;
