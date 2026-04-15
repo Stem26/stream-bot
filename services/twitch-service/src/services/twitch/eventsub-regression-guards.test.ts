@@ -2,6 +2,9 @@ import { describe, it, expect } from 'vitest';
 import {
     assertEventSubSubscribeBatchSession,
     computeEventSubWatchdogIssues,
+    decideTelegramStreamOnline,
+    decideTelegramStreamOffline,
+    isStreamOnlineTransition,
     shouldSendTelegramStreamOnlineForStartedAt,
     shouldSkipEventSubSubscribeCooldown,
     streamStartedAtToMs
@@ -198,5 +201,126 @@ describe('Telegram stream start dedup', () => {
 
     it('при невалидном started_at разрешает (как в проде — не блокируем)', () => {
         expect(shouldSendTelegramStreamOnlineForStartedAt(123, 'bad')).toBe(true);
+    });
+});
+
+describe('decideTelegramStreamOnline', () => {
+    const startedAt = '2024-01-15T12:00:00.000Z';
+    const startedAtMs = streamStartedAtToMs(startedAt)!;
+
+    it('skip_initial_startup если старт процесса и стрим уже онлайн (по умолчанию)', () => {
+        expect(
+            decideTelegramStreamOnline({
+                isInitialStartup: true,
+                startupStreamStatus: 'online',
+                forceStartupTelegram: false,
+                lastNotifiedStreamStartedAt: null,
+                startedAt
+            })
+        ).toEqual({ action: 'skip_initial_startup', reason: 'startup_stream_online' });
+    });
+
+    it('forced_startup отправляет при старте процесса в онлайне если включен флаг', () => {
+        expect(
+            decideTelegramStreamOnline({
+                isInitialStartup: true,
+                startupStreamStatus: 'online',
+                forceStartupTelegram: true,
+                lastNotifiedStreamStartedAt: startedAtMs,
+                startedAt
+            })
+        ).toEqual({ action: 'send', mode: 'forced_startup' });
+    });
+
+    it('normal отправляет при старте в оффлайне (первый online)', () => {
+        expect(
+            decideTelegramStreamOnline({
+                isInitialStartup: true,
+                startupStreamStatus: 'offline',
+                forceStartupTelegram: false,
+                lastNotifiedStreamStartedAt: null,
+                startedAt
+            })
+        ).toEqual({ action: 'send', mode: 'normal' });
+    });
+
+    it('unknown не подавляет (защита от сбоя стартового probe)', () => {
+        expect(
+            decideTelegramStreamOnline({
+                isInitialStartup: true,
+                startupStreamStatus: 'unknown',
+                forceStartupTelegram: false,
+                lastNotifiedStreamStartedAt: null,
+                startedAt
+            })
+        ).toEqual({ action: 'send', mode: 'normal' });
+    });
+
+    it('skip_duplicate если уже уведомляли для этого started_at', () => {
+        expect(
+            decideTelegramStreamOnline({
+                isInitialStartup: false,
+                startupStreamStatus: 'offline',
+                forceStartupTelegram: false,
+                lastNotifiedStreamStartedAt: startedAtMs,
+                startedAt
+            })
+        ).toEqual({ action: 'skip_duplicate', reason: 'same_started_at' });
+    });
+});
+
+describe('isStreamOnlineTransition', () => {
+    it('true при lastKnown=offline', () => {
+        expect(
+            isStreamOnlineTransition({
+                lastKnown: { status: 'offline', startedAtMs: null },
+                observedStartedAtMs: 123
+            })
+        ).toBe(true);
+    });
+
+    it('false если lastKnown=online и started_at не поменялся (рестарт/рекавери того же стрима)', () => {
+        expect(
+            isStreamOnlineTransition({
+                lastKnown: { status: 'online', startedAtMs: 999 },
+                observedStartedAtMs: 999
+            })
+        ).toBe(false);
+    });
+
+    it('true если lastKnown=online и started_at поменялся (новый эфир)', () => {
+        expect(
+            isStreamOnlineTransition({
+                lastKnown: { status: 'online', startedAtMs: 100 },
+                observedStartedAtMs: 200
+            })
+        ).toBe(true);
+    });
+
+    it('true если lastKnown=online, но startedAtMs=null (не теряем уведомление)', () => {
+        expect(
+            isStreamOnlineTransition({
+                lastKnown: { status: 'online', startedAtMs: null },
+                observedStartedAtMs: 1
+            })
+        ).toBe(true);
+    });
+});
+
+describe('decideTelegramStreamOffline', () => {
+    it('skip если lastKnown уже offline', () => {
+        expect(
+            decideTelegramStreamOffline({
+                lastKnown: { status: 'offline', startedAtMs: null }
+            })
+        ).toEqual({ action: 'skip', reason: 'already_offline' });
+    });
+
+    it('send если lastKnown online (переход online→offline)', () => {
+        expect(
+            decideTelegramStreamOffline({
+                lastKnown: { status: 'online', startedAtMs: 123 }
+            })
+        ).toEqual({ action: 'send' });
     });
 });

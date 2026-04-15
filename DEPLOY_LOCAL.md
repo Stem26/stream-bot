@@ -229,6 +229,11 @@ npm install
 npm run build:twitch
 pm2 restart twitch-bot
 pm2 logs twitch-bot --lines 50
+
+Что бы отправилось уведомление
+cd /root/stream-bot
+TELEGRAM_FORCE_STREAM_ONLINE_ON_STARTUP=1 pm2 restart twitch-bot --update-env
+pm2 logs twitch-bot --lines 80
 ```
 ```aiignore
 cd D:\Projects\stream-bot\services\twitch-service

@@ -33,6 +33,8 @@ import { isApiOk, type ApiCallResult } from './twitch/twitch-api.types';
 import {
     assertEventSubSubscribeBatchSession,
     computeEventSubWatchdogIssues,
+    decideTelegramStreamOnline,
+    decideTelegramStreamOffline,
     shouldSendTelegramStreamOnlineForStartedAt,
     shouldSkipEventSubSubscribeCooldown,
     streamStartedAtToMs
@@ -65,6 +67,10 @@ interface AnnouncementState {
     currentStreamStartTime: number | null;
     currentStreamFollowsCount: number | null;
     lastNotifiedStreamStartedAt: number | null;
+    /** Последний известный статус стрима (персистентно, чтобы переживать рестарты). */
+    lastKnownStreamStatus: 'online' | 'offline';
+    /** started_at последнего известного онлайна (ms), чтобы отличать новый эфир от текущего. */
+    lastKnownStreamStartedAt: number | null;
 }
 
 function loadAnnouncementState(): AnnouncementState {
@@ -75,14 +81,27 @@ function loadAnnouncementState(): AnnouncementState {
         currentStreamPeak: null,
         currentStreamStartTime: null,
         currentStreamFollowsCount: null,
-        lastNotifiedStreamStartedAt: null
+        lastNotifiedStreamStartedAt: null,
+        lastKnownStreamStatus: 'offline',
+        lastKnownStreamStartedAt: null
     };
 
     try {
         if (fs.existsSync(ANNOUNCEMENT_STATE_FILE)) {
             const data = fs.readFileSync(ANNOUNCEMENT_STATE_FILE, 'utf-8');
             const loadedState = JSON.parse(data);
-            return { ...defaultState, ...loadedState };
+            const merged = { ...defaultState, ...loadedState } as AnnouncementState;
+            // Миграция старого формата state-файла (до lastKnownStreamStatus/lastKnownStreamStartedAt).
+            // Если есть currentStreamStartTime, значит процесс уже был в онлайне и мы должны
+            // переживать рестарты без ложных "transition offline→online".
+            if (
+                (loadedState.lastKnownStreamStatus === undefined || loadedState.lastKnownStreamStartedAt === undefined)
+                && merged.currentStreamStartTime != null
+            ) {
+                merged.lastKnownStreamStatus = 'online';
+                merged.lastKnownStreamStartedAt = merged.currentStreamStartTime;
+            }
+            return merged;
         }
     } catch (error) {
         console.error('⚠️ Ошибка загрузки состояния announcements:', error);
@@ -158,6 +177,15 @@ type EventSubKeepaliveDisconnectTrigger = 'watchdog' | 'keepalive_monitor';
 function envTrue(value: string | undefined): boolean {
     if (!value) return false;
     return value === '1' || value.toLowerCase() === 'true' || value.toLowerCase() === 'yes';
+}
+
+function fmtMs(ms: number | null): string {
+    if (ms == null) return 'null';
+    try {
+        return `${ms} (${new Date(ms).toISOString()})`;
+    } catch {
+        return String(ms);
+    }
 }
 
 export type LinkRotationItem = { message: string; color: string };
@@ -954,6 +982,8 @@ export class TwitchEventSubNative {
 
         this.announcementState.currentStreamPeak = null;
         this.announcementState.currentStreamStartTime = startedAtMs;
+        this.announcementState.lastKnownStreamStatus = 'online';
+        this.announcementState.lastKnownStreamStartedAt = startedAtMs;
         saveAnnouncementState(this.announcementState);
 
         log('STREAM_ONLINE', { channel: event.broadcaster_user_name, startedAtMs });
@@ -964,10 +994,48 @@ export class TwitchEventSubNative {
 
         if (this.telegramChannelId) {
             const forceStartupTelegram = envTrue(process.env.TELEGRAM_FORCE_STREAM_ONLINE_ON_STARTUP);
-            // Если это первый запуск и EventSub прислал stream.online для уже идущего стрима - не отправляем уведомление
-            if (this.isInitialStartup && this.startupStreamStatus === 'online' && !forceStartupTelegram) {
+            // Переход в online считаем только если ранее был offline (персистентно) или started_at изменился.
+            // Это защищает от повторов при рестартах в середине одного и того же стрима.
+            const prevStatus = this.announcementState.lastKnownStreamStatus;
+            const prevStartedAt = this.announcementState.lastKnownStreamStartedAt;
+            const isOnlineTransition =
+                prevStatus !== 'online' || (prevStartedAt !== null && prevStartedAt !== startedAtMs);
+
+            // Обновляем последнее известное состояние независимо от отправки TG
+            this.announcementState.lastKnownStreamStatus = 'online';
+            this.announcementState.lastKnownStreamStartedAt = startedAtMs;
+            saveAnnouncementState(this.announcementState);
+
+            if (!isOnlineTransition) {
+                // Это не новый старт, а повторное обнаружение того же эфира (обычно рестарт/ре-коннект)
+                console.error('⏭️ Стрим уже был в состоянии online (тот же started_at) — TG-уведомление не отправляем');
+                console.warn(
+                    `[DIAG][TG][ONLINE][eventsub] decision=skip_same_stream prev=${prevStatus} prevStartedAt=${fmtMs(prevStartedAt)} ` +
+                        `nowStartedAt=${fmtMs(startedAtMs)} initialStartup=${this.isInitialStartup} startupStatus=${this.startupStreamStatus} ` +
+                        `forceStartup=${forceStartupTelegram}`
+                );
+                log('TELEGRAM_STREAM_ONLINE_SKIPPED_DUPLICATE', {
+                    source: 'eventsub',
+                    broadcasterUserId: event.broadcaster_user_id,
+                    startedAt: event.started_at,
+                });
+            } else {
+            const decision = decideTelegramStreamOnline({
+                isInitialStartup: this.isInitialStartup,
+                startupStreamStatus: this.startupStreamStatus,
+                forceStartupTelegram,
+                lastNotifiedStreamStartedAt: this.announcementState.lastNotifiedStreamStartedAt,
+                startedAt: event.started_at
+            });
+
+            if (decision.action === 'skip_initial_startup') {
                 console.error(
                     '⏭️ Стрим уже онлайн при старте бота — уведомление в Telegram не отправляем (initial startup, eventsub)'
+                );
+                console.warn(
+                    `[DIAG][TG][ONLINE][eventsub] decision=skip_initial_startup prev=${prevStatus} prevStartedAt=${fmtMs(prevStartedAt)} ` +
+                        `nowStartedAt=${fmtMs(startedAtMs)} lastNotified=${fmtMs(this.announcementState.lastNotifiedStreamStartedAt)} ` +
+                        `initialStartup=${this.isInitialStartup} startupStatus=${this.startupStreamStatus} forceStartup=${forceStartupTelegram}`
                 );
                 log('TELEGRAM_STREAM_ONLINE_SKIPPED_INITIAL_STARTUP', {
                     source: 'eventsub',
@@ -975,27 +1043,32 @@ export class TwitchEventSubNative {
                     startedAt: event.started_at,
                 });
                 this.markTelegramStreamStartNotified(event.started_at);
-            } else if (
-                forceStartupTelegram
-                && this.isInitialStartup
-                && this.startupStreamStatus === 'online'
-            ) {
-                console.warn('📣 Форсируем TG-уведомление о старте (startup online, eventsub)');
-                log('TELEGRAM_STREAM_ONLINE_FORCED_ON_STARTUP' as any, {
-                    source: 'eventsub',
-                    broadcasterUserId: event.broadcaster_user_id,
-                    startedAt: event.started_at,
-                });
-                await this.sendTelegramStreamNotification(event);
-            } else if (this.shouldSendTelegramStreamStartForStartedAt(event.started_at)) {
-                await this.sendTelegramStreamNotification(event);
-            } else {
+            } else if (decision.action === 'skip_duplicate') {
                 console.error('⏭️ Уведомление о старте стрима в Telegram уже отправляли для этого started_at — пропуск');
+                console.warn(
+                    `[DIAG][TG][ONLINE][eventsub] decision=skip_duplicate prev=${prevStatus} prevStartedAt=${fmtMs(prevStartedAt)} ` +
+                        `nowStartedAt=${fmtMs(startedAtMs)} lastNotified=${fmtMs(this.announcementState.lastNotifiedStreamStartedAt)}`
+                );
                 log('TELEGRAM_STREAM_ONLINE_SKIPPED_DUPLICATE', {
                     source: 'eventsub',
                     broadcasterUserId: event.broadcaster_user_id,
                     startedAt: event.started_at,
                 });
+            } else {
+                if (decision.mode === 'forced_startup') {
+                    console.warn('📣 Форсируем TG-уведомление о старте (startup online, eventsub)');
+                    log('TELEGRAM_STREAM_ONLINE_FORCED_ON_STARTUP' as any, {
+                        source: 'eventsub',
+                        broadcasterUserId: event.broadcaster_user_id,
+                        startedAt: event.started_at,
+                    });
+                }
+                console.warn(
+                    `[DIAG][TG][ONLINE][eventsub] decision=send mode=${decision.mode} prev=${prevStatus} prevStartedAt=${fmtMs(prevStartedAt)} ` +
+                        `nowStartedAt=${fmtMs(startedAtMs)} lastNotified=${fmtMs(this.announcementState.lastNotifiedStreamStartedAt)}`
+                );
+                await this.sendTelegramStreamNotification(event);
+            }
             }
         } else {
             console.warn(
@@ -1022,6 +1095,13 @@ export class TwitchEventSubNative {
     private async handleStreamOffline(event: TwitchEventSubStreamOfflineEvent): Promise<void> {
         console.error(`⚫ Стрим завершился на канале ${event.broadcaster_user_name}`);
         this.isStreamOnline = false;
+        console.warn(
+            `[DIAG][TG][OFFLINE][eventsub] received stream.offline lastKnown=${this.announcementState.lastKnownStreamStatus} ` +
+                `lastKnownStartedAt=${fmtMs(this.announcementState.lastKnownStreamStartedAt)}`
+        );
+        this.announcementState.lastKnownStreamStatus = 'offline';
+        this.announcementState.lastKnownStreamStartedAt = null;
+        saveAnnouncementState(this.announcementState);
 
         try {
             this.onStreamOfflineCallback?.();
@@ -1511,7 +1591,18 @@ export class TwitchEventSubNative {
 
                 // Если EventSub не прислал stream.online (или мы стартовали в середине стрима),
                 // отправляем Telegram-уведомление о старте при первом обнаружении "онлайн" через polling.
-                if (wasOffline) {
+                // Новизна старта определяем по персистентному lastKnownStreamStatus/startedAt.
+                const prevStatus = this.announcementState.lastKnownStreamStatus;
+                const prevStartedAt = this.announcementState.lastKnownStreamStartedAt;
+                const isOnlineTransition =
+                    prevStatus !== 'online' || (prevStartedAt !== null && prevStartedAt !== startedAtMs);
+
+                // Обновляем персистентное состояние сразу
+                this.announcementState.lastKnownStreamStatus = 'online';
+                this.announcementState.lastKnownStreamStartedAt = startedAtMs;
+                saveAnnouncementState(this.announcementState);
+
+                if (wasOffline && isOnlineTransition) {
                     const pseudoEvent: TwitchEventSubStreamOnlineEvent = {
                         broadcaster_user_id: this.broadcasterId,
                         broadcaster_user_login: (stream.user_login ?? stream.user_name ?? this.broadcasterName ?? '').toLowerCase(),
@@ -1520,8 +1611,15 @@ export class TwitchEventSubNative {
                     };
                     if (this.telegramChannelId) {
                         const forceStartupTelegram = envTrue(process.env.TELEGRAM_FORCE_STREAM_ONLINE_ON_STARTUP);
-                        // При первом запуске бота не отправляем уведомление, если стрим уже идет
-                        if (this.isInitialStartup && this.startupStreamStatus === 'online' && !forceStartupTelegram) {
+                        const decision = decideTelegramStreamOnline({
+                            isInitialStartup: this.isInitialStartup,
+                            startupStreamStatus: this.startupStreamStatus,
+                            forceStartupTelegram,
+                            lastNotifiedStreamStartedAt: this.announcementState.lastNotifiedStreamStartedAt,
+                            startedAt: pseudoEvent.started_at
+                        });
+
+                        if (decision.action === 'skip_initial_startup') {
                             console.error(
                                 '⏭️ Стрим уже онлайн при старте бота — уведомление в Telegram не отправляем (initial startup)'
                             );
@@ -1531,24 +1629,8 @@ export class TwitchEventSubNative {
                                 startedAt: pseudoEvent.started_at,
                                 reason,
                             });
-                            // Сохраняем started_at, чтобы не отправлять уведомление при последующих проверках
                             this.markTelegramStreamStartNotified(stream.started_at);
-                        } else if (
-                            forceStartupTelegram
-                            && this.isInitialStartup
-                            && this.startupStreamStatus === 'online'
-                        ) {
-                            console.warn('📣 Форсируем TG-уведомление о старте (startup online, polling)');
-                            log('TELEGRAM_STREAM_ONLINE_FORCED_ON_STARTUP' as any, {
-                                source: 'polling',
-                                broadcasterUserId: pseudoEvent.broadcaster_user_id,
-                                startedAt: pseudoEvent.started_at,
-                                reason,
-                            });
-                            await this.sendTelegramStreamNotification(pseudoEvent);
-                        } else if (this.shouldSendTelegramStreamStartForStartedAt(stream.started_at)) {
-                            await this.sendTelegramStreamNotification(pseudoEvent);
-                        } else {
+                        } else if (decision.action === 'skip_duplicate') {
                             console.error(
                                 '⏭️ Уведомление о старте стрима в Telegram уже отправляли для этого started_at — пропуск (polling)'
                             );
@@ -1558,6 +1640,17 @@ export class TwitchEventSubNative {
                                 startedAt: pseudoEvent.started_at,
                                 reason,
                             });
+                        } else {
+                            if (decision.mode === 'forced_startup') {
+                                console.warn('📣 Форсируем TG-уведомление о старте (startup online, polling)');
+                                log('TELEGRAM_STREAM_ONLINE_FORCED_ON_STARTUP' as any, {
+                                    source: 'polling',
+                                    broadcasterUserId: pseudoEvent.broadcaster_user_id,
+                                    startedAt: pseudoEvent.started_at,
+                                    reason,
+                                });
+                            }
+                            await this.sendTelegramStreamNotification(pseudoEvent);
                         }
                     } else {
                         console.warn(
@@ -1574,6 +1667,35 @@ export class TwitchEventSubNative {
                 }
                 this.startViewerCountTracking(this.broadcasterId, this.broadcasterName, startDate);
             } else {
+                const wasKnownOnline = this.announcementState.lastKnownStreamStatus === 'online';
+                const wasRuntimeOnline = this.isStreamOnline;
+
+                // Если EventSub не прислал stream.offline (или мы его потеряли), пробуем закрыть стрим по polling.
+                // Важно: уведомление об окончании должно уйти ровно один раз на переход online → offline.
+                const offlineDecision = decideTelegramStreamOffline({
+                    lastKnown: {
+                        status: this.announcementState.lastKnownStreamStatus,
+                        startedAtMs: this.announcementState.lastKnownStreamStartedAt
+                    }
+                });
+                console.warn(
+                    `[DIAG][TG][OFFLINE][polling] decision=${offlineDecision.action} lastKnown=${this.announcementState.lastKnownStreamStatus} ` +
+                        `lastKnownStartedAt=${fmtMs(this.announcementState.lastKnownStreamStartedAt)} wasRuntimeOnline=${wasRuntimeOnline} reason=${reason}`
+                );
+
+                if (offlineDecision.action === 'send' && (wasKnownOnline || wasRuntimeOnline)) {
+                    const pseudoEvent: TwitchEventSubStreamOfflineEvent = {
+                        broadcaster_user_id: this.broadcasterId,
+                        broadcaster_user_login: this.broadcasterName.toLowerCase() || this.channelName.toLowerCase(),
+                        broadcaster_user_name: this.broadcasterName || this.channelName,
+                    };
+                    await this.handleStreamOffline(pseudoEvent);
+                } else {
+                    // Персистентно фиксируем оффлайн, чтобы следующий online считался переходом.
+                    this.announcementState.lastKnownStreamStatus = 'offline';
+                    this.announcementState.lastKnownStreamStartedAt = null;
+                    saveAnnouncementState(this.announcementState);
+                }
                 if (reason === 'startup') {
                     this.startupStreamStatus = 'offline';
                 }

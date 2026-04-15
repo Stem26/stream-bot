@@ -98,3 +98,94 @@ export function shouldSendTelegramStreamOnlineForStartedAt(
     }
     return lastNotifiedStreamStartedAt !== ms;
 }
+
+export type StartupStreamStatus = 'online' | 'offline' | 'unknown';
+
+export type TelegramStreamOnlineDecision =
+    | { action: 'skip_initial_startup'; reason: 'startup_stream_online' }
+    | { action: 'skip_duplicate'; reason: 'same_started_at' }
+    | { action: 'send'; mode: 'normal' | 'forced_startup' };
+
+export type LastKnownStreamState = {
+    status: 'online' | 'offline';
+    /** started_at в ms для последнего онлайна; null если неизвестно/оффлайн. */
+    startedAtMs: number | null;
+};
+
+/**
+ * Единое решение для TG «стрим онлайн».
+ *
+ * Инвариант:
+ * - Уведомление отправляем только при реальном переходе в онлайн,
+ *   а при старте процесса в середине уже идущего стрима — по умолчанию НЕ отправляем.
+ * - При рестарте во время уже идущего стрима можно форсировать отправку (env-флаг).
+ * - Дедуп — по started_at (один эфир = одно уведомление).
+ */
+export function decideTelegramStreamOnline(params: {
+    isInitialStartup: boolean;
+    startupStreamStatus: StartupStreamStatus;
+    forceStartupTelegram: boolean;
+    lastNotifiedStreamStartedAt: number | null;
+    startedAt: string;
+}): TelegramStreamOnlineDecision {
+    const {
+        isInitialStartup,
+        startupStreamStatus,
+        forceStartupTelegram,
+        lastNotifiedStreamStartedAt,
+        startedAt
+    } = params;
+
+    // Если это старт процесса в середине уже идущего стрима
+    if (isInitialStartup && startupStreamStatus === 'online') {
+        if (forceStartupTelegram) {
+            return { action: 'send', mode: 'forced_startup' };
+        }
+        return { action: 'skip_initial_startup', reason: 'startup_stream_online' };
+    }
+
+    // Обычная логика: не дублировать один и тот же эфир.
+    if (!shouldSendTelegramStreamOnlineForStartedAt(lastNotifiedStreamStartedAt, startedAt)) {
+        return { action: 'skip_duplicate', reason: 'same_started_at' };
+    }
+
+    return { action: 'send', mode: 'normal' };
+}
+
+/**
+ * Определить, является ли наблюдение "стрим онлайн со started_at" новым стартом стрима
+ * (т.е. переходом offline→online или сменой started_at = новый эфир).
+ *
+ * Нужен, чтобы при рестарте процесса в середине стрима не слать повторное TG-уведомление.
+ */
+export function isStreamOnlineTransition(params: {
+    lastKnown: LastKnownStreamState;
+    observedStartedAtMs: number;
+}): boolean {
+    const { lastKnown, observedStartedAtMs } = params;
+    if (lastKnown.status !== 'online') {
+        return true;
+    }
+    if (lastKnown.startedAtMs === null) {
+        // Если почему-то мы считали online, но started_at не знаем — считаем переходом, чтобы не потерять уведомление.
+        return true;
+    }
+    return lastKnown.startedAtMs !== observedStartedAtMs;
+}
+
+export type TelegramStreamOfflineDecision =
+    | { action: 'skip'; reason: 'already_offline' }
+    | { action: 'send' };
+
+/**
+ * Решение для TG «стрим оффлайн»:
+ * отправляем только на переход online→offline (персистентный lastKnown), чтобы не дублировать на рестартах.
+ */
+export function decideTelegramStreamOffline(params: {
+    lastKnown: LastKnownStreamState;
+}): TelegramStreamOfflineDecision {
+    if (params.lastKnown.status !== 'online') {
+        return { action: 'skip', reason: 'already_offline' };
+    }
+    return { action: 'send' };
+}
