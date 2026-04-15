@@ -30,6 +30,9 @@ type EventType =
   | 'STREAM_STATUS_PROBE'
   | 'TELEGRAM_STREAM_ONLINE_SENT'
   | 'TELEGRAM_STREAM_ONLINE_FAILED'
+  | 'TELEGRAM_STREAM_OFFLINE_SENT'
+  | 'TELEGRAM_STREAM_OFFLINE_FAILED'
+  | 'TELEGRAM_STREAM_ONLINE_FORCED_ON_STARTUP'
   | 'TELEGRAM_STREAM_ONLINE_SKIPPED_NO_CHANNEL_ID'
   | 'TELEGRAM_STREAM_ONLINE_SKIPPED_DUPLICATE'
   | 'TELEGRAM_STREAM_ONLINE_SKIPPED_INITIAL_STARTUP'
@@ -48,9 +51,15 @@ type EventType =
   | 'STREAMS_API_SKIP'
   | 'ANNOUNCEMENTS_API_SKIP';
 
+type EventTypeExtended =
+  | EventType
+  | 'TELEGRAM_STREAM_OFFLINE_SENT'
+  | 'TELEGRAM_STREAM_OFFLINE_FAILED'
+  | 'TELEGRAM_STREAM_ONLINE_FORCED_ON_STARTUP';
+
 interface EventLogData {
   timestamp: string;
-  type: EventType;
+  type: EventTypeExtended;
   data: any;
 }
 
@@ -65,7 +74,7 @@ function formatTimestamp(): string {
 /**
  * Записывает событие в лог-файл
  */
-function writeEventLog(type: EventType, data: any): void {
+function writeEventLog(type: EventTypeExtended, data: any): void {
   try {
     const logEntry: EventLogData = {
       timestamp: formatTimestamp(),
@@ -83,7 +92,7 @@ function writeEventLog(type: EventType, data: any): void {
 /**
  * Универсальная функция для логирования событий
  */
-export function log(type: EventType, data: any): void {
+export function log(type: EventTypeExtended, data: any): void {
   writeEventLog(type, data);
   
   // Дополнительный вывод в консоль для некоторых типов событий

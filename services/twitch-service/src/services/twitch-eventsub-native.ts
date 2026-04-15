@@ -155,6 +155,11 @@ const EVENTSUB_SUBSCRIBE_COOLDOWN_MS = 10_000;
 /** Кто инициировал handleDisconnect('keepalive') — для логов (watchdog vs интервал монитора). */
 type EventSubKeepaliveDisconnectTrigger = 'watchdog' | 'keepalive_monitor';
 
+function envTrue(value: string | undefined): boolean {
+    if (!value) return false;
+    return value === '1' || value.toLowerCase() === 'true' || value.toLowerCase() === 'yes';
+}
+
 export type LinkRotationItem = { message: string; color: string };
 
 interface StreamStats {
@@ -204,6 +209,12 @@ export class TwitchEventSubNative {
 
     private isStreamOnline: boolean = false;
     private isInitialStartup: boolean = true;
+    /**
+     * Статус стрима на момент старта процесса (по первому probe через Helix).
+     * Нужен, чтобы не подавлять TG-уведомление о реальном старте стрима после запуска бота,
+     * но при этом продолжать подавлять уведомление при старте бота в середине уже идущего стрима.
+     */
+    private startupStreamStatus: 'online' | 'offline' | 'unknown' = 'unknown';
     private currentStreamStats: StreamStats | null = null;
     private announcementState: AnnouncementState;
 
@@ -952,8 +963,9 @@ export class TwitchEventSubNative {
         this.startLinkRotation(true);
 
         if (this.telegramChannelId) {
+            const forceStartupTelegram = envTrue(process.env.TELEGRAM_FORCE_STREAM_ONLINE_ON_STARTUP);
             // Если это первый запуск и EventSub прислал stream.online для уже идущего стрима - не отправляем уведомление
-            if (this.isInitialStartup) {
+            if (this.isInitialStartup && this.startupStreamStatus === 'online' && !forceStartupTelegram) {
                 console.error(
                     '⏭️ Стрим уже онлайн при старте бота — уведомление в Telegram не отправляем (initial startup, eventsub)'
                 );
@@ -963,6 +975,18 @@ export class TwitchEventSubNative {
                     startedAt: event.started_at,
                 });
                 this.markTelegramStreamStartNotified(event.started_at);
+            } else if (
+                forceStartupTelegram
+                && this.isInitialStartup
+                && this.startupStreamStatus === 'online'
+            ) {
+                console.warn('📣 Форсируем TG-уведомление о старте (startup online, eventsub)');
+                log('TELEGRAM_STREAM_ONLINE_FORCED_ON_STARTUP' as any, {
+                    source: 'eventsub',
+                    broadcasterUserId: event.broadcaster_user_id,
+                    startedAt: event.started_at,
+                });
+                await this.sendTelegramStreamNotification(event);
             } else if (this.shouldSendTelegramStreamStartForStartedAt(event.started_at)) {
                 await this.sendTelegramStreamNotification(event);
             } else {
@@ -1425,6 +1449,9 @@ export class TwitchEventSubNative {
                 return;
             }
             if (isApiOk(streamResult) && streamResult.data) {
+                if (reason === 'startup') {
+                    this.startupStreamStatus = 'online';
+                }
                 if (streamResult.recovered) {
                     log('CONNECTION', {
                         service: 'TwitchEventSubNative.streamsApi',
@@ -1492,8 +1519,9 @@ export class TwitchEventSubNative {
                         started_at: stream.started_at,
                     };
                     if (this.telegramChannelId) {
+                        const forceStartupTelegram = envTrue(process.env.TELEGRAM_FORCE_STREAM_ONLINE_ON_STARTUP);
                         // При первом запуске бота не отправляем уведомление, если стрим уже идет
-                        if (this.isInitialStartup) {
+                        if (this.isInitialStartup && this.startupStreamStatus === 'online' && !forceStartupTelegram) {
                             console.error(
                                 '⏭️ Стрим уже онлайн при старте бота — уведомление в Telegram не отправляем (initial startup)'
                             );
@@ -1505,6 +1533,19 @@ export class TwitchEventSubNative {
                             });
                             // Сохраняем started_at, чтобы не отправлять уведомление при последующих проверках
                             this.markTelegramStreamStartNotified(stream.started_at);
+                        } else if (
+                            forceStartupTelegram
+                            && this.isInitialStartup
+                            && this.startupStreamStatus === 'online'
+                        ) {
+                            console.warn('📣 Форсируем TG-уведомление о старте (startup online, polling)');
+                            log('TELEGRAM_STREAM_ONLINE_FORCED_ON_STARTUP' as any, {
+                                source: 'polling',
+                                broadcasterUserId: pseudoEvent.broadcaster_user_id,
+                                startedAt: pseudoEvent.started_at,
+                                reason,
+                            });
+                            await this.sendTelegramStreamNotification(pseudoEvent);
                         } else if (this.shouldSendTelegramStreamStartForStartedAt(stream.started_at)) {
                             await this.sendTelegramStreamNotification(pseudoEvent);
                         } else {
@@ -1533,13 +1574,11 @@ export class TwitchEventSubNative {
                 }
                 this.startViewerCountTracking(this.broadcasterId, this.broadcasterName, startDate);
             } else {
+                if (reason === 'startup') {
+                    this.startupStreamStatus = 'offline';
+                }
                 console.error(`📊 Статус стрима: 🔴 Оффлайн`);
                 log('STREAM_STATUS_PROBE', { reason, online: false });
-            }
-            
-            // Сбрасываем флаг первого запуска после первой проверки статуса
-            if (this.isInitialStartup) {
-                this.isInitialStartup = false;
             }
         } catch (error) {
             console.error('⚠️ Не удалось получить статус стрима:', error);
@@ -1549,6 +1588,11 @@ export class TwitchEventSubNative {
                 reason,
             });
         } finally {
+            // Важно: не держим isInitialStartup=true бесконечно при сбоях Helix,
+            // иначе первый реальный stream.online после старта процесса будет ошибочно подавлен.
+            if (reason === 'startup' && this.isInitialStartup) {
+                this.isInitialStartup = false;
+            }
             this.statusProbeInFlight = false;
         }
     }
@@ -1815,7 +1859,7 @@ export class TwitchEventSubNative {
                     console.log(`   (успешно с попытки ${attempt}/3)`);
                 }
 
-                log('TELEGRAM_STREAM_OFFLINE_SENT', {
+                log('TELEGRAM_STREAM_OFFLINE_SENT' as any, {
                     broadcasterUserId: event.broadcaster_user_id,
                     broadcasterUserName: event.broadcaster_user_name,
                     telegramChatId: this.telegramChatId,
@@ -1855,7 +1899,7 @@ export class TwitchEventSubNative {
                 } else {
                     // Последняя попытка не удалась
                     console.error('❌ Ошибка при отправке уведомления об окончании:', lastError);
-                    log('TELEGRAM_STREAM_OFFLINE_FAILED', {
+                    log('TELEGRAM_STREAM_OFFLINE_FAILED' as any, {
                         broadcasterUserId: event.broadcaster_user_id,
                         broadcasterUserName: event.broadcaster_user_name,
                         telegramChatId: this.telegramChatId,
