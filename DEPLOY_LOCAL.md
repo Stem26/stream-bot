@@ -242,7 +242,7 @@ npm run build
 npm start
 npm run dev:all
 
-node scripts/delete-telegram-messages.js 1 -1001234567890 123456:8549936481:AAF7h4s6k80syWbzgVsk1dwn3YV0J4Hb7OE
+node scripts/delete-telegram-messages.js 1 -1001974544555 8549936481:AAF7h4s6k80syWbzgVsk1dwn3YV0J4Hb7OE
 
 добавить пользователя htpasswd /etc/nginx/.htpasswd user2
 проверить пользователей cat /etc/nginx/.htpasswd
