@@ -20,7 +20,7 @@ async function main() {
     const bot = new Telegraf(config.telegram.token);
 
     const testMessage = `
-🟢 <b>Стрим начался!</b> (ТЕСТ)
+🟢 <b>Стрим начался!</b>
 
 <b>Канал:</b> ${config.twitch.channel}
 <b>Категория:</b> Just Chatting
