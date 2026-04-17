@@ -173,6 +173,22 @@ export function isStreamOnlineTransition(params: {
     return lastKnown.startedAtMs !== observedStartedAtMs;
 }
 
+export function isStreamOnlineTransitionWithRecentOffline(params: {
+    lastKnown: LastKnownStreamState;
+    observedStartedAtMs: number;
+    lastOfflineAtMs: number | null;
+    nowMs: number;
+    offlineBounceWindowMs: number;
+}): boolean {
+    const base = isStreamOnlineTransition({
+        lastKnown: params.lastKnown,
+        observedStartedAtMs: params.observedStartedAtMs
+    });
+    if (base) return true;
+    if (params.lastOfflineAtMs == null) return false;
+    return params.nowMs - params.lastOfflineAtMs < params.offlineBounceWindowMs;
+}
+
 export type TelegramStreamOfflineDecision =
     | { action: 'skip'; reason: 'already_offline' }
     | { action: 'send' };

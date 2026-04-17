@@ -71,6 +71,12 @@ interface AnnouncementState {
     lastKnownStreamStatus: 'online' | 'offline';
     /** started_at последнего известного онлайна (ms), чтобы отличать новый эфир от текущего. */
     lastKnownStreamStartedAt: number | null;
+    /**
+     * Когда мы в последний раз зафиксировали оффлайн (EventSub или polling).
+     * Нужен, чтобы считать online "новым стартом" после реального оффлайна,
+     * даже если Twitch прислал тот же started_at (редкие кейсы/глюки/краткие рестарты).
+     */
+    lastStreamOfflineAt: number | null;
 }
 
 function loadAnnouncementState(): AnnouncementState {
@@ -83,7 +89,8 @@ function loadAnnouncementState(): AnnouncementState {
         currentStreamFollowsCount: null,
         lastNotifiedStreamStartedAt: null,
         lastKnownStreamStatus: 'offline',
-        lastKnownStreamStartedAt: null
+        lastKnownStreamStartedAt: null,
+        lastStreamOfflineAt: null
     };
 
     try {
@@ -980,10 +987,24 @@ export class TwitchEventSubNative {
         console.error(`🔴 Стрим начался на канале ${event.broadcaster_user_name}!`);
         this.isStreamOnline = true;
 
+        // ВАЖНО: для дедупа уведомлений при рестартах нужно сравнить lastKnown* ДО обновления на онлайн,
+        // иначе prevStatus/prevStartedAt всегда будут "online/тот же started_at" и мы ошибочно пропустим уведомление.
+        const prevKnownStatus = this.announcementState.lastKnownStreamStatus;
+        const prevKnownStartedAt = this.announcementState.lastKnownStreamStartedAt;
+        const recentOfflineWindowMs = 6 * 60 * 1000; // 6 минут: "стрим перезапустился/моргнул" и started_at не обновился
+        const offlineRecently =
+            this.announcementState.lastStreamOfflineAt != null
+            && Date.now() - this.announcementState.lastStreamOfflineAt < recentOfflineWindowMs;
+
+        const isOnlineTransitionByPersistedState =
+            prevKnownStatus !== 'online'
+            || (prevKnownStartedAt !== null && prevKnownStartedAt !== startedAtMs);
+
         this.announcementState.currentStreamPeak = null;
         this.announcementState.currentStreamStartTime = startedAtMs;
         this.announcementState.lastKnownStreamStatus = 'online';
         this.announcementState.lastKnownStreamStartedAt = startedAtMs;
+        // оффлайн "закрыт" — но время оставляем, оно нужно для диагностики и "recent offline" окна
         saveAnnouncementState(this.announcementState);
 
         log('STREAM_ONLINE', { channel: event.broadcaster_user_name, startedAtMs });
@@ -994,25 +1015,15 @@ export class TwitchEventSubNative {
 
         if (this.telegramChannelId) {
             const forceStartupTelegram = envTrue(process.env.TELEGRAM_FORCE_STREAM_ONLINE_ON_STARTUP);
-            // Переход в online считаем только если ранее был offline (персистентно) или started_at изменился.
-            // Это защищает от повторов при рестартах в середине одного и того же стрима.
-            const prevStatus = this.announcementState.lastKnownStreamStatus;
-            const prevStartedAt = this.announcementState.lastKnownStreamStartedAt;
-            const isOnlineTransition =
-                prevStatus !== 'online' || (prevStartedAt !== null && prevStartedAt !== startedAtMs);
-
-            // Обновляем последнее известное состояние независимо от отправки TG
-            this.announcementState.lastKnownStreamStatus = 'online';
-            this.announcementState.lastKnownStreamStartedAt = startedAtMs;
-            saveAnnouncementState(this.announcementState);
-
-            if (!isOnlineTransition) {
+            const prevStatus = prevKnownStatus;
+            const prevStartedAt = prevKnownStartedAt;
+            if (!isOnlineTransitionByPersistedState && !offlineRecently) {
                 // Это не новый старт, а повторное обнаружение того же эфира (обычно рестарт/ре-коннект)
                 console.error('⏭️ Стрим уже был в состоянии online (тот же started_at) — TG-уведомление не отправляем');
                 console.warn(
                     `[DIAG][TG][ONLINE][eventsub] decision=skip_same_stream prev=${prevStatus} prevStartedAt=${fmtMs(prevStartedAt)} ` +
                         `nowStartedAt=${fmtMs(startedAtMs)} initialStartup=${this.isInitialStartup} startupStatus=${this.startupStreamStatus} ` +
-                        `forceStartup=${forceStartupTelegram}`
+                        `forceStartup=${forceStartupTelegram} offlineRecently=${offlineRecently} lastOfflineAt=${fmtMs(this.announcementState.lastStreamOfflineAt)}`
                 );
                 log('TELEGRAM_STREAM_ONLINE_SKIPPED_DUPLICATE', {
                     source: 'eventsub',
@@ -1020,6 +1031,12 @@ export class TwitchEventSubNative {
                     startedAt: event.started_at,
                 });
             } else {
+            if (!isOnlineTransitionByPersistedState && offlineRecently) {
+                console.warn(
+                    `[DIAG][TG][ONLINE][eventsub] decision=send_offline_bounce_same_started_at prev=${prevStatus} prevStartedAt=${fmtMs(prevStartedAt)} ` +
+                        `nowStartedAt=${fmtMs(startedAtMs)} lastOfflineAt=${fmtMs(this.announcementState.lastStreamOfflineAt)}`
+                );
+            }
             const decision = decideTelegramStreamOnline({
                 isInitialStartup: this.isInitialStartup,
                 startupStreamStatus: this.startupStreamStatus,
@@ -1099,6 +1116,7 @@ export class TwitchEventSubNative {
             `[DIAG][TG][OFFLINE][eventsub] received stream.offline lastKnown=${this.announcementState.lastKnownStreamStatus} ` +
                 `lastKnownStartedAt=${fmtMs(this.announcementState.lastKnownStreamStartedAt)}`
         );
+        this.announcementState.lastStreamOfflineAt = Date.now();
         this.announcementState.lastKnownStreamStatus = 'offline';
         this.announcementState.lastKnownStreamStartedAt = null;
         saveAnnouncementState(this.announcementState);
@@ -1692,6 +1710,7 @@ export class TwitchEventSubNative {
                     await this.handleStreamOffline(pseudoEvent);
                 } else {
                     // Персистентно фиксируем оффлайн, чтобы следующий online считался переходом.
+                    this.announcementState.lastStreamOfflineAt = Date.now();
                     this.announcementState.lastKnownStreamStatus = 'offline';
                     this.announcementState.lastKnownStreamStartedAt = null;
                     saveAnnouncementState(this.announcementState);
