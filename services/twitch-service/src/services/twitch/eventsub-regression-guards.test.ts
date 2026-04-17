@@ -6,6 +6,7 @@ import {
     decideTelegramStreamOffline,
     isStreamOnlineTransition,
     isStreamOnlineTransitionWithRecentOffline,
+    decideOnlineObservationTransition,
     shouldSendTelegramStreamOnlineForStartedAt,
     shouldSkipEventSubSubscribeCooldown,
     streamStartedAtToMs
@@ -333,6 +334,35 @@ describe('isStreamOnlineTransitionWithRecentOffline', () => {
                 offlineBounceWindowMs: 10_000
             })
         ).toBe(false);
+    });
+});
+
+describe('decideOnlineObservationTransition', () => {
+    const windowMs = 10_000;
+    const now = 1_000_000;
+
+    it('skip_same_stream: online и тот же started_at, оффлайна недавно не было (рестарт бота во время стрима)', () => {
+        expect(
+            decideOnlineObservationTransition({
+                lastKnown: { status: 'online', startedAtMs: 100 },
+                observedStartedAtMs: 100,
+                lastOfflineAtMs: null,
+                nowMs: now,
+                offlineBounceWindowMs: windowMs
+            })
+        ).toEqual({ action: 'skip_same_stream' });
+    });
+
+    it('proceed offline_bounce_same_started_at: online, started_at тот же, но был недавний оффлайн (глюк started_at)', () => {
+        expect(
+            decideOnlineObservationTransition({
+                lastKnown: { status: 'online', startedAtMs: 100 },
+                observedStartedAtMs: 100,
+                lastOfflineAtMs: now - 1000,
+                nowMs: now,
+                offlineBounceWindowMs: windowMs
+            })
+        ).toEqual({ action: 'proceed', transition: 'offline_bounce_same_started_at' });
     });
 });
 

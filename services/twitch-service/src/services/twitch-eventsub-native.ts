@@ -35,6 +35,7 @@ import {
     computeEventSubWatchdogIssues,
     decideTelegramStreamOnline,
     decideTelegramStreamOffline,
+    decideOnlineObservationTransition,
     shouldSendTelegramStreamOnlineForStartedAt,
     shouldSkipEventSubSubscribeCooldown,
     streamStartedAtToMs
@@ -992,13 +993,13 @@ export class TwitchEventSubNative {
         const prevKnownStatus = this.announcementState.lastKnownStreamStatus;
         const prevKnownStartedAt = this.announcementState.lastKnownStreamStartedAt;
         const recentOfflineWindowMs = 6 * 60 * 1000; // 6 минут: "стрим перезапустился/моргнул" и started_at не обновился
-        const offlineRecently =
-            this.announcementState.lastStreamOfflineAt != null
-            && Date.now() - this.announcementState.lastStreamOfflineAt < recentOfflineWindowMs;
-
-        const isOnlineTransitionByPersistedState =
-            prevKnownStatus !== 'online'
-            || (prevKnownStartedAt !== null && prevKnownStartedAt !== startedAtMs);
+        const observationTransition = decideOnlineObservationTransition({
+            lastKnown: { status: prevKnownStatus, startedAtMs: prevKnownStartedAt },
+            observedStartedAtMs: startedAtMs,
+            lastOfflineAtMs: this.announcementState.lastStreamOfflineAt,
+            nowMs: Date.now(),
+            offlineBounceWindowMs: recentOfflineWindowMs
+        });
 
         this.announcementState.currentStreamPeak = null;
         this.announcementState.currentStreamStartTime = startedAtMs;
@@ -1017,13 +1018,13 @@ export class TwitchEventSubNative {
             const forceStartupTelegram = envTrue(process.env.TELEGRAM_FORCE_STREAM_ONLINE_ON_STARTUP);
             const prevStatus = prevKnownStatus;
             const prevStartedAt = prevKnownStartedAt;
-            if (!isOnlineTransitionByPersistedState && !offlineRecently) {
+            if (observationTransition.action === 'skip_same_stream') {
                 // Это не новый старт, а повторное обнаружение того же эфира (обычно рестарт/ре-коннект)
                 console.error('⏭️ Стрим уже был в состоянии online (тот же started_at) — TG-уведомление не отправляем');
                 console.warn(
                     `[DIAG][TG][ONLINE][eventsub] decision=skip_same_stream prev=${prevStatus} prevStartedAt=${fmtMs(prevStartedAt)} ` +
                         `nowStartedAt=${fmtMs(startedAtMs)} initialStartup=${this.isInitialStartup} startupStatus=${this.startupStreamStatus} ` +
-                        `forceStartup=${forceStartupTelegram} offlineRecently=${offlineRecently} lastOfflineAt=${fmtMs(this.announcementState.lastStreamOfflineAt)}`
+                        `forceStartup=${forceStartupTelegram} transition=${observationTransition.action} lastOfflineAt=${fmtMs(this.announcementState.lastStreamOfflineAt)}`
                 );
                 log('TELEGRAM_STREAM_ONLINE_SKIPPED_DUPLICATE', {
                     source: 'eventsub',
@@ -1031,7 +1032,7 @@ export class TwitchEventSubNative {
                     startedAt: event.started_at,
                 });
             } else {
-            if (!isOnlineTransitionByPersistedState && offlineRecently) {
+            if (observationTransition.transition === 'offline_bounce_same_started_at') {
                 console.warn(
                     `[DIAG][TG][ONLINE][eventsub] decision=send_offline_bounce_same_started_at prev=${prevStatus} prevStartedAt=${fmtMs(prevStartedAt)} ` +
                         `nowStartedAt=${fmtMs(startedAtMs)} lastOfflineAt=${fmtMs(this.announcementState.lastStreamOfflineAt)}`
@@ -1612,15 +1613,20 @@ export class TwitchEventSubNative {
                 // Новизна старта определяем по персистентному lastKnownStreamStatus/startedAt.
                 const prevStatus = this.announcementState.lastKnownStreamStatus;
                 const prevStartedAt = this.announcementState.lastKnownStreamStartedAt;
-                const isOnlineTransition =
-                    prevStatus !== 'online' || (prevStartedAt !== null && prevStartedAt !== startedAtMs);
+                const pollingTransition = decideOnlineObservationTransition({
+                    lastKnown: { status: prevStatus, startedAtMs: prevStartedAt },
+                    observedStartedAtMs: startedAtMs,
+                    lastOfflineAtMs: this.announcementState.lastStreamOfflineAt,
+                    nowMs: Date.now(),
+                    offlineBounceWindowMs: 6 * 60 * 1000
+                });
 
                 // Обновляем персистентное состояние сразу
                 this.announcementState.lastKnownStreamStatus = 'online';
                 this.announcementState.lastKnownStreamStartedAt = startedAtMs;
                 saveAnnouncementState(this.announcementState);
 
-                if (wasOffline && isOnlineTransition) {
+                if (wasOffline && pollingTransition.action === 'proceed') {
                     const pseudoEvent: TwitchEventSubStreamOnlineEvent = {
                         broadcaster_user_id: this.broadcasterId,
                         broadcaster_user_login: (stream.user_login ?? stream.user_name ?? this.broadcasterName ?? '').toLowerCase(),

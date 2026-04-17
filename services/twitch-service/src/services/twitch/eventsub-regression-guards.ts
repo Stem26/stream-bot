@@ -189,6 +189,44 @@ export function isStreamOnlineTransitionWithRecentOffline(params: {
     return params.nowMs - params.lastOfflineAtMs < params.offlineBounceWindowMs;
 }
 
+export type OnlineObservationTransitionDecision =
+    | { action: 'skip_same_stream' }
+    | { action: 'proceed'; transition: 'offline_to_online' | 'new_started_at' | 'offline_bounce_same_started_at' };
+
+/**
+ * Высокоуровневое решение: считать ли наблюдение online "новым стартом".
+ * Используется перед решением TG-уведомлений, чтобы не слать дубли на рестартах,
+ * но при этом слать при bounce после недавнего оффлайна даже если started_at не обновился.
+ */
+export function decideOnlineObservationTransition(params: {
+    lastKnown: LastKnownStreamState;
+    observedStartedAtMs: number;
+    lastOfflineAtMs: number | null;
+    nowMs: number;
+    offlineBounceWindowMs: number;
+}): OnlineObservationTransitionDecision {
+    const { lastKnown, observedStartedAtMs, lastOfflineAtMs, nowMs, offlineBounceWindowMs } = params;
+
+    if (lastKnown.status !== 'online') {
+        return { action: 'proceed', transition: 'offline_to_online' };
+    }
+
+    if (lastKnown.startedAtMs === null) {
+        // online, но started_at неизвестен — не рискуем пропустить уведомление.
+        return { action: 'proceed', transition: 'offline_to_online' };
+    }
+
+    if (lastKnown.startedAtMs !== observedStartedAtMs) {
+        return { action: 'proceed', transition: 'new_started_at' };
+    }
+
+    if (lastOfflineAtMs != null && nowMs - lastOfflineAtMs < offlineBounceWindowMs) {
+        return { action: 'proceed', transition: 'offline_bounce_same_started_at' };
+    }
+
+    return { action: 'skip_same_stream' };
+}
+
 export type TelegramStreamOfflineDecision =
     | { action: 'skip'; reason: 'already_offline' }
     | { action: 'send' };
