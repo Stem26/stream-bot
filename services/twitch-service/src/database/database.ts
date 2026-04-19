@@ -51,11 +51,25 @@ export async function queryOne<T = any>(text: string, params?: any[]): Promise<T
   return rows[0] ?? null;
 }
 
+let closingPool = false;
+
 export async function closeDatabase(): Promise<void> {
-  if (pool) {
+  if (!pool) {
+    return; // Уже закрыто
+  }
+  
+  if (closingPool) {
+    console.log('[DATABASE] Закрытие уже в процессе, пропускаем повторный вызов');
+    return;
+  }
+  
+  closingPool = true;
+  try {
     await pool.end();
     pool = null;
     console.log('[DATABASE] Подключение к БД закрыто');
+  } finally {
+    closingPool = false;
   }
 }
 

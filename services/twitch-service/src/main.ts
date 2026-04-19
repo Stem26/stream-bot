@@ -9,6 +9,14 @@ import { log } from './utils/event-logger';
 import { initDatabase, closeDatabase, query, queryOne } from './database/database';
 import { startWebServer, getBroadcastDuelBannedChanged, setOnCommandsChangedCallback, setOnCommandExecuteCallback, setOnLinksSendCallback, setOnEnableDuelsCallback, setOnDisableDuelsCallback, setOnPardonAllCallback, setGetDuelBannedListCallback, setPardonDuelUserCallback, setGetDuelsStatusCallback, setGetDuelCooldownSkipCallback, setSetDuelCooldownSkipCallback, setGetDuelOverlaySyncEnabledCallback, setSetDuelOverlaySyncEnabledCallback, setOnDuelConfigUpdatedCallback, setOnDuelDailyConfigUpdatedCallback, setOnLinksConfigUpdatedCallback, setOnRaidConfigUpdatedCallback, setOnChatModerationConfigUpdatedCallback, setOnPartyConfigUpdatedCallback, setOnFriendsShoutoutConfigUpdatedCallback, getRaidMessageFromDb } from './web/server';
 
+/** Завершение при фатальных ошибках старта: в production — для PM2; в dev — не рвём процесс без надобности. */
+function exitProcessForRecovery(code: number, reason: string): void {
+    if (process.env.NODE_ENV === 'production') {
+        process.exit(code);
+    }
+    console.warn(`⚠️ [dev] exit(${code}) не выполнен (${reason}), NODE_ENV=${process.env.NODE_ENV ?? 'undefined'}`);
+}
+
 async function main() {
     const config = loadConfig();
 
@@ -84,6 +92,8 @@ async function main() {
     // Monitor stream online/offline -> отправляет уведомления в TG + announcement в Twitch
     const streamMonitor = new TwitchEventSubNative(telegramBot.telegram);
 
+    const nightBotMonitor = new NightBotMonitor();
+
     // Провайдер ротации должен быть задан ДО connect(): иначе при session_welcome + checkCurrentStreamStatus
     // startLinkRotation() увидит getLinkRotationItems === null и навсегда пропустит ротацию до следующего оффлайна.
     streamMonitor.setLinkRotationProvider(
@@ -144,6 +154,7 @@ async function main() {
         }
 
         if (attempt < MAX_CONNECT_RETRIES) {
+            streamMonitor.clearPendingReconnectForExternalRetry();
             const delayMs = INITIAL_RETRY_DELAY_MS * Math.pow(2, attempt - 1);
             console.warn(`⚠️ Подключение не удалось, повтор через ${delayMs}ms...`);
             await new Promise(resolve => setTimeout(resolve, delayMs));
@@ -153,7 +164,7 @@ async function main() {
     if (!connected) {
         console.error('❌ КРИТИЧЕСКАЯ ОШИБКА: Не удалось подключиться к Twitch EventSub после всех попыток');
         console.error('❌ Завершаем процесс для перезапуска через PM2...');
-        process.exit(1);
+        exitProcessForRecovery(1, 'EventSub connect failed after retries');
     }
 
     try {
@@ -169,9 +180,6 @@ async function main() {
     setOnChatModerationConfigUpdatedCallback(() => {
         nightBotMonitor.invalidateSpamConfigCache();
     });
-
-    // Chat monitor / commands / moderation
-    const nightBotMonitor = new NightBotMonitor();
 
     setOnPartyConfigUpdatedCallback(() => {
         nightBotMonitor.reloadPartyConfigAndCommands();
@@ -284,7 +292,7 @@ async function main() {
     if (!chatConnected) {
         console.error('❌ КРИТИЧЕСКАЯ ОШИБКА: Не удалось подключиться к Twitch чату после всех попыток');
         console.error('❌ Завершаем процесс для перезапуска через PM2...');
-        process.exit(1);
+        exitProcessForRecovery(1, 'NightBot chat connect failed after retries');
     }
 
     // Связываем streamMonitor с chatClient для отправки приветственных сообщений
@@ -296,7 +304,14 @@ async function main() {
     console.log('✅ Twitch сервис запущен');
 
     // Graceful shutdown
+    let isShuttingDown = false;
     const shutdown = async (signal: string) => {
+        if (isShuttingDown) {
+            console.log(`⚠️ Shutdown уже запущен, игнорируем повторный сигнал ${signal}`);
+            return;
+        }
+        isShuttingDown = true;
+        
         console.log(`\n⚠️ Получен сигнал ${signal}, завершаем работу...`);
         log('BOT_STOP', { reason: signal });
         
@@ -319,7 +334,7 @@ async function main() {
                 error: error?.message || String(error),
                 stack: error?.stack
             });
-            await closeDatabase(); // Закрываем БД даже при ошибке
+            // closeDatabase() уже вызван выше или защищён от повторного вызова
             process.exit(1);
         }
     };
@@ -337,5 +352,5 @@ main().catch((err: any) => {
         stack: err?.stack,
         fatal: true
     });
-    process.exit(1);
+    exitProcessForRecovery(1, 'main() rejected');
 });

@@ -13,9 +13,9 @@ module.exports = {
       watch: false,
       max_memory_restart: '450M',
       min_uptime: 10000, // 10 секунд - минимальное время работы для "успешного" старта
-      max_restarts: 10, // макс 10 рестартов за 1 минуту перед тем как PM2 остановит процесс
-      restart_delay: 5000,
-      exp_backoff_restart_delay: 1000, // начальная задержка 1 секунда, растёт экспоненциально
+      restart_delay: 5000, // начальная задержка 5 секунд
+      exp_backoff_restart_delay: 2000, // задержка растёт: 2s, 4s, 8s, 16s, 32s, затем остаётся на 32s
+      max_restart_delay: 60000, // максимальная задержка между рестартами - 60 секунд
       error_file: '~/.pm2/logs/telegram-bot-error.log',
       out_file: '~/.pm2/logs/telegram-bot-out.log',
       log_date_format: ''
@@ -34,9 +34,9 @@ module.exports = {
       watch: false,
       max_memory_restart: '450M',
       min_uptime: 10000, // 10 секунд - минимальное время работы для "успешного" старта
-      max_restarts: 10, // макс 10 рестартов за 1 минуту перед тем как PM2 остановит процесс
-      restart_delay: 5000,
-      exp_backoff_restart_delay: 1000, // начальная задержка 1 секунда, растёт экспоненциально
+      restart_delay: 5000, // начальная задержка 5 секунд
+      exp_backoff_restart_delay: 2000, // задержка растёт: 2s, 4s, 8s, 16s, 32s, затем остаётся на 32s
+      max_restart_delay: 60000, // максимальная задержка между рестартами - 60 секунд
       error_file: '~/.pm2/logs/twitch-bot-error.log',
       out_file: '~/.pm2/logs/twitch-bot-out.log',
       log_date_format: ''

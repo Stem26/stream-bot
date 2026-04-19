@@ -50,7 +50,10 @@ export function computeEventSubWatchdogIssues(params: {
     return issues;
 }
 
-/** true — не запускать полный subscribeToEvents (cooldown для той же session_id). */
+/**
+ * true — не запускать полный subscribeToEvents (cooldown для той же session_id).
+ * При смене session_id сравнение с lastSubscribeCooldownSessionId ложно → подписки не режутся.
+ */
 export function shouldSkipEventSubSubscribeCooldown(params: {
     now: number;
     batchSessionId: string;
