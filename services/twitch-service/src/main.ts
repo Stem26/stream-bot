@@ -122,13 +122,39 @@ async function main() {
         streamMonitor.setBroadcastAccessToken(config.twitch.broadcastAccessToken);
     }
 
-    await streamMonitor.connect(
-        config.twitch.channel,
-        config.twitch.accessToken,
-        config.twitch.clientId,
-        config.telegram.channelId,
-        config.telegram.chatId
-    );
+    // Retry подключения с exponential backoff (до 5 попыток)
+    const MAX_CONNECT_RETRIES = 5;
+    const INITIAL_RETRY_DELAY_MS = 2000;
+    let connected = false;
+
+    for (let attempt = 1; attempt <= MAX_CONNECT_RETRIES; attempt++) {
+        console.log(`🔌 Попытка подключения к Twitch EventSub (${attempt}/${MAX_CONNECT_RETRIES})...`);
+        
+        connected = await streamMonitor.connect(
+            config.twitch.channel,
+            config.twitch.accessToken,
+            config.twitch.clientId,
+            config.telegram.channelId,
+            config.telegram.chatId
+        );
+
+        if (connected) {
+            console.log(`✅ Подключение к EventSub успешно (попытка ${attempt})`);
+            break;
+        }
+
+        if (attempt < MAX_CONNECT_RETRIES) {
+            const delayMs = INITIAL_RETRY_DELAY_MS * Math.pow(2, attempt - 1);
+            console.warn(`⚠️ Подключение не удалось, повтор через ${delayMs}ms...`);
+            await new Promise(resolve => setTimeout(resolve, delayMs));
+        }
+    }
+
+    if (!connected) {
+        console.error('❌ КРИТИЧЕСКАЯ ОШИБКА: Не удалось подключиться к Twitch EventSub после всех попыток');
+        console.error('❌ Завершаем процесс для перезапуска через PM2...');
+        process.exit(1);
+    }
 
     try {
         if (streamMonitor.getStreamStatus()) {
@@ -230,12 +256,36 @@ async function main() {
         void clearAllRaidDuelBoosts();
     });
 
-    await nightBotMonitor.connect(
-        config.twitch.channel,
-        config.twitch.accessToken,
-        config.twitch.clientId,
-        config.twitch.broadcastAccessToken
-    );
+    // Retry подключения к чату с exponential backoff (до 5 попыток)
+    let chatConnected = false;
+
+    for (let attempt = 1; attempt <= MAX_CONNECT_RETRIES; attempt++) {
+        console.log(`💬 Попытка подключения к Twitch чату (${attempt}/${MAX_CONNECT_RETRIES})...`);
+        
+        chatConnected = await nightBotMonitor.connect(
+            config.twitch.channel,
+            config.twitch.accessToken,
+            config.twitch.clientId,
+            config.twitch.broadcastAccessToken
+        );
+
+        if (chatConnected) {
+            console.log(`✅ Подключение к чату успешно (попытка ${attempt})`);
+            break;
+        }
+
+        if (attempt < MAX_CONNECT_RETRIES) {
+            const delayMs = INITIAL_RETRY_DELAY_MS * Math.pow(2, attempt - 1);
+            console.warn(`⚠️ Подключение к чату не удалось, повтор через ${delayMs}ms...`);
+            await new Promise(resolve => setTimeout(resolve, delayMs));
+        }
+    }
+
+    if (!chatConnected) {
+        console.error('❌ КРИТИЧЕСКАЯ ОШИБКА: Не удалось подключиться к Twitch чату после всех попыток');
+        console.error('❌ Завершаем процесс для перезапуска через PM2...');
+        process.exit(1);
+    }
 
     // Связываем streamMonitor с chatClient для отправки приветственных сообщений
     streamMonitor.setChatSender(
