@@ -29,6 +29,10 @@ export class TelegramSender {
     async sendMessage(chatId: string, message: string, options?: any): Promise<any> {
         return this.telegram.sendMessage(chatId, message, options);
     }
+
+    async deleteMessage(chatId: string, messageId: number): Promise<any> {
+        return this.telegram.deleteMessage(chatId, messageId);
+    }
 }
 
 // ===== Telegram Presentation =====

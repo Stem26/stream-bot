@@ -72,6 +72,8 @@ interface AnnouncementState {
     lastKnownStreamStatus: 'online' | 'offline';
     /** started_at последнего известного онлайна (ms), чтобы отличать новый эфир от текущего. */
     lastKnownStreamStartedAt: number | null;
+    currentStreamOnlineTelegramChatId: string | null;
+    currentStreamOnlineTelegramMessageId: number | null;
     /**
      * Когда мы в последний раз зафиксировали оффлайн (EventSub или polling).
      * Нужен, чтобы считать online "новым стартом" после реального оффлайна,
@@ -91,6 +93,8 @@ function loadAnnouncementState(): AnnouncementState {
         lastNotifiedStreamStartedAt: null,
         lastKnownStreamStatus: 'offline',
         lastKnownStreamStartedAt: null,
+        currentStreamOnlineTelegramChatId: null,
+        currentStreamOnlineTelegramMessageId: null,
         lastStreamOfflineAt: null
     };
 
@@ -1354,6 +1358,8 @@ export class TwitchEventSubNative {
 
         log('STREAM_OFFLINE', { channel: event.broadcaster_user_name });
 
+        await this.deleteTelegramStreamOnlineMessage();
+
         if (this.telegramChatId && result) {
             await this.sendTelegramOfflineNotification(event, result);
         }
@@ -2220,6 +2226,51 @@ export class TwitchEventSubNative {
         saveAnnouncementStateImmediate(this.announcementState);
     }
 
+    private rememberTelegramStreamOnlineMessage(chatId: string, message: any): void {
+        const messageId = message?.message_id;
+        if (typeof messageId !== 'number') {
+            console.warn('Telegram не вернул message_id для уведомления о старте стрима');
+            return;
+        }
+
+        this.announcementState.currentStreamOnlineTelegramChatId = chatId;
+        this.announcementState.currentStreamOnlineTelegramMessageId = messageId;
+        saveAnnouncementStateImmediate(this.announcementState);
+    }
+
+    private clearTelegramStreamOnlineMessageState(): void {
+        this.announcementState.currentStreamOnlineTelegramChatId = null;
+        this.announcementState.currentStreamOnlineTelegramMessageId = null;
+        saveAnnouncementStateImmediate(this.announcementState);
+    }
+
+    private async deleteTelegramStreamOnlineMessage(): Promise<void> {
+        const chatId = this.announcementState.currentStreamOnlineTelegramChatId;
+        const messageId = this.announcementState.currentStreamOnlineTelegramMessageId;
+        if (!chatId || typeof messageId !== 'number') {
+            return;
+        }
+
+        try {
+            await this.telegramSender.deleteMessage(chatId, messageId);
+            console.error(`Telegram-уведомление о старте стрима удалено (message_id: ${messageId})`);
+            log('TELEGRAM_STREAM_ONLINE_DELETED' as any, {
+                telegramChatId: chatId,
+                telegramMessageId: messageId
+            });
+        } catch (error) {
+            console.error('Не удалось удалить Telegram-уведомление о старте стрима:', error);
+            log('TELEGRAM_STREAM_ONLINE_DELETE_FAILED' as any, {
+                telegramChatId: chatId,
+                telegramMessageId: messageId,
+                error: error instanceof Error ? error.message : String(error),
+                errorType: (error as any).code || 'UNKNOWN'
+            });
+        } finally {
+            this.clearTelegramStreamOnlineMessageState();
+        }
+    }
+
     private async sendTelegramStreamNotification(event: TwitchEventSubStreamOnlineEvent): Promise<void> {
         if (!this.telegramChannelId) return;
 
@@ -2269,11 +2320,12 @@ export class TwitchEventSubNative {
             let lastError: Error | null = null;
             for (let attempt = 1; attempt <= 3; attempt++) {
                 try {
-                    await this.telegramSender.sendMessage(this.telegramChannelId, message, {
+                    const sentMessage = await this.telegramSender.sendMessage(this.telegramChannelId, message, {
                         parse_mode: 'HTML',
                         link_preview_options: { is_disabled: false }
                     });
 
+                    this.rememberTelegramStreamOnlineMessage(this.telegramChannelId, sentMessage);
                     this.markTelegramStreamStartNotified(event.started_at);
 
                     console.error('✅ Уведомление о начале стрима отправлено в Telegram');
