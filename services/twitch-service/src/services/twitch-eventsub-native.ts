@@ -268,6 +268,11 @@ interface StreamTrackingResult {
     broadcasterName: string;
 }
 
+type LoggedStreamProbeState = {
+    online: boolean;
+    startedAt: string | null;
+};
+
 export class TwitchEventSubNative {
     private readonly API_META = {
         streams: {
@@ -369,6 +374,7 @@ export class TwitchEventSubNative {
     private telegramMessageBuilder = new TelegramMessageBuilder();
     private lastStreamsSkipLogAt: number = 0;
     private lastAnnouncementsSkipLogAt: number = 0;
+    private lastLoggedStreamProbeState: LoggedStreamProbeState | null = null;
 
     constructor(telegram: Telegram) {
         this.telegramSender = new TelegramSender(telegram);
@@ -1868,6 +1874,52 @@ export class TwitchEventSubNative {
             };
     }
 
+    private logStreamProbeStateIfChanged(
+        reason: string,
+        next: LoggedStreamProbeState,
+        extra: Record<string, unknown> = {}
+    ): void {
+        const prev = this.lastLoggedStreamProbeState;
+        const statusChanged = !prev || prev.online !== next.online;
+        const metadataChanged = !!prev
+            && next.online
+            && prev.startedAt !== next.startedAt;
+
+        if (!statusChanged && !metadataChanged) {
+            return;
+        }
+
+        if (statusChanged) {
+            log('STREAM_STATUS_CHANGED', {
+                reason,
+                from: prev ? (prev.online ? 'online' : 'offline') : 'unknown',
+                to: next.online ? 'online' : 'offline',
+                startedAt: next.startedAt,
+                ...extra
+            });
+        }
+
+        if (metadataChanged) {
+            log('STREAM_METADATA_CHANGED', {
+                reason,
+                previous: {
+                    startedAt: prev.startedAt
+                },
+                current: {
+                    startedAt: next.startedAt
+                },
+                ...extra
+            });
+        }
+
+        this.lastLoggedStreamProbeState = next;
+    }
+
+    private shouldPrintStreamProbeConsole(next: LoggedStreamProbeState): boolean {
+        const prev = this.lastLoggedStreamProbeState;
+        return !prev || prev.online !== next.online || (next.online && prev.startedAt !== next.startedAt);
+    }
+
     private async checkCurrentStreamStatus(reason: string = 'startup'): Promise<void> {
         if (this.statusProbeInFlight) return;
         this.statusProbeInFlight = true;
@@ -1908,14 +1960,17 @@ export class TwitchEventSubNative {
 
                 const wasOffline = !this.isStreamOnline;
                 this.isStreamOnline = true;
-                log('STREAM_STATUS_PROBE', {
+                this.logStreamProbeStateIfChanged(
                     reason,
-                    online: true,
-                    viewers: stream.viewer_count,
-                    title: stream.title,
-                    startedAt: stream.started_at,
-                    probeRuntimeAlreadyOnline: !wasOffline && reason !== 'startup'
-                });
+                    {
+                        online: true,
+                        startedAt: stream.started_at
+                    },
+                    {
+                        viewers: stream.viewer_count,
+                        probeRuntimeAlreadyOnline: !wasOffline && reason !== 'startup'
+                    }
+                );
                 if (wasOffline) {
                     log('STREAM_ONLINE_RECOVERED', {
                         channel: stream.user_name || this.broadcasterName,
@@ -2066,7 +2121,10 @@ export class TwitchEventSubNative {
                     this.startupStreamStatus = 'offline';
                 }
                 console.error(`📊 Статус стрима: 🔴 Оффлайн`);
-                log('STREAM_STATUS_PROBE', { reason, online: false });
+                this.logStreamProbeStateIfChanged(reason, {
+                    online: false,
+                    startedAt: null
+                });
             }
         } catch (error) {
             console.error('⚠️ Не удалось получить статус стрима:', error);
@@ -2191,9 +2249,17 @@ export class TwitchEventSubNative {
 
             this.currentStreamStats.viewerCounts.push(actualViewers);
 
-            if (this.announcementState.currentStreamPeak === null || actualViewers > this.announcementState.currentStreamPeak) {
+            const previousPeak = this.announcementState.currentStreamPeak;
+            if (previousPeak === null || actualViewers > previousPeak) {
                 this.announcementState.currentStreamPeak = actualViewers;
                 saveAnnouncementState(this.announcementState);
+                log('STREAM_VIEWERS_PEAK', {
+                    previousPeak,
+                    peak: actualViewers,
+                    viewersApi: viewersAPI,
+                    chattersCount: chattersCount ?? null,
+                    startedAt: this.currentStreamStats.startTime.toISOString()
+                });
             }
 
             if (chattersCount) {
