@@ -1955,19 +1955,21 @@ export class TwitchEventSubNative {
                     });
                 }
                 const stream = streamResult.data;
-                console.error(`📊 Статус стрима: 🟢 В ЭФИРЕ`);
-                console.error(`   🎮 Игра: ${stream.game_name || 'Не указана'}`);
-                console.error(`   📝 Название: ${stream.title}`);
-                console.error(`   👥 Зрителей: ${stream.viewer_count}`);
-
+                const nextProbeState: LoggedStreamProbeState = {
+                    online: true,
+                    startedAt: stream.started_at
+                };
+                if (this.shouldPrintStreamProbeConsole(nextProbeState)) {
+                    console.error(`📊 Статус стрима: 🟢 В ЭФИРЕ`);
+                    console.error(`   🎮 Игра: ${stream.game_name || 'Не указана'}`);
+                    console.error(`   📝 Название: ${stream.title}`);
+                    console.error(`   👥 Зрителей: ${stream.viewer_count}`);
+                }
                 const wasOffline = !this.isStreamOnline;
                 this.isStreamOnline = true;
                 this.logStreamProbeStateIfChanged(
                     reason,
-                    {
-                        online: true,
-                        startedAt: stream.started_at
-                    },
+                    nextProbeState,
                     {
                         viewers: stream.viewer_count,
                         probeRuntimeAlreadyOnline: !wasOffline && reason !== 'startup'
@@ -2100,10 +2102,17 @@ export class TwitchEventSubNative {
                         startedAtMs: this.announcementState.lastKnownStreamStartedAt
                     }
                 });
-                console.warn(
-                    `[DIAG][TG][OFFLINE][polling] decision=${offlineDecision.action} lastKnown=${this.announcementState.lastKnownStreamStatus} ` +
-                        `lastKnownStartedAt=${fmtMs(this.announcementState.lastKnownStreamStartedAt)} wasRuntimeOnline=${wasRuntimeOnline} reason=${reason}`
-                );
+                const nextProbeState: LoggedStreamProbeState = {
+                    online: false,
+                    startedAt: null
+                };
+                const shouldPrintProbeStatus = this.shouldPrintStreamProbeConsole(nextProbeState);
+                if (shouldPrintProbeStatus || offlineDecision.action === 'send') {
+                    console.warn(
+                        `[DIAG][TG][OFFLINE][polling] decision=${offlineDecision.action} lastKnown=${this.announcementState.lastKnownStreamStatus} ` +
+                            `lastKnownStartedAt=${fmtMs(this.announcementState.lastKnownStreamStartedAt)} wasRuntimeOnline=${wasRuntimeOnline} reason=${reason}`
+                    );
+                }
 
                 if (offlineDecision.action === 'send' && (wasKnownOnline || wasRuntimeOnline)) {
                     const pseudoEvent: TwitchEventSubStreamOfflineEvent = {
@@ -2122,11 +2131,10 @@ export class TwitchEventSubNative {
                 if (reason === 'startup') {
                     this.startupStreamStatus = 'offline';
                 }
-                console.error(`📊 Статус стрима: 🔴 Оффлайн`);
-                this.logStreamProbeStateIfChanged(reason, {
-                    online: false,
-                    startedAt: null
-                });
+                if (shouldPrintProbeStatus) {
+                    console.error(`📊 Статус стрима: 🔴 Оффлайн`);
+                }
+                this.logStreamProbeStateIfChanged(reason, nextProbeState);
             }
         } catch (error) {
             console.error('⚠️ Не удалось получить статус стрима:', error);
