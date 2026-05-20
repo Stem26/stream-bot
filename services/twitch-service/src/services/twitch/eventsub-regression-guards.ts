@@ -102,6 +102,37 @@ export function shouldSendTelegramStreamOnlineForStartedAt(
     return lastNotifiedStreamStartedAt !== ms;
 }
 
+export type TelegramStreamOnlineMessageState = {
+    currentStreamOnlineTelegramChatId: string | null;
+    currentStreamOnlineTelegramMessageId: number | null;
+};
+
+export type TelegramStreamOnlineMessageRef = {
+    chatId: string;
+    messageId: number;
+};
+
+export function extractTelegramMessageId(message: unknown): number | null {
+    const messageId = (message as { message_id?: unknown } | null)?.message_id;
+    if (typeof messageId !== 'number' || !Number.isInteger(messageId) || messageId <= 0) {
+        return null;
+    }
+    return messageId;
+}
+
+export function resolveTelegramStreamOnlineMessageToDelete(
+    state: TelegramStreamOnlineMessageState
+): TelegramStreamOnlineMessageRef | null {
+    const chatId = state.currentStreamOnlineTelegramChatId;
+    const messageId = state.currentStreamOnlineTelegramMessageId;
+
+    if (!chatId || typeof messageId !== 'number' || !Number.isInteger(messageId) || messageId <= 0) {
+        return null;
+    }
+
+    return { chatId, messageId };
+}
+
 export type StartupStreamStatus = 'online' | 'offline' | 'unknown';
 
 export type TelegramStreamOnlineDecision =

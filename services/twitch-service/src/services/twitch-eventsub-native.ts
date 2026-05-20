@@ -36,6 +36,8 @@ import {
     decideTelegramStreamOnline,
     decideTelegramStreamOffline,
     decideOnlineObservationTransition,
+    extractTelegramMessageId,
+    resolveTelegramStreamOnlineMessageToDelete,
     shouldSendTelegramStreamOnlineForStartedAt,
     shouldSkipEventSubSubscribeCooldown,
     streamStartedAtToMs
@@ -2293,8 +2295,8 @@ export class TwitchEventSubNative {
     }
 
     private rememberTelegramStreamOnlineMessage(chatId: string, message: any): void {
-        const messageId = message?.message_id;
-        if (typeof messageId !== 'number') {
+        const messageId = extractTelegramMessageId(message);
+        if (messageId === null) {
             console.warn('Telegram не вернул message_id для уведомления о старте стрима');
             return;
         }
@@ -2311,22 +2313,22 @@ export class TwitchEventSubNative {
     }
 
     private async deleteTelegramStreamOnlineMessage(): Promise<void> {
-        const chatId = this.announcementState.currentStreamOnlineTelegramChatId;
-        const messageId = this.announcementState.currentStreamOnlineTelegramMessageId;
-        if (!chatId || typeof messageId !== 'number') {
+        const target = resolveTelegramStreamOnlineMessageToDelete(this.announcementState);
+        if (!target) {
             return;
         }
+        const { chatId, messageId } = target;
 
         try {
             await this.telegramSender.deleteMessage(chatId, messageId);
             console.error(`Telegram-уведомление о старте стрима удалено (message_id: ${messageId})`);
-            log('TELEGRAM_STREAM_ONLINE_DELETED' as any, {
+            log('TELEGRAM_STREAM_ONLINE_DELETED', {
                 telegramChatId: chatId,
                 telegramMessageId: messageId
             });
         } catch (error) {
             console.error('Не удалось удалить Telegram-уведомление о старте стрима:', error);
-            log('TELEGRAM_STREAM_ONLINE_DELETE_FAILED' as any, {
+            log('TELEGRAM_STREAM_ONLINE_DELETE_FAILED', {
                 telegramChatId: chatId,
                 telegramMessageId: messageId,
                 error: error instanceof Error ? error.message : String(error),

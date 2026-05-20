@@ -4,9 +4,11 @@ import {
     computeEventSubWatchdogIssues,
     decideTelegramStreamOnline,
     decideTelegramStreamOffline,
+    extractTelegramMessageId,
     isStreamOnlineTransition,
     isStreamOnlineTransitionWithRecentOffline,
     decideOnlineObservationTransition,
+    resolveTelegramStreamOnlineMessageToDelete,
     shouldSendTelegramStreamOnlineForStartedAt,
     shouldSkipEventSubSubscribeCooldown,
     streamStartedAtToMs
@@ -203,6 +205,43 @@ describe('Telegram stream start dedup', () => {
 
     it('при невалидном started_at разрешает (как в проде — не блокируем)', () => {
         expect(shouldSendTelegramStreamOnlineForStartedAt(123, 'bad')).toBe(true);
+    });
+});
+
+describe('Telegram stream online message deletion state', () => {
+    it('extracts a Telegram message_id returned after sending the online notification', () => {
+        expect(extractTelegramMessageId({ message_id: 42 })).toBe(42);
+    });
+
+    it('ignores missing or invalid Telegram message_id values', () => {
+        expect(extractTelegramMessageId({})).toBeNull();
+        expect(extractTelegramMessageId({ message_id: '42' })).toBeNull();
+        expect(extractTelegramMessageId({ message_id: 0 })).toBeNull();
+        expect(extractTelegramMessageId({ message_id: Number.NaN })).toBeNull();
+    });
+
+    it('resolves the saved online notification target for deletion on stream offline', () => {
+        expect(
+            resolveTelegramStreamOnlineMessageToDelete({
+                currentStreamOnlineTelegramChatId: '-100123',
+                currentStreamOnlineTelegramMessageId: 777
+            })
+        ).toEqual({ chatId: '-100123', messageId: 777 });
+    });
+
+    it('does not try to delete when the saved online notification target is incomplete', () => {
+        expect(
+            resolveTelegramStreamOnlineMessageToDelete({
+                currentStreamOnlineTelegramChatId: null,
+                currentStreamOnlineTelegramMessageId: 777
+            })
+        ).toBeNull();
+        expect(
+            resolveTelegramStreamOnlineMessageToDelete({
+                currentStreamOnlineTelegramChatId: '-100123',
+                currentStreamOnlineTelegramMessageId: null
+            })
+        ).toBeNull();
     });
 });
 
