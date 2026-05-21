@@ -5,12 +5,14 @@ import {
     decideTelegramStreamOnline,
     decideTelegramStreamOffline,
     extractTelegramMessageId,
+    isEventSubReconnectComplete,
     isStreamOnlineTransition,
     isStreamOnlineTransitionWithRecentOffline,
     decideOnlineObservationTransition,
     resolveTelegramStreamOnlineMessageToDelete,
     shouldSendTelegramStreamOnlineForStartedAt,
     shouldSkipEventSubSubscribeCooldown,
+    shouldTeardownZombieConnectionBeforeReconnect,
     streamStartedAtToMs
 } from './eventsub-regression-guards';
 
@@ -57,6 +59,32 @@ describe('computeEventSubWatchdogIssues', () => {
             lastEventSubMessageAt: 0
         });
         expect(issues).not.toContain('websocket_not_open');
+    });
+
+    it('eventsub_not_connected при sessionActive и отсутствии connected', () => {
+        const issues = computeEventSubWatchdogIssues({
+            ...base,
+            connectionState: 'idle',
+            now: 1_000_000,
+            wsSocketOpen: false,
+            lastKeepaliveAt: 0,
+            lastEventSubMessageAt: 0,
+            sessionActive: true
+        });
+        expect(issues).toEqual(['eventsub_not_connected:idle']);
+    });
+
+    it('не считает not_connected без sessionActive в idle', () => {
+        const issues = computeEventSubWatchdogIssues({
+            ...base,
+            connectionState: 'idle',
+            now: 1_000_000,
+            wsSocketOpen: false,
+            lastKeepaliveAt: 0,
+            lastEventSubMessageAt: 0,
+            sessionActive: false
+        });
+        expect(issues).toEqual([]);
     });
 
     it('keepalive_stale если keepalive старше 3× timeout', () => {
@@ -106,6 +134,59 @@ describe('computeEventSubWatchdogIssues', () => {
         });
         expect(issues.filter((i) => i.startsWith('keepalive_stale')).length).toBe(1);
         expect(issues.some((i) => i.includes('silent'))).toBe(false);
+    });
+});
+
+describe('EventSub zombie reconnect guards', () => {
+    it('рвёт zombie-сокет перед watchdog/keepalive reconnect, даже если WebSocket ещё OPEN', () => {
+        expect(
+            shouldTeardownZombieConnectionBeforeReconnect({
+                source: 'keepalive',
+                connectionState: 'connected',
+                wsSocketOpen: true
+            })
+        ).toBe(true);
+    });
+
+    it('рвёт connected-состояние перед watchdog/keepalive reconnect, если сокет уже не OPEN', () => {
+        expect(
+            shouldTeardownZombieConnectionBeforeReconnect({
+                source: 'keepalive',
+                connectionState: 'connected',
+                wsSocketOpen: false
+            })
+        ).toBe(true);
+    });
+
+    it('не рвёт активный сокет для обычного socket_close reconnect', () => {
+        expect(
+            shouldTeardownZombieConnectionBeforeReconnect({
+                source: 'socket_close',
+                connectionState: 'connected',
+                wsSocketOpen: true
+            })
+        ).toBe(false);
+    });
+
+    it('считает reconnect успешным только при connected + OPEN', () => {
+        expect(
+            isEventSubReconnectComplete({
+                connectionState: 'connected',
+                wsSocketOpen: true
+            })
+        ).toBe(true);
+        expect(
+            isEventSubReconnectComplete({
+                connectionState: 'connected',
+                wsSocketOpen: false
+            })
+        ).toBe(false);
+        expect(
+            isEventSubReconnectComplete({
+                connectionState: 'idle',
+                wsSocketOpen: true
+            })
+        ).toBe(false);
     });
 });
 

@@ -37,9 +37,11 @@ import {
     decideTelegramStreamOffline,
     decideOnlineObservationTransition,
     extractTelegramMessageId,
+    isEventSubReconnectComplete,
     resolveTelegramStreamOnlineMessageToDelete,
     shouldSendTelegramStreamOnlineForStartedAt,
     shouldSkipEventSubSubscribeCooldown,
+    shouldTeardownZombieConnectionBeforeReconnect,
     streamStartedAtToMs
 } from './twitch/eventsub-regression-guards';
 
@@ -932,10 +934,16 @@ export class TwitchEventSubNative {
             wsSocketOpen,
             lastKeepaliveAt: this.lastKeepaliveAt,
             lastEventSubMessageAt: this.lastEventSubMessageAt,
-            expectedKeepaliveTimeoutMs: this.expectedKeepaliveTimeoutMs
+            expectedKeepaliveTimeoutMs: this.expectedKeepaliveTimeoutMs,
+            sessionActive: this.watchdogInterval !== null
         });
 
-        if (issues.length === 0) {
+        const watchdogHealthy =
+            issues.length === 0
+            && this.connectionState === 'connected'
+            && wsSocketOpen;
+
+        if (watchdogHealthy) {
             if (this.degradedSinceAt) {
                 const degradedForSec = Math.floor((now - this.degradedSinceAt) / 1000);
                 const watchdogHadReconnectNudge = this.watchdogReconnectTriggeredAt !== null;
@@ -962,7 +970,10 @@ export class TwitchEventSubNative {
                 issues
             });
             // «Тихо умершее» соединение может оставаться OPEN — сразу пробуем reconnect, не ждём только grace + kill.
-            if (this.connectionState === 'connected') {
+            const needsReconnect =
+                this.connectionState === 'connected'
+                || issues.some((i) => i.startsWith('eventsub_not_connected:'));
+            if (needsReconnect) {
                 if (this.reconnectTimeout !== null) {
                     console.log('⏭️ Watchdog: reconnect уже в очереди — пропуск первого мягкого reconnect');
                     return;
@@ -1820,7 +1831,11 @@ export class TwitchEventSubNative {
                     }
                 }
                 try {
-                    if (source === 'keepalive') {
+                    if (shouldTeardownZombieConnectionBeforeReconnect({
+                        source,
+                        connectionState: this.connectionState,
+                        wsSocketOpen: Boolean(this.ws && this.ws.readyState === WebSocket.OPEN)
+                    })) {
                         this.forceTeardownZombieConnection(
                             `scheduled reconnect from ${keepaliveTrigger ?? source}`
                         );
@@ -1828,9 +1843,10 @@ export class TwitchEventSubNative {
 
                     await this.connectWebSocket();
 
-                    const reconnected =
-                        this.connectionState === 'connected'
-                        && Boolean(this.ws && this.ws.readyState === WebSocket.OPEN);
+                    const reconnected = isEventSubReconnectComplete({
+                        connectionState: this.connectionState,
+                        wsSocketOpen: Boolean(this.ws && this.ws.readyState === WebSocket.OPEN)
+                    });
                     if (reconnected) {
                         console.log('✅ Переподключение успешно завершено');
                         log('EVENTSUB_RECONNECT', { status: 'success' });
@@ -1849,6 +1865,12 @@ export class TwitchEventSubNative {
                         context: 'TwitchEventSubNative.handleDisconnect',
                         error: error instanceof Error ? error.message : String(error)
                     });
+                    if (!this.isShuttingDown && this.reconnectTimeout === null) {
+                        this.requestReconnect(
+                            'scheduled_reconnect:connect_failed',
+                            'socket_close'
+                        );
+                    }
                 }
             } finally {
                 this.watchdogExitScheduled = false;

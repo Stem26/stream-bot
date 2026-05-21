@@ -4,6 +4,7 @@
  */
 
 export type EventSubConnectionStateLite = 'idle' | 'connecting' | 'connected';
+export type EventSubReconnectSourceLite = 'socket_close' | 'keepalive';
 
 export function computeEventSubWatchdogIssues(params: {
     now: number;
@@ -13,6 +14,8 @@ export function computeEventSubWatchdogIssues(params: {
     lastKeepaliveAt: number;
     lastEventSubMessageAt: number;
     expectedKeepaliveTimeoutMs: number;
+    /** Watchdog запущен после успешного connect — ожидаем постоянное EventSub-соединение. */
+    sessionActive?: boolean;
 }): string[] {
     const {
         now,
@@ -20,11 +23,17 @@ export function computeEventSubWatchdogIssues(params: {
         wsSocketOpen,
         lastKeepaliveAt,
         lastEventSubMessageAt,
-        expectedKeepaliveTimeoutMs
+        expectedKeepaliveTimeoutMs,
+        sessionActive = false
     } = params;
 
     const issues: string[] = [];
     const thrice = expectedKeepaliveTimeoutMs * 3;
+
+    if (sessionActive && connectionState !== 'connected') {
+        issues.push(`eventsub_not_connected:${connectionState}`);
+        return issues;
+    }
 
     if (connectionState === 'connected' && !wsSocketOpen) {
         issues.push('websocket_not_open');
@@ -48,6 +57,22 @@ export function computeEventSubWatchdogIssues(params: {
     }
 
     return issues;
+}
+
+export function shouldTeardownZombieConnectionBeforeReconnect(params: {
+    source: EventSubReconnectSourceLite;
+    connectionState: EventSubConnectionStateLite;
+    wsSocketOpen: boolean;
+}): boolean {
+    const { source, connectionState, wsSocketOpen } = params;
+    return source === 'keepalive' && (connectionState === 'connected' || wsSocketOpen);
+}
+
+export function isEventSubReconnectComplete(params: {
+    connectionState: EventSubConnectionStateLite;
+    wsSocketOpen: boolean;
+}): boolean {
+    return params.connectionState === 'connected' && params.wsSocketOpen;
 }
 
 /**
