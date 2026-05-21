@@ -12,6 +12,7 @@ const storage = new TwitchPlayersStorageDB();
 
 export interface TwitchPlayerData {
   twitchUsername: string;
+  twitchUserId?: string;
   size: number;
   lastUsed: number;
   lastUsedDate?: string;
@@ -42,6 +43,12 @@ type DuelChallengeEntry = {
   challenged: string;
   challengedDisplay: string;
   createdAt: number;
+};
+
+/** Twitch user id из чата (Twurple userInfo) или Helix — для накопления в БД. */
+export type TwitchDuelActorIds = {
+  userId?: string;
+  targetUserId?: string;
 };
 
 export type DuelCommandResult = {
@@ -341,13 +348,46 @@ export function setOnDuelBannedListChanged(fn: (() => void) | null): void {
   onDuelBannedListChanged = fn;
 }
 
-function ensurePlayer(players: Map<string, TwitchPlayerData>, twitchUsername: string): TwitchPlayerData {
+function applyTwitchUserId(player: TwitchPlayerData, twitchUserId?: string): void {
+  if (twitchUserId) {
+    player.twitchUserId = twitchUserId;
+  }
+}
+
+/** Привязать login → user id в БД (без полной перезагрузки статистики). */
+export async function bindTwitchUserId(
+  twitchUsername: string,
+  twitchUserId?: string | null
+): Promise<void> {
+  if (!twitchUserId) return;
+  await storage.recordTwitchUserId(twitchUsername, twitchUserId);
+}
+
+export async function getTwitchUserIdCollectionStats(): Promise<{
+  total: number;
+  withUserId: number;
+}> {
+  return storage.getTwitchUserIdStats();
+}
+
+export async function listCollectedTwitchUserIds(): Promise<
+  { twitchUsername: string; twitchUserId: string }[]
+> {
+  return storage.listTwitchUserIds();
+}
+
+function ensurePlayer(
+  players: Map<string, TwitchPlayerData>,
+  twitchUsername: string,
+  twitchUserId?: string
+): TwitchPlayerData {
   const normalized = twitchUsername.toLowerCase();
   let player = players.get(normalized);
 
   if (!player) {
     player = {
       twitchUsername,
+      twitchUserId,
       size: 0,
       lastUsed: 0,
       lastUsedDate: undefined,
@@ -385,6 +425,7 @@ function ensurePlayer(players: Map<string, TwitchPlayerData>, twitchUsername: st
     player.streakBonusAwardedThisStream = false;
   }
   player.twitchUsername = twitchUsername;
+  applyTwitchUserId(player, twitchUserId);
   players.set(normalized, player);
 
   return player;
@@ -484,7 +525,8 @@ async function handlePersonalChallenge(
   targetUsername: string,
   channel: string,
   players: Map<string, TwitchPlayerData>,
-  now: number
+  now: number,
+  actorIds?: TwitchDuelActorIds
 ): Promise<DuelCommandResult> {
   // Очищаем имя от @ и невидимых символов
   let cleanTarget = targetUsername.toLowerCase().replace(/^@+/, '');
@@ -498,7 +540,8 @@ async function handlePersonalChallenge(
   }
   
   const targetNormalized = cleanTarget;
-  const challengerPlayer = ensurePlayer(players, challengerUsername);
+  const challengerPlayer = ensurePlayer(players, challengerUsername, actorIds?.userId);
+  ensurePlayer(players, cleanTarget, actorIds?.targetUserId);
   
   // Нельзя вызвать самого себя
   if (challengerNormalized === targetNormalized) {
@@ -995,7 +1038,8 @@ async function executeDuel(
 export async function processTwitchDuelCommand(
     twitchUsername: string,
     channel: string,
-    targetUsername?: string
+    targetUsername?: string,
+    actorIds?: TwitchDuelActorIds
 ): Promise<DuelCommandResult> {
   await ensureDuelSettingsLoadedFromDb();
 
@@ -1006,14 +1050,29 @@ export async function processTwitchDuelCommand(
     };
   }
 
+  if (actorIds?.userId) {
+    await bindTwitchUserId(twitchUsername, actorIds.userId);
+  }
+  if (targetUsername && actorIds?.targetUserId) {
+    await bindTwitchUserId(targetUsername, actorIds.targetUserId);
+  }
+
   const players = await storage.loadTwitchPlayers();
   const now = Date.now();
   const normalized = twitchUsername.toLowerCase();
-  const player = ensurePlayer(players, twitchUsername);
+  const player = ensurePlayer(players, twitchUsername, actorIds?.userId);
 
   // Если указан целевой пользователь - это персональный вызов
   if (targetUsername) {
-    return await handlePersonalChallenge(twitchUsername, normalized, targetUsername, channel, players, now);
+    return await handlePersonalChallenge(
+      twitchUsername,
+      normalized,
+      targetUsername,
+      channel,
+      players,
+      now,
+      actorIds
+    );
   }
 
   // Очищаем устаревшие вызовы
@@ -1335,7 +1394,8 @@ export async function pardonDuelUserFromWeb(username: string): Promise<{ success
  */
 export async function acceptDuelChallenge(
   twitchUsername: string,
-  channel: string
+  channel: string,
+  twitchUserId?: string
 ): Promise<DuelCommandResult> {
   await ensureDuelSettingsLoadedFromDb();
 
@@ -1343,6 +1403,10 @@ export async function acceptDuelChallenge(
     return {
       response: ''
     };
+  }
+
+  if (twitchUserId) {
+    await bindTwitchUserId(twitchUsername, twitchUserId);
   }
 
   const players = await storage.loadTwitchPlayers();
@@ -1368,7 +1432,7 @@ export async function acceptDuelChallenge(
     };
   }
 
-  const challengedPlayer = ensurePlayer(players, twitchUsername);
+  const challengedPlayer = ensurePlayer(players, twitchUsername, twitchUserId);
   const challengedIsExempt = DUEL_EXEMPT_USERS.has(normalized);
   const challengerIsExempt = DUEL_EXEMPT_USERS.has(userChallenge.challenger);
 

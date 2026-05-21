@@ -6,6 +6,10 @@ import * as path from 'path';
 import * as http from 'http';
 import WebSocket from 'ws';
 import { query, queryOne } from '../database/database';
+import {
+    getTwitchUserIdCollectionStats,
+    listCollectedTwitchUserIds
+} from '../commands/twitch-duel';
 
 const app = express();
 const PORT = parseInt(String(process.env.WEB_PORT || 3000), 10) || 3000;
@@ -2146,7 +2150,8 @@ app.get('/api/leaderboard', async (req: Request, res: Response) => {
 
         // Стример — всегда отдельно, сверху
         const streamerRow = await queryOne<any>(
-            `SELECT twitch_username, COALESCE(points, 0) as points,
+            `SELECT twitch_username, twitch_user_id,
+                    COALESCE(points, 0) as points,
                     COALESCE(duel_wins, 0) as duel_wins,
                     COALESCE(duel_losses, 0) as duel_losses,
                     COALESCE(duel_draws, 0) as duel_draws
@@ -2157,7 +2162,7 @@ app.get('/api/leaderboard', async (req: Request, res: Response) => {
 
         // Таблица без стримера (чтобы не дублировать)
         const players = await query<any>(
-            `SELECT twitch_username, 
+            `SELECT twitch_username, twitch_user_id,
                     COALESCE(points, 0) as points,
                     COALESCE(duel_wins, 0) as duel_wins,
                     COALESCE(duel_losses, 0) as duel_losses,
@@ -2182,6 +2187,18 @@ app.get('/api/leaderboard', async (req: Request, res: Response) => {
     } catch (error) {
         console.error('❌ Ошибка загрузки таблицы лидеров:', error);
         res.status(500).json({ error: 'Ошибка загрузки таблицы' });
+    }
+});
+
+/** Список собранных Twitch user id (миграция login → id). */
+app.get('/api/admin/players/twitch-user-ids', async (_req: Request, res: Response) => {
+    try {
+        const stats = await getTwitchUserIdCollectionStats();
+        const players = await listCollectedTwitchUserIds();
+        res.json({ stats, players });
+    } catch (error) {
+        console.error('❌ Ошибка загрузки twitch user ids:', error);
+        res.status(500).json({ error: 'Ошибка загрузки списка user id' });
     }
 });
 

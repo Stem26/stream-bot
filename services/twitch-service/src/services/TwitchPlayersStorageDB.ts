@@ -1,7 +1,9 @@
 import { query, queryOne, getPool } from '../database/database';
+import { normalizeTwitchUserId } from './twitch-players-user-id';
 
 export interface TwitchPlayerData {
   twitchUsername: string;
+  twitchUserId?: string;
   size: number;
   lastUsed: number;
   lastUsedDate?: string;
@@ -24,6 +26,7 @@ export interface TwitchPlayerData {
 
 interface TwitchPlayerStatsRow {
   twitch_username: string;
+  twitch_user_id: string | null;
   size: number;
   last_used: number | null;
   last_used_date: string | null;
@@ -44,6 +47,7 @@ interface TwitchPlayerStatsRow {
 function rowToPlayer(r: TwitchPlayerStatsRow): TwitchPlayerData {
   return {
     twitchUsername: r.twitch_username,
+    twitchUserId: r.twitch_user_id ?? undefined,
     size: r.size,
     lastUsed: r.last_used || 0,
     lastUsedDate: r.last_used_date || undefined,
@@ -63,9 +67,11 @@ function rowToPlayer(r: TwitchPlayerStatsRow): TwitchPlayerData {
 }
 
 export class TwitchPlayersStorageDB {
+  private userIdPersistCache = new Set<string>();
+
   async loadTwitchPlayers(): Promise<Map<string, TwitchPlayerData>> {
     const rows = await query<TwitchPlayerStatsRow>(`
-      SELECT twitch_username, size, last_used, last_used_date, points,
+      SELECT twitch_username, twitch_user_id, size, last_used, last_used_date, points,
         duel_timeout_until, duel_cooldown_until, duel_wins, duel_losses, duel_draws,
         duels_today, last_duel_date, last_daily_quest_reward_date,
         duel_win_streak, streak_reward_active, streak_bonus_awarded_this_stream
@@ -85,20 +91,22 @@ export class TwitchPlayersStorageDB {
     try {
       for (const [norm, player] of players.entries()) {
         await client.query(
-          `INSERT INTO twitch_player_stats (twitch_username, size, last_used, last_used_date, points,
+          `INSERT INTO twitch_player_stats (twitch_username, twitch_user_id, size, last_used, last_used_date, points,
             duel_timeout_until, duel_cooldown_until, duel_wins, duel_losses, duel_draws,
             duels_today, last_duel_date, last_daily_quest_reward_date,
             duel_win_streak, streak_reward_active, streak_bonus_awarded_this_stream)
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-                  $11, $12, $13, $14, $15, $16)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
+                  $12, $13, $14, $15, $16, $17)
           ON CONFLICT (twitch_username) DO UPDATE SET
-            size=$2, last_used=$3, last_used_date=$4, points=$5,
-            duel_timeout_until=$6, duel_cooldown_until=$7, duel_wins=$8, duel_losses=$9, duel_draws=$10,
-            duels_today=$11, last_duel_date=$12, last_daily_quest_reward_date=$13,
-            duel_win_streak=$14, streak_reward_active=$15, streak_bonus_awarded_this_stream=$16,
+            twitch_user_id=COALESCE(EXCLUDED.twitch_user_id, twitch_player_stats.twitch_user_id),
+            size=$3, last_used=$4, last_used_date=$5, points=$6,
+            duel_timeout_until=$7, duel_cooldown_until=$8, duel_wins=$9, duel_losses=$10, duel_draws=$11,
+            duels_today=$12, last_duel_date=$13, last_daily_quest_reward_date=$14,
+            duel_win_streak=$15, streak_reward_active=$16, streak_bonus_awarded_this_stream=$17,
             updated_at=CURRENT_TIMESTAMP`,
           [
             norm,
+            player.twitchUserId ?? null,
             player.size,
             player.lastUsed,
             player.lastUsedDate || null,
@@ -120,6 +128,55 @@ export class TwitchPlayersStorageDB {
     } finally {
       client.release();
     }
+  }
+
+  /**
+   * Сохранить Twitch user id для логина (без полной загрузки Map).
+   * Создаёт строку игрока при первом появлении в чате, если её ещё нет.
+   */
+  async recordTwitchUserId(twitchUsername: string, twitchUserId: string): Promise<boolean> {
+    const norm = twitchUsername.trim().toLowerCase();
+    const id = normalizeTwitchUserId(twitchUserId);
+    if (!norm || !id) return false;
+
+    const cacheKey = `${norm}:${id}`;
+    if (this.userIdPersistCache.has(cacheKey)) return false;
+
+    await query(
+      `INSERT INTO twitch_player_stats (twitch_username, twitch_user_id, size, last_used, points)
+       VALUES ($1, $2, 0, 0, 1000)
+       ON CONFLICT (twitch_username) DO UPDATE SET
+         twitch_user_id = EXCLUDED.twitch_user_id,
+         updated_at = CURRENT_TIMESTAMP`,
+      [norm, id]
+    );
+    this.userIdPersistCache.add(cacheKey);
+    return true;
+  }
+
+  async getTwitchUserIdStats(): Promise<{ total: number; withUserId: number }> {
+    const row = await queryOne<{ total: number; with_user_id: number }>(
+      `SELECT COUNT(*)::int AS total,
+              COUNT(twitch_user_id)::int AS with_user_id
+       FROM twitch_player_stats`
+    );
+    return {
+      total: row?.total ?? 0,
+      withUserId: row?.with_user_id ?? 0
+    };
+  }
+
+  async listTwitchUserIds(): Promise<{ twitchUsername: string; twitchUserId: string }[]> {
+    const rows = await query<{ twitch_username: string; twitch_user_id: string }>(
+      `SELECT twitch_username, twitch_user_id
+       FROM twitch_player_stats
+       WHERE twitch_user_id IS NOT NULL
+       ORDER BY twitch_username`
+    );
+    return rows.map((r) => ({
+      twitchUsername: r.twitch_username,
+      twitchUserId: r.twitch_user_id
+    }));
   }
 
   async getTwitchPlayerRank(players: Map<string, TwitchPlayerData>, username: string): Promise<number> {

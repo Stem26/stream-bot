@@ -3,7 +3,8 @@ import { StaticAuthProvider } from '@twurple/auth';
 import { processTwitchDickCommand } from '../commands/twitch-dick';
 import { processTwitchTopDickCommand } from '../commands/twitch-topDick';
 import { processTwitchBottomDickCommand } from '../commands/twitch-bottomDick';
-import { processTwitchDuelCommand, enableDuels, disableDuels, pardonAllDuelTimeouts, enableDuelsFromWeb as enableDuelsFromWebApi, disableDuelsFromWeb as disableDuelsFromWebApi, pardonAllDuelTimeoutsFromWeb, getDuelBannedPlayersFromWeb, pardonDuelUserFromWeb, getDuelCooldownSkipped, setDuelCooldownSkipped, getDuelTimeoutSeconds, acceptDuelChallenge, declineDuelChallenge, clearDuelChallenges, setDuelAdminsFromModerators, setDuelResponderLogin, areDuelsEnabled, canManageDuels, enableDuelOverlaySync, disableDuelOverlaySync, isDuelOverlaySyncEnabled, enableDuelOverlaySyncFromWeb, disableDuelOverlaySyncFromWeb, initDuelOverlaySyncFromDb } from '../commands/twitch-duel';
+import { processTwitchDuelCommand, enableDuels, disableDuels, pardonAllDuelTimeouts, enableDuelsFromWeb as enableDuelsFromWebApi, disableDuelsFromWeb as disableDuelsFromWebApi, pardonAllDuelTimeoutsFromWeb, getDuelBannedPlayersFromWeb, pardonDuelUserFromWeb, getDuelCooldownSkipped, setDuelCooldownSkipped, getDuelTimeoutSeconds, acceptDuelChallenge, declineDuelChallenge, clearDuelChallenges, setDuelAdminsFromModerators, setDuelResponderLogin, areDuelsEnabled, canManageDuels, enableDuelOverlaySync, disableDuelOverlaySync, isDuelOverlaySyncEnabled, enableDuelOverlaySyncFromWeb, disableDuelOverlaySyncFromWeb, initDuelOverlaySyncFromDb, bindTwitchUserId } from '../commands/twitch-duel';
+import { normalizeTwitchUserId } from './twitch-players-user-id';
 import { processTwitchRatCommand, processTwitchCutieCommand, addActiveUser, setChattersAPIFunction } from '../commands/twitch-rat';
 import { processTwitchPointsCommand, processTwitchTopPointsCommand } from '../commands/twitch-points';
 import { ENABLE_BOT_FEATURES, ALLOW_LOCAL_COMMANDS } from '../config/features';
@@ -372,6 +373,11 @@ export class NightBotMonitor {
 
         // EXTRA_DUEL_ADMINS должен иметь доступ, даже если он не Twitch-mod.
         return isMod || isBroadcaster || canManageDuels(username);
+    }
+
+    private getTwitchUserIdFromChat(msg: any): string | undefined {
+        const id = normalizeTwitchUserId(msg?.userInfo?.userId);
+        return id ?? undefined;
     }
 
     private async getUserIdCached(username: string): Promise<string | null> {
@@ -1126,6 +1132,10 @@ export class NightBotMonitor {
 
             this.chatClient.onMessage(async (channel, user, message, msg) => {
                 const username = user.toLowerCase();
+                const chatterUserId = this.getTwitchUserIdFromChat(msg);
+                if (chatterUserId) {
+                    void bindTwitchUserId(user, chatterUserId);
+                }
 
                 // Игнорируем сообщения от ботов (включая свои собственные)
                 if (username === 'nightbot') {
@@ -1999,7 +2009,16 @@ export class NightBotMonitor {
             
             log('COMMAND', { command: '!дуэль', username: user, channel, message, targetUsername });
 
-            const result = await processTwitchDuelCommand(user, channel, targetUsername);
+            const userId = this.getTwitchUserIdFromChat(msg);
+            let targetUserId: string | undefined;
+            if (targetUsername) {
+                const resolved = await this.getUserIdCached(targetUsername);
+                targetUserId = resolved ?? undefined;
+            }
+            const result = await processTwitchDuelCommand(user, channel, targetUsername, {
+                userId,
+                targetUserId
+            });
 
             // Если дуэли выключены, response будет пустым - ничего не отправляем
             if (result.response) {
@@ -2054,7 +2073,11 @@ export class NightBotMonitor {
         log('COMMAND', { command: '!принять', username: user, channel });
 
         try {
-            const result = await acceptDuelChallenge(user, channel);
+            const result = await acceptDuelChallenge(
+                user,
+                channel,
+                this.getTwitchUserIdFromChat(msg)
+            );
 
             if (result.response) {
                 await this.sendMessage(channel, result.response);

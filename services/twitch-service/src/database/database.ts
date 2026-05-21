@@ -134,6 +134,10 @@ export async function initDatabase(): Promise<void> {
         `ALTER TABLE twitch_player_stats
          ADD COLUMN IF NOT EXISTS streak_bonus_awarded_this_stream BOOLEAN DEFAULT FALSE`
       );
+      await client.query(
+        `ALTER TABLE twitch_player_stats
+         ADD COLUMN IF NOT EXISTS twitch_user_id TEXT`
+      );
 
       await client.query(`
         CREATE TABLE IF NOT EXISTS stream_history (
@@ -146,6 +150,11 @@ export async function initDatabase(): Promise<void> {
         )
       `);
 
+      await client.query(
+        `CREATE INDEX IF NOT EXISTS idx_twitch_player_stats_user_id
+         ON twitch_player_stats(twitch_user_id)
+         WHERE twitch_user_id IS NOT NULL`
+      );
       await client.query(`CREATE INDEX IF NOT EXISTS idx_twitch_player_stats_size ON twitch_player_stats(size DESC)`);
       await client.query(`CREATE INDEX IF NOT EXISTS idx_twitch_player_stats_points ON twitch_player_stats(points DESC)`);
       await client.query(`CREATE INDEX IF NOT EXISTS idx_twitch_player_stats_last_used ON twitch_player_stats(last_used_date)`);
