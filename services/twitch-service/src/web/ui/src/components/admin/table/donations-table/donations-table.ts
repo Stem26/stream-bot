@@ -78,6 +78,9 @@ export class DonationsTableElement extends HTMLElement {
   private currentLimit = 25;
   private currentSearch = '';
   private currentDays = 30;
+  /** Фильтр «ник + дата»: календарный день (МСК), без days. */
+  private currentFilterDate = '';
+  private currentFilterUsername = '';
   private hideTest = true;
   private lastResponse: DonateXDonationsResponse | null = null;
   private isLoadingAll = false;
@@ -322,6 +325,64 @@ export class DonationsTableElement extends HTMLElement {
     if (limitSelect) limitSelect.value = String(this.currentLimit);
   }
 
+  private syncDayFilterUi(): void {
+    const active = Boolean(this.currentFilterDate);
+    const daysFilter = this.querySelector<HTMLSelectElement>('#donations-days-filter');
+    const searchInput = this.querySelector<HTMLInputElement>('#donations-search');
+    const clearBtn = this.querySelector<HTMLButtonElement>('#donations-day-filter-clear');
+    const hint = this.querySelector<HTMLElement>('#donations-day-filter-hint');
+    const dateInput = this.querySelector<HTMLInputElement>('#donations-filter-date');
+    const userInput = this.querySelector<HTMLInputElement>('#donations-filter-username');
+
+    if (daysFilter) daysFilter.disabled = active;
+    if (searchInput) searchInput.disabled = active;
+    if (clearBtn) clearBtn.style.display = active ? '' : 'none';
+    if (dateInput && this.currentFilterDate) dateInput.value = this.currentFilterDate;
+    if (userInput) userInput.value = this.currentFilterUsername;
+    if (hint) {
+      if (!active) {
+        hint.style.display = 'none';
+        hint.textContent = '';
+      } else {
+        hint.style.display = '';
+        const who = this.currentFilterUsername
+          ? `ник «${this.currentFilterUsername}», `
+          : '';
+        hint.textContent = `${who}день ${formatStreamDate(this.currentFilterDate)} (МСК), без ограничения по периоду`;
+      }
+    }
+  }
+
+  private applyDayFilterFromInputs(): void {
+    const dateInput = this.querySelector<HTMLInputElement>('#donations-filter-date');
+    const userInput = this.querySelector<HTMLInputElement>('#donations-filter-username');
+    const date = dateInput?.value?.trim() ?? '';
+    if (!date) {
+      showAlert('Укажите дату', 'error');
+      return;
+    }
+    this.currentFilterDate = date;
+    this.currentFilterUsername = userInput?.value.trim() ?? '';
+    this.currentPage = 1;
+    if (this.currentLimit < 100) this.currentLimit = 100;
+    const limitSelect = this.querySelector<HTMLSelectElement>('#donations-limit-select');
+    if (limitSelect) limitSelect.value = String(this.currentLimit);
+    this.syncDayFilterUi();
+    void this.loadDonations();
+  }
+
+  private clearDayFilter(): void {
+    this.currentFilterDate = '';
+    this.currentFilterUsername = '';
+    this.currentPage = 1;
+    const dateInput = this.querySelector<HTMLInputElement>('#donations-filter-date');
+    const userInput = this.querySelector<HTMLInputElement>('#donations-filter-username');
+    if (dateInput) dateInput.value = '';
+    if (userInput) userInput.value = '';
+    this.syncDayFilterUi();
+    void this.loadDonations();
+  }
+
   async loadDonations(): Promise<void> {
     if (this.isLoadingAll) return;
     this.isLoadingAll = true;
@@ -331,11 +392,14 @@ export class DonationsTableElement extends HTMLElement {
     if (loadingEl) loadingEl.style.display = 'block';
 
     try {
+      const byDay = Boolean(this.currentFilterDate);
       const data = await fetchDonateXDonations({
         page: this.currentPage,
         limit: this.currentLimit,
-        search: this.currentSearch || undefined,
-        days: this.currentDays,
+        search: byDay ? undefined : this.currentSearch || undefined,
+        days: byDay ? undefined : this.currentDays,
+        date: byDay ? this.currentFilterDate : undefined,
+        username: byDay && this.currentFilterUsername ? this.currentFilterUsername : undefined,
         hideTest: this.hideTest,
       });
       this.renderAllItems(data);
@@ -424,9 +488,23 @@ export class DonationsTableElement extends HTMLElement {
     const prevBtn = this.querySelector<HTMLButtonElement>('#donations-prev-btn');
     const nextBtn = this.querySelector<HTMLButtonElement>('#donations-next-btn');
     const limitSelect = this.querySelector<HTMLSelectElement>('#donations-limit-select');
+    const dayFilterBtn = this.querySelector<HTMLButtonElement>('#donations-day-filter-btn');
+    const dayFilterClear = this.querySelector<HTMLButtonElement>('#donations-day-filter-clear');
+    const filterDateInput = this.querySelector<HTMLInputElement>('#donations-filter-date');
+    const filterUserInput = this.querySelector<HTMLInputElement>('#donations-filter-username');
+
+    dayFilterBtn?.addEventListener('click', () => this.applyDayFilterFromInputs());
+    dayFilterClear?.addEventListener('click', () => this.clearDayFilter());
+    filterDateInput?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') this.applyDayFilterFromInputs();
+    });
+    filterUserInput?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') this.applyDayFilterFromInputs();
+    });
 
     let searchTimeout: ReturnType<typeof setTimeout> | null = null;
     searchInput?.addEventListener('input', () => {
+      if (this.currentFilterDate) return;
       if (searchTimeout) clearTimeout(searchTimeout);
       searchTimeout = setTimeout(() => {
         this.currentSearch = searchInput.value.trim();
@@ -437,6 +515,7 @@ export class DonationsTableElement extends HTMLElement {
     });
 
     daysFilter?.addEventListener('change', () => {
+      if (this.currentFilterDate) return;
       this.currentDays = parseInt(daysFilter.value, 10) || 30;
       this.currentPage = 1;
       void this.loadDonations();

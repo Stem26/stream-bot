@@ -651,29 +651,53 @@ export interface DonateXDonationsListResult {
   pagination: { page: number; limit: number; total: number; totalPages: number };
 }
 
-/** Список донатов для админки (пагинация, поиск, период). */
+/** Список донатов для админки (пагинация, поиск, период или календарный день). */
 export async function listDonateXDonations(options: {
   page?: number;
   limit?: number;
   search?: string;
   days?: number;
   hideTest?: boolean;
+  /** YYYY-MM-DD — все донаты за календарный день в DONATEX_TZ (без days). */
+  date?: string;
+  /** Точное совпадение ника (с date). */
+  username?: string;
 }): Promise<DonateXDonationsListResult> {
   const page = Math.max(1, options.page ?? 1);
-  const limit = Math.min(100, Math.max(10, options.limit ?? 25));
+  const dateFilter = options.date?.trim() ?? '';
+  const byDay = /^\d{4}-\d{2}-\d{2}$/.test(dateFilter);
+  const limit = byDay
+    ? Math.min(500, Math.max(10, options.limit ?? 100))
+    : Math.min(100, Math.max(10, options.limit ?? 25));
   const days = Math.min(365, Math.max(1, options.days ?? 30));
   const hideTest = options.hideTest !== false;
   const search = options.search?.trim().slice(0, 200).toLowerCase() ?? '';
+  const username = options.username?.trim().slice(0, 200) ?? '';
   const offset = (page - 1) * limit;
 
-  const params: (string | number | boolean)[] = [days];
-  let where = `WHERE donated_at >= NOW() - ($1::int * INTERVAL '1 day')`;
-  let paramIndex = 2;
+  const params: (string | number | boolean)[] = [];
+  let where: string;
+  let paramIndex = 1;
+
+  if (byDay) {
+    where = `WHERE donated_at >= ($${paramIndex}::date AT TIME ZONE $${paramIndex + 1})
+      AND donated_at < (($${paramIndex}::date + INTERVAL '1 day') AT TIME ZONE $${paramIndex + 1})`;
+    params.push(dateFilter, DONATEX_TZ);
+    paramIndex += 2;
+  } else {
+    params.push(days);
+    where = `WHERE donated_at >= NOW() - ($1::int * INTERVAL '1 day')`;
+    paramIndex = 2;
+  }
 
   if (hideTest) {
     where += ` AND is_test = FALSE`;
   }
-  if (search) {
+  if (byDay && username) {
+    where += ` AND LOWER(TRIM(username)) = $${paramIndex}`;
+    params.push(username.toLowerCase());
+    paramIndex++;
+  } else if (!byDay && search) {
     where += ` AND (LOWER(username) LIKE $${paramIndex} OR LOWER(message) LIKE $${paramIndex})`;
     params.push(`%${search}%`);
     paramIndex++;

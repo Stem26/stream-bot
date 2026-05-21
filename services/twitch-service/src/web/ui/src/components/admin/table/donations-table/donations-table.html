@@ -15,6 +15,20 @@
 
     <div class="donations-subtab-panel active" id="donations-panel-all">
       <div class="donations-filters">
+        <div class="filter-row filter-row-day">
+          <input type="text"
+                 id="donations-filter-username"
+                 class="donations-filter-username"
+                 placeholder="Ник донатера"
+                 autocomplete="off">
+          <input type="date"
+                 id="donations-filter-date"
+                 class="donations-filter-date"
+                 title="Календарный день (МСК)">
+          <button type="button" class="btn btn-small" id="donations-day-filter-btn">За день</button>
+          <button type="button" class="btn btn-small btn-ghost" id="donations-day-filter-clear" style="display: none;">Сбросить день</button>
+          <span class="donations-day-filter-hint" id="donations-day-filter-hint" style="display: none;"></span>
+        </div>
         <div class="filter-row">
           <input type="search"
                  id="donations-search"
@@ -60,6 +74,8 @@
                 <option value="25" selected>25</option>
                 <option value="50">50</option>
                 <option value="100">100</option>
+                <option value="200">200</option>
+                <option value="500">500</option>
               </select>
             </label>
             <span class="page-info" id="donations-page-info">Страница 1 из 1</span>

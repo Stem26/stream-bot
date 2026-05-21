@@ -318,12 +318,17 @@ export async function fetchDonateXDonations(params: {
   search?: string;
   days?: number;
   hideTest?: boolean;
+  /** Календарный день (МСК), без ограничения days */
+  date?: string;
+  username?: string;
 }): Promise<DonateXDonationsResponse> {
   const searchParams = new URLSearchParams();
   if (params.page != null) searchParams.set('page', String(params.page));
   if (params.limit != null) searchParams.set('limit', String(params.limit));
   if (params.search) searchParams.set('search', params.search);
   if (params.days != null) searchParams.set('days', String(params.days));
+  if (params.date) searchParams.set('date', params.date);
+  if (params.username) searchParams.set('username', params.username);
   if (params.hideTest === false) searchParams.set('hideTest', 'false');
   const url = '/api/admin/donatex/donations' + (searchParams.toString() ? '?' + searchParams.toString() : '');
   const response = await authFetch(url);

@@ -2241,7 +2241,7 @@ app.get('/api/admin/donatex/stats', async (_req: Request, res: Response) => {
     }
 });
 
-/** DonateX: список донатов. ?page=1&limit=25&search=&days=30&hideTest=true */
+/** DonateX: список донатов. ?page=1&limit=25&search=&days=30&date=YYYY-MM-DD&username= */
 app.get('/api/admin/donatex/donations', async (req: Request, res: Response) => {
     try {
         if (!getDonateXPool()) {
@@ -2252,11 +2252,26 @@ app.get('/api/admin/donatex/donations', async (req: Request, res: Response) => {
             return;
         }
         const page = Math.max(1, parseInt(String(req.query.page), 10) || 1);
-        const limit = Math.min(100, Math.max(10, parseInt(String(req.query.limit), 10) || 25));
+        const date =
+            typeof req.query.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(req.query.date.trim())
+                ? req.query.date.trim()
+                : undefined;
+        const username = typeof req.query.username === 'string' ? req.query.username : undefined;
+        const defaultLimit = date ? 100 : 25;
+        const maxLimit = date ? 500 : 100;
+        const limit = Math.min(maxLimit, Math.max(10, parseInt(String(req.query.limit), 10) || defaultLimit));
         const search = typeof req.query.search === 'string' ? req.query.search : undefined;
         const days = Math.min(365, Math.max(1, parseInt(String(req.query.days), 10) || 30));
         const hideTest = req.query.hideTest !== 'false';
-        const result = await listDonateXDonations({ page, limit, search, days, hideTest });
+        const result = await listDonateXDonations({
+            page,
+            limit,
+            search: date ? undefined : search,
+            days,
+            hideTest,
+            date,
+            username,
+        });
         const stats = await getDonateXStats();
         res.json({
             items: result.items.map((r) => ({
