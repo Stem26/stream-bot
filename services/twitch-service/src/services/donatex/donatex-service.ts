@@ -6,6 +6,7 @@ import {
   rebuildDonateXDonorStats,
   getDonateXStats,
   purgeDonateXLocalSeedDonations,
+  repairDonateXDonationTimestamps,
 } from './donatex-storage';
 import { startDonateXSignalR, stopDonateXSignalR } from './donatex-signalr';
 import { DonateXDonation } from './types';
@@ -108,6 +109,11 @@ export async function startDonateXIntegration(): Promise<void> {
   }
 
   await purgeDonateXLocalSeedDonations();
+  if (process.env.DONATEX_REPAIR_TIMESTAMPS !== 'false') {
+    void repairDonateXDonationTimestamps().catch((err) => {
+      console.warn('[DONATEX] repair donated_at:', err);
+    });
+  }
 
   const token = DONATEX_EXTERNAL_TOKEN;
   if (!token) {
@@ -135,7 +141,9 @@ export async function startDonateXIntegration(): Promise<void> {
     });
   } catch (err) {
     console.error('❌ [DONATEX] SignalR не подключился:', err);
-    console.warn('[DONATEX] Бот продолжит работу; включится только reconcile по REST');
+    console.warn(
+      '[DONATEX] Бот продолжит работу (REST backfill/reconcile + админка топа); установите @microsoft/signalr'
+    );
   }
 
   reconcileTimer = setInterval(() => {

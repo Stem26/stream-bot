@@ -1,9 +1,3 @@
-import {
-  HubConnection,
-  HubConnectionBuilder,
-  HubConnectionState,
-  LogLevel,
-} from '@microsoft/signalr';
 import { WebSocket } from 'ws';
 import { DonateXDonation } from './types';
 import { normalizeDonateXDonation } from './donatex-normalize';
@@ -12,7 +6,14 @@ import { normalizeDonateXDonation } from './donatex-normalize';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 (globalThis as any).WebSocket = WebSocket;
 
-export type DonateXDonationHandler = (donation: DonateXDonation, raw: Record<string, unknown>) => void | Promise<void>;
+type SignalRModule = typeof import('@microsoft/signalr');
+type HubConnection = import('@microsoft/signalr').HubConnection;
+type HubConnectionState = import('@microsoft/signalr').HubConnectionState;
+
+export type DonateXDonationHandler = (
+  donation: DonateXDonation,
+  raw: Record<string, unknown>
+) => void | Promise<void>;
 
 export interface DonateXSignalROptions {
   token: string;
@@ -23,6 +24,24 @@ export interface DonateXSignalROptions {
 }
 
 let connection: HubConnection | null = null;
+let signalrModule: SignalRModule | null = null;
+
+async function loadSignalRModule(): Promise<SignalRModule> {
+  if (signalrModule) {
+    return signalrModule;
+  }
+  try {
+    signalrModule = await import('@microsoft/signalr');
+    return signalrModule;
+  } catch (err) {
+    const msg =
+      err instanceof Error ? err.message : String(err);
+    throw new Error(
+      `[DONATEX_SIGNALR] Пакет @microsoft/signalr не установлен (${msg}). ` +
+        'На сервере: npm install --registry https://registry.npmjs.org/'
+    );
+  }
+}
 
 function hubUrl(token: string, apiBaseUrl?: string): string {
   const base = (apiBaseUrl ?? 'https://donatex.gg/api').replace(/\/$/, '');
@@ -30,6 +49,8 @@ function hubUrl(token: string, apiBaseUrl?: string): string {
 }
 
 export async function startDonateXSignalR(options: DonateXSignalROptions): Promise<void> {
+  const { HubConnectionBuilder, HubConnectionState, LogLevel } = await loadSignalRModule();
+
   if (connection?.state === HubConnectionState.Connected) {
     return;
   }
@@ -62,7 +83,7 @@ export async function startDonateXSignalR(options: DonateXSignalROptions): Promi
     options.onConnected?.();
   });
 
-  connection.onclose((err) => {
+  connection.onclose((err?: Error) => {
     const error = err ? new Error(err.message) : undefined;
     console.warn('[DONATEX_SIGNALR] Соединение закрыто', err?.message ?? '');
     options.onDisconnected?.(error);
@@ -78,6 +99,7 @@ export async function stopDonateXSignalR(): Promise<void> {
     return;
   }
   try {
+    const { HubConnectionState } = await loadSignalRModule();
     if (connection.state !== HubConnectionState.Disconnected) {
       await connection.stop();
     }

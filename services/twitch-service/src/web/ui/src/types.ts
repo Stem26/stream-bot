@@ -126,6 +126,7 @@ export interface DonateXTopDonorsResponse {
 
 export interface DonateXDayTopRow {
   streamDate: string;
+  streamStart: string | null;
   top1: string | null;
   top1Rub: string | null;
   top2: string | null;

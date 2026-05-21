@@ -2335,7 +2335,7 @@ app.get('/api/admin/donatex/day-breakdown', async (req: Request, res: Response) 
             groupBy: result.groupBy,
             note:
                 result.groupBy === 'stream'
-                    ? 'Топ по сумме за окно стрима (start + duration из stream_history)'
+                    ? 'Топ по сумме за каждую сессию стрима (start + duration из stream_history)'
                     : 'Топ по сумме за календарный день (Europe/Moscow)',
             donors: result.donors.map((d) => ({
                 username: d.username,
@@ -2401,6 +2401,7 @@ app.get('/api/admin/donatex/top-by-day', async (req: Request, res: Response) => 
             })),
             rows: result.rows.map((r) => ({
                 streamDate: r.stream_date,
+                streamStart: r.stream_start,
                 top1: sanitizeDayTopUsername(r.top1_username),
                 top1Rub: sanitizeDayTopUsername(r.top1_username) ? r.top1_amount_rub : null,
                 top2: sanitizeDayTopUsername(r.top2_username),

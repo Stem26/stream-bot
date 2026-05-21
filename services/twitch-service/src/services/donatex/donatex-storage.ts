@@ -1,9 +1,10 @@
 import { queryDonateX, getDonateXPool } from '../../database/donatex-database';
 import {
-  findStreamWindowForDate,
+  findStreamWindowsForDate,
   loadDonateXStreamWindowsForMonth,
   streamWindowsToJsonb,
 } from './donatex-stream-windows';
+import { parseDonateXTimestamp } from './donatex-normalize';
 import { donatexTopUsernameSql } from './donatex-username';
 import { DonateXDonation, DonateXDonationSource } from './types';
 
@@ -22,7 +23,7 @@ export async function saveDonateXDonation(
     return { inserted: false, donationId: donation.id };
   }
 
-  const donatedAt = new Date(donation.timestamp);
+  const donatedAt = parseDonateXTimestamp(donation.timestamp);
   if (Number.isNaN(donatedAt.getTime())) {
     throw new Error(`[DONATEX] Некорректный timestamp: ${donation.timestamp}`);
   }
@@ -43,6 +44,7 @@ export async function saveDonateXDonation(
       message = EXCLUDED.message,
       amount = EXCLUDED.amount,
       amount_in_rub = EXCLUDED.amount_in_rub,
+      donated_at = EXCLUDED.donated_at,
       raw_payload = COALESCE(EXCLUDED.raw_payload, donatex_donations.raw_payload),
       updated_at = NOW()
     RETURNING id, (xmax = 0) AS inserted`,
@@ -176,6 +178,57 @@ export async function rebuildDonateXDonorStats(): Promise<void> {
   console.log('✅ [DONATEX] Агрегаты donatex_donors пересчитаны');
 }
 
+function extractTimestampFromRawPayload(raw: unknown): string | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const o = raw as Record<string, unknown>;
+  const ts = String(o.timestamp ?? o.donated_at ?? '').trim();
+  return ts || null;
+}
+
+/** Исправляет donated_at по raw_payload (МСК без offset → UTC). */
+export async function repairDonateXDonationTimestamps(): Promise<number> {
+  if (!getDonateXPool()) {
+    return 0;
+  }
+
+  const rows = await queryDonateX<{
+    id: string;
+    donated_at: string;
+    raw_payload: Record<string, unknown> | null;
+  }>(
+    `SELECT id, donated_at::text AS donated_at, raw_payload
+     FROM donatex_donations
+     WHERE raw_payload IS NOT NULL`
+  );
+
+  let fixed = 0;
+  for (const row of rows) {
+    const ts = extractTimestampFromRawPayload(row.raw_payload);
+    if (!ts) continue;
+
+    const corrected = parseDonateXTimestamp(ts);
+    if (Number.isNaN(corrected.getTime())) continue;
+
+    const current = new Date(row.donated_at);
+    if (Math.abs(corrected.getTime() - current.getTime()) < 60_000) {
+      continue;
+    }
+
+    await queryDonateX(`UPDATE donatex_donations SET donated_at = $1 WHERE id = $2`, [
+      corrected.toISOString(),
+      row.id,
+    ]);
+    fixed++;
+  }
+
+  if (fixed > 0) {
+    await rebuildDonateXDonorStats();
+    console.log(`✅ [DONATEX] Исправлено donated_at: ${fixed}`);
+  }
+
+  return fixed;
+}
+
 const DONATEX_TZ = process.env.DONATEX_STATS_TZ?.trim() || 'Europe/Moscow';
 
 export interface DonateXDonorRankRow {
@@ -260,9 +313,9 @@ export async function getDonateXDayDonorBreakdown(options: {
   const [y, m] = date.split('-').map((x) => parseInt(x, 10));
   const windows =
     y && m ? await loadDonateXStreamWindowsForMonth(y, m, DONATEX_TZ) : [];
-  const stream = findStreamWindowForDate(windows, date);
+  const streamsOnDate = findStreamWindowsForDate(windows, date);
 
-  const donors = stream
+  const donors = streamsOnDate.length > 0
     ? await queryDonateX<DonateXDayDonorBreakdownRow>(
         `SELECT
           username,
@@ -271,13 +324,27 @@ export async function getDonateXDayDonorBreakdown(options: {
           MIN(donated_at)::text AS first_donation_at,
           MAX(donated_at)::text AS last_donation_at
         FROM donatex_donations
-        WHERE donated_at >= $1::timestamptz
-          AND donated_at < $2::timestamptz
-          AND ($3::boolean = FALSE OR is_test = FALSE)
+        WHERE ($1::boolean = FALSE OR is_test = FALSE)
+          AND EXISTS (
+            SELECT 1 FROM jsonb_to_recordset($2::jsonb) AS w(
+              stream_start timestamptz,
+              stream_end timestamptz
+            )
+            WHERE donated_at >= w.stream_start AND donated_at < w.stream_end
+          )
         GROUP BY username
         ORDER BY SUM(amount_in_rub) DESC, MAX(donated_at) DESC, COUNT(*) DESC
-        LIMIT $4`,
-        [stream.streamStart, stream.streamEnd, hideTest, limit]
+        LIMIT $3`,
+        [
+          hideTest,
+          JSON.stringify(
+            streamsOnDate.map((w) => ({
+              stream_start: w.streamStart,
+              stream_end: w.streamEnd,
+            }))
+          ),
+          limit,
+        ]
       )
     : await queryDonateX<DonateXDayDonorBreakdownRow>(
         `SELECT
@@ -299,13 +366,14 @@ export async function getDonateXDayDonorBreakdown(options: {
   return {
     date,
     timezone: DONATEX_TZ,
-    groupBy: stream ? 'stream' : 'calendar',
+    groupBy: streamsOnDate.length > 0 ? 'stream' : 'calendar',
     donors,
   };
 }
 
 export interface DonateXDayTopMatrixRow {
   stream_date: string;
+  stream_start: string | null;
   top1_username: string | null;
   top1_amount_rub: string | null;
   top2_username: string | null;
@@ -341,7 +409,7 @@ function resolveTopByDayYearMonth(options?: {
   return { year: y, month: m };
 }
 
-/** Топ-3 донатера по сумме за каждый день выбранного календарного месяца (МСК). */
+/** Топ-3 по сумме за каждую сессию стрима (stream_history) или календарный день, если истории нет. */
 export async function getDonateXTopByDayMatrix(options?: {
   year?: number;
   month?: number;
@@ -384,7 +452,7 @@ export async function getDonateXTopByDayMatrixSince(
   while (year < endYear || (year === endYear && month <= endMonth)) {
     const { rows } = await getDonateXTopByDayMatrix({ year, month, hideTest: hide });
     for (const row of rows) {
-      if (row.stream_date >= sinceDate) {
+      if (dayTopRowMatchesSince(row, sinceDate)) {
         all.push(row);
       }
     }
@@ -396,6 +464,13 @@ export async function getDonateXTopByDayMatrixSince(
   }
 
   return all;
+}
+
+function dayTopRowMatchesSince(row: DonateXDayTopMatrixRow, sinceDate: string): boolean {
+  if (row.stream_start) {
+    return row.stream_start.slice(0, 10) >= sinceDate;
+  }
+  return row.stream_date >= sinceDate;
 }
 
 async function queryDonateXTopByDayCalendar(
@@ -431,6 +506,7 @@ async function queryDonateXTopByDayCalendar(
     )
     SELECT
       stream_date::text AS stream_date,
+      NULL::text AS stream_start,
       MAX(username) FILTER (WHERE rn = 1) AS top1_username,
       (MAX(total_rub) FILTER (WHERE rn = 1))::text AS top1_amount_rub,
       MAX(username) FILTER (WHERE rn = 2) AS top2_username,
@@ -465,7 +541,8 @@ async function queryDonateXTopByDayWithStreamWindows(
     ),
     stream_daily AS (
       SELECT
-        s.stream_date,
+        s.stream_start,
+        MIN(s.stream_date) AS stream_date,
         d.username,
         SUM(d.amount_in_rub) AS total_rub,
         COUNT(*)::int AS donation_count,
@@ -474,21 +551,19 @@ async function queryDonateXTopByDayWithStreamWindows(
       JOIN LATERAL (
         SELECT w.stream_date, w.stream_start, w.stream_end
         FROM windows w
-        WHERE d.donated_at >= w.stream_start
-          AND d.donated_at < w.stream_end
+        WHERE d.donated_at >= w.stream_start AND d.donated_at < w.stream_end
         ORDER BY w.stream_start DESC
         LIMIT 1
       ) s ON TRUE
       WHERE d.donated_at >= (make_date($1::int, $2::int, 1) AT TIME ZONE $3)
         AND d.donated_at < ((make_date($1::int, $2::int, 1) + INTERVAL '1 month') AT TIME ZONE $3)
         AND ($4::boolean = FALSE OR d.is_test = FALSE)
-        AND s.stream_date::date >= make_date($1::int, $2::int, 1)
-        AND s.stream_date::date < (make_date($1::int, $2::int, 1) + INTERVAL '1 month')
         AND ${donatexTopUsernameSql('d.username')}
-      GROUP BY s.stream_date, d.username
+      GROUP BY s.stream_start, d.username
     ),
     orphan_daily AS (
       SELECT
+        NULL::timestamptz AS stream_start,
         ((d.donated_at AT TIME ZONE $3)::date)::text AS stream_date,
         d.username,
         SUM(d.amount_in_rub) AS total_rub,
@@ -512,19 +587,23 @@ async function queryDonateXTopByDayWithStreamWindows(
     ),
     ranked AS (
       SELECT
+        stream_start,
         stream_date,
         username,
         total_rub,
+        COALESCE(
+          stream_start::text,
+          'cal:' || stream_date::text
+        ) AS session_key,
         ROW_NUMBER() OVER (
-          PARTITION BY stream_date
+          PARTITION BY COALESCE(stream_start::text, 'cal:' || stream_date::text)
           ORDER BY total_rub DESC, last_donation_at DESC, username ASC
         ) AS rn
       FROM daily
-      WHERE stream_date::date >= make_date($1::int, $2::int, 1)
-        AND stream_date::date < (make_date($1::int, $2::int, 1) + INTERVAL '1 month')
     )
     SELECT
-      stream_date::text AS stream_date,
+      MIN(stream_date)::text AS stream_date,
+      stream_start::text AS stream_start,
       MAX(username) FILTER (WHERE rn = 1) AS top1_username,
       (MAX(total_rub) FILTER (WHERE rn = 1))::text AS top1_amount_rub,
       MAX(username) FILTER (WHERE rn = 2) AS top2_username,
@@ -533,8 +612,8 @@ async function queryDonateXTopByDayWithStreamWindows(
       (MAX(total_rub) FILTER (WHERE rn = 3))::text AS top3_amount_rub
     FROM ranked
     WHERE rn <= 3
-    GROUP BY stream_date
-    ORDER BY stream_date DESC`,
+    GROUP BY session_key, stream_start
+    ORDER BY stream_start DESC NULLS LAST, MIN(stream_date) DESC`,
     [year, month, DONATEX_TZ, hideTest, streamWindowsToJsonb(windows)]
   );
 }

@@ -21,11 +21,30 @@ import { getAdminPassword } from '../../../../admin-auth';
 
 type DonationsSubtab = 'all' | 'top' | 'daytop';
 
+const DAYTOP_TZ = 'Europe/Moscow';
+
 function formatStreamDate(isoDate: string): string {
   const parts = isoDate.split('-');
   if (parts.length !== 3) return isoDate;
   const [y, m, d] = parts;
   return `${d}.${m}.${y.slice(-2)}`;
+}
+
+function formatDayTopStreamLabel(row: DonateXDayTopRow): string {
+  if (row.streamStart) {
+    const d = new Date(row.streamStart);
+    if (!Number.isNaN(d.getTime())) {
+      return new Intl.DateTimeFormat('ru-RU', {
+        timeZone: DAYTOP_TZ,
+        day: '2-digit',
+        month: '2-digit',
+        year: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+      }).format(d);
+    }
+  }
+  return formatStreamDate(row.streamDate);
 }
 
 function isExcludedTopUser(username: string | null): boolean {
@@ -515,7 +534,7 @@ export class DonationsTableElement extends HTMLElement {
       const tr = document.createElement('tr');
       tr.className = 'daytop-row';
       tr.innerHTML = `
-        <td class="col-stream">${escapeHtml(formatStreamDate(row.streamDate))}</td>
+        <td class="col-stream">${escapeHtml(formatDayTopStreamLabel(row))}</td>
         <td class="col-top-slot col-top-1">${formatTopCell(row.top1, row.top1Rub)}</td>
         <td class="col-top-slot col-top-2">${formatTopCell(row.top2, row.top2Rub)}</td>
         <td class="col-top-slot col-top-3">${formatTopCell(row.top3, row.top3Rub)}</td>
