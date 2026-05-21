@@ -134,6 +134,8 @@ export function computeDonateXMonthlyPointsLeaderboard(
   };
 
   for (const row of rows) {
+    // Очки только за топ внутри сессии стрима (stream_start), не за «голый» календарный день
+    if (!row.stream_start) continue;
     add(row.top1_username, 1);
     add(row.top2_username, 2);
     add(row.top3_username, 3);

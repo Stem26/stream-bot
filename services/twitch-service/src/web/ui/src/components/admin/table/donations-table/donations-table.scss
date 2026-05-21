@@ -163,13 +163,17 @@
   color: #667eea;
 }
 
-/* Таблица «Топ дня» — как в табличке стримов */
+/* Таблица «Топ дня» — на всю доступную ширину, без горизонтального скролла */
 .donations-daytop-table {
+  width: 100%;
+  table-layout: fixed;
   border-collapse: collapse;
 
   thead tr:first-child th.col-stream {
+    width: 11%;
     background: #e9ecef;
     color: #212529;
+    text-align: center;
     vertical-align: middle;
     border: 1px solid #dee2e6;
   }
@@ -185,7 +189,7 @@
   thead tr:last-child th.col-top-slot {
     text-align: center;
     font-weight: 700;
-    min-width: 8rem;
+    width: 29.67%;
     border: 1px solid #dee2e6;
   }
 
@@ -225,18 +229,18 @@
   }
 
   tbody td.col-stream {
+    width: 11%;
     background: #f8f9fa;
     font-weight: 600;
     white-space: nowrap;
     text-align: center;
-    min-width: 5.5rem;
   }
 
   tbody td.col-top-slot {
+    width: 29.67%;
     text-align: left;
     padding-left: 0.75rem;
     padding-right: 0.75rem;
-    min-width: 10rem;
   }
 
   .daytop-cell {
@@ -270,23 +274,28 @@
   display: flex;
   align-items: stretch;
   width: 100%;
+  gap: 0.35rem;
 
   .donations-table-scroll {
-    flex: 1 1 auto;
+    flex: 1 1 0;
     min-width: 0;
     margin-bottom: 0;
+    overflow: visible;
   }
 }
 
 .donations-daytop-sidecol {
-  flex: 0 0 auto;
-  width: 11rem;
-  max-width: 14rem;
+  flex: 0 0 10.5rem;
+  width: 9.5rem;
   display: flex;
   flex-direction: column;
   border: 2px solid #667eea;
-  border-left-width: 3px;
-  margin-left: -1px;
+  margin-left: 0;
+}
+
+/* Чуть шире карточка только на «Топ дня», чтобы топ-1/2/3 не упирались в очки */
+#admin-panel-container:has(.donations-daytop-layout) {
+  max-width: 1320px;
 }
 
 .donations-daytop-sidecol-head {

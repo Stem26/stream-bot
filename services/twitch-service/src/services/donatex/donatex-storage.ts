@@ -409,7 +409,7 @@ function resolveTopByDayYearMonth(options?: {
   return { year: y, month: m };
 }
 
-/** Топ-3 по сумме за каждую сессию стрима (stream_history) или календарный день, если истории нет. */
+/** Топ-3 по сумме за сессию стрима (stream_history). Без стрима — строки нет. Календарный день только если истории за месяц нет. */
 export async function getDonateXTopByDayMatrix(options?: {
   year?: number;
   month?: number;
@@ -561,29 +561,8 @@ async function queryDonateXTopByDayWithStreamWindows(
         AND ${donatexTopUsernameSql('d.username')}
       GROUP BY s.stream_start, d.username
     ),
-    orphan_daily AS (
-      SELECT
-        NULL::timestamptz AS stream_start,
-        ((d.donated_at AT TIME ZONE $3)::date)::text AS stream_date,
-        d.username,
-        SUM(d.amount_in_rub) AS total_rub,
-        COUNT(*)::int AS donation_count,
-        MAX(d.donated_at) AS last_donation_at
-      FROM donatex_donations d
-      WHERE d.donated_at >= (make_date($1::int, $2::int, 1) AT TIME ZONE $3)
-        AND d.donated_at < ((make_date($1::int, $2::int, 1) + INTERVAL '1 month') AT TIME ZONE $3)
-        AND ($4::boolean = FALSE OR d.is_test = FALSE)
-        AND NOT EXISTS (
-          SELECT 1 FROM windows w
-          WHERE d.donated_at >= w.stream_start AND d.donated_at < w.stream_end
-        )
-        AND ${donatexTopUsernameSql('d.username')}
-      GROUP BY (d.donated_at AT TIME ZONE $3)::date, d.username
-    ),
     daily AS (
       SELECT * FROM stream_daily
-      UNION ALL
-      SELECT * FROM orphan_daily
     ),
     ranked AS (
       SELECT
@@ -591,12 +570,9 @@ async function queryDonateXTopByDayWithStreamWindows(
         stream_date,
         username,
         total_rub,
-        COALESCE(
-          stream_start::text,
-          'cal:' || stream_date::text
-        ) AS session_key,
+        stream_start::text AS session_key,
         ROW_NUMBER() OVER (
-          PARTITION BY COALESCE(stream_start::text, 'cal:' || stream_date::text)
+          PARTITION BY stream_start
           ORDER BY total_rub DESC, last_donation_at DESC, username ASC
         ) AS rn
       FROM daily
@@ -612,8 +588,8 @@ async function queryDonateXTopByDayWithStreamWindows(
       (MAX(total_rub) FILTER (WHERE rn = 3))::text AS top3_amount_rub
     FROM ranked
     WHERE rn <= 3
-    GROUP BY session_key, stream_start
-    ORDER BY stream_start DESC NULLS LAST, MIN(stream_date) DESC`,
+    GROUP BY stream_start
+    ORDER BY stream_start DESC`,
     [year, month, DONATEX_TZ, hideTest, streamWindowsToJsonb(windows)]
   );
 }
