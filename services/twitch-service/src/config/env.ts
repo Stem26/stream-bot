@@ -17,13 +17,17 @@ if (!fs.existsSync(path.join(MONOREPO_ROOT, 'package.json'))) {
   MONOREPO_ROOT = path.resolve(__dirname, '../../../../../');
 }
 
-// Определяем какой .env файл загружать из корня монорепы
-const envFile = IS_LOCAL ? '.env.local' : '.env';
-const envPath = path.resolve(MONOREPO_ROOT, envFile);
-
-console.log(`[ENV] Загрузка конфигурации из: ${envPath} (NODE_ENV=${NODE_ENV})`);
-
-dotenv.config({ path: envPath });
+// .env — база; .env.local — переопределения в dev (токены можно держать в любом из файлов)
+const envBasePath = path.resolve(MONOREPO_ROOT, '.env');
+const envLocalPath = path.resolve(MONOREPO_ROOT, '.env.local');
+dotenv.config({ path: envBasePath });
+if (IS_LOCAL && fs.existsSync(envLocalPath)) {
+  dotenv.config({ path: envLocalPath, override: true });
+}
+const envSources = [fs.existsSync(envBasePath) ? '.env' : null, IS_LOCAL && fs.existsSync(envLocalPath) ? '.env.local' : null]
+  .filter(Boolean)
+  .join(' + ');
+console.log(`[ENV] Загрузка конфигурации: ${envSources || 'нет файлов'} (NODE_ENV=${NODE_ENV})`);
 
 /**
  * Загружает конфигурацию из переменных окружения
@@ -88,4 +92,11 @@ export const ALLOWED_ADMINS = process.env.ALLOWED_ADMINS
   : [];
 export const STREAMER_USERNAME = process.env.STREAMER_USERNAME?.trim().toLowerCase() 
   || 'kunilika666'; // Дефолтный username стримера
+
+/** DonateX External token (кабинет → Настройки → Api). REST + SignalR. */
+export const DONATEX_EXTERNAL_TOKEN = process.env.DONATEX_EXTERNAL_TOKEN?.trim() || undefined;
+
+/** Отдельная БД для DonateX; если пусто — используется DATABASE_URL. */
+export const DONATEX_DATABASE_URL = process.env.DONATEX_DATABASE_URL?.trim() || undefined;
+
 export { NODE_ENV, IS_LOCAL };

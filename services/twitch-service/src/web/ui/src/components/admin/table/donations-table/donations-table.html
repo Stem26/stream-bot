@@ -1,0 +1,205 @@
+<div class="donations-table-wrap">
+  <div class="donations-table-card">
+    <div class="donations-table-header">
+      <h3>Донаты DonateX</h3>
+      <p class="donations-description">
+        Всего в БД: <strong id="donations-total-count">—</strong>,
+        SignalR: <span id="donations-signalr-state">—</span>
+      </p>
+      <div class="donations-subtabs">
+        <button type="button" class="donations-subtab-btn active" data-subtab="all">Все донаты</button>
+        <button type="button" class="donations-subtab-btn" data-subtab="top">Топ донатеры</button>
+        <button type="button" class="donations-subtab-btn" data-subtab="daytop">Топ дня</button>
+      </div>
+    </div>
+
+    <div class="donations-subtab-panel active" id="donations-panel-all">
+      <div class="donations-filters">
+        <div class="filter-row">
+          <input type="search"
+                 id="donations-search"
+                 class="donations-search"
+                 placeholder="Поиск по нику или сообщению..."
+                 autocomplete="off">
+          <select id="donations-days-filter" class="donations-days-filter">
+            <option value="1">1 день</option>
+            <option value="7">7 дней</option>
+            <option value="30" selected>30 дней</option>
+            <option value="90">90 дней</option>
+            <option value="365">365 дней</option>
+          </select>
+          <label class="donations-hide-test">
+            <input type="checkbox" id="donations-hide-test" checked>
+            Без тестовых
+          </label>
+          <button type="button" class="btn btn-small" id="donations-refresh-btn">Обновить</button>
+        </div>
+      </div>
+      <div id="donations-container" class="donations-table-container loading-state">
+        <div class="loading">Загрузка донатов...</div>
+        <div class="donations-table-scroll">
+          <table class="donations-table" id="donations-table" style="display: none;">
+            <thead>
+            <tr>
+              <th class="col-date">Дата</th>
+              <th class="col-user">Донатер</th>
+              <th class="col-amount">Сумма</th>
+              <th class="col-rub">В рублях</th>
+              <th class="col-message">Сообщение</th>
+              <th class="col-flags">Флаги</th>
+            </tr>
+            </thead>
+            <tbody id="donations-tbody"></tbody>
+          </table>
+        </div>
+        <div class="donations-pagination" id="donations-pagination" style="display: none;">
+          <div class="pagination-info">
+            <label>
+              Показать
+              <select id="donations-limit-select">
+                <option value="25" selected>25</option>
+                <option value="50">50</option>
+                <option value="100">100</option>
+              </select>
+            </label>
+            <span class="page-info" id="donations-page-info">Страница 1 из 1</span>
+          </div>
+          <div class="pagination-buttons">
+            <button type="button" class="btn btn-small" id="donations-prev-btn" disabled>← Назад</button>
+            <button type="button" class="btn btn-small" id="donations-next-btn" disabled>Вперёд →</button>
+          </div>
+        </div>
+      </div>
+      <div class="empty-state" id="donations-empty-state" style="display: none;">
+        <h3>Донатов нет</h3>
+        <p>Данные появятся после backfill или SignalR</p>
+      </div>
+    </div>
+
+    <div class="donations-subtab-panel" id="donations-panel-top">
+      <div class="donations-top-toolbar">
+        <label class="donations-hide-test">
+          <input type="checkbox" id="donations-top-hide-test" checked>
+          Без тестовых
+        </label>
+        <button type="button" class="btn btn-small" id="donations-top-refresh-btn">Обновить</button>
+      </div>
+      <div id="donations-top-container" class="donations-table-container loading-state">
+        <div class="loading">Загрузка топа...</div>
+        <div class="donations-table-scroll">
+          <table class="donations-table donations-top-table" id="donations-top-table" style="display: none;">
+            <thead>
+            <tr>
+              <th class="col-rank">#</th>
+              <th class="col-user">Донатер</th>
+              <th class="col-rub sortable" data-sort="sum" scope="col">
+                <button type="button" class="th-sort-btn">Сумма, ₽ <span class="sort-indicator"></span></button>
+              </th>
+              <th class="col-count sortable" data-sort="count" scope="col">
+                <button type="button" class="th-sort-btn">Донатов <span class="sort-indicator"></span></button>
+              </th>
+              <th class="col-date sortable" data-sort="date" scope="col">
+                <button type="button" class="th-sort-btn">Последний донат <span class="sort-indicator"></span></button>
+              </th>
+            </tr>
+            </thead>
+            <tbody id="donations-top-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="empty-state" id="donations-top-empty-state" style="display: none;">
+        <h3>Донатеров пока нет</h3>
+        <p>Топ появится после первых донатов в БД</p>
+      </div>
+    </div>
+
+    <div class="donations-subtab-panel" id="donations-panel-daytop">
+      <div class="donations-top-toolbar donations-daytop-toolbar">
+        <div class="donations-daytop-toolbar-row donations-daytop-toolbar-row--points">
+          <div class="donations-daytop-points-group">
+            <span class="donations-daytop-points-label">Очки</span>
+            <div class="donations-daytop-slot donations-daytop-slot-1">
+              <label for="donations-daytop-points-1">Топ 1</label>
+              <input type="number"
+                     id="donations-daytop-points-1"
+                     class="donations-daytop-points-input"
+                     min="0"
+                     max="9999"
+                     step="1"
+                     value="3">
+            </div>
+            <div class="donations-daytop-slot donations-daytop-slot-2">
+              <label for="donations-daytop-points-2">Топ 2</label>
+              <input type="number"
+                     id="donations-daytop-points-2"
+                     class="donations-daytop-points-input"
+                     min="0"
+                     max="9999"
+                     step="1"
+                     value="2">
+            </div>
+            <div class="donations-daytop-slot donations-daytop-slot-3">
+              <label for="donations-daytop-points-3">Топ 3</label>
+              <input type="number"
+                     id="donations-daytop-points-3"
+                     class="donations-daytop-points-input"
+                     min="0"
+                     max="9999"
+                     step="1"
+                     value="1">
+            </div>
+            <span class="donations-daytop-points-status" id="donations-daytop-points-status"></span>
+          </div>
+        </div>
+        <div class="donations-daytop-toolbar-row">
+          <label class="donations-month-picker">
+            <span class="donations-month-picker-label">Месяц</span>
+            <input type="month"
+                   id="donations-daytop-month"
+                   class="donations-month-input"
+                   lang="ru"
+                   title="Выберите месяц">
+          </label>
+          <label class="donations-hide-test">
+            <input type="checkbox" id="donations-daytop-hide-test" checked>
+            Без тестовых
+          </label>
+          <button type="button" class="btn btn-small" id="donations-daytop-refresh-btn">Обновить</button>
+        </div>
+      </div>
+      <div id="donations-daytop-container" class="donations-table-container loading-state">
+        <div class="loading">Загрузка...</div>
+        <div class="donations-daytop-layout" id="donations-daytop-layout" style="display: none;">
+          <div class="donations-table-scroll">
+            <table class="donations-table donations-daytop-table" id="donations-daytop-table">
+              <thead>
+              <tr>
+                <th class="col-stream" rowspan="2">Стрим</th>
+                <th class="col-donors-group" colspan="3">По дням</th>
+              </tr>
+              <tr>
+                <th class="col-top-slot col-top-1">Топ 1</th>
+                <th class="col-top-slot col-top-2">Топ 2</th>
+                <th class="col-top-slot col-top-3">Топ 3</th>
+              </tr>
+              </thead>
+              <tbody id="donations-daytop-tbody"></tbody>
+            </table>
+          </div>
+          <aside class="donations-daytop-sidecol donations-daytop-monthly" aria-label="Очки за месяц">
+            <div class="donations-daytop-sidecol-head">Очки за месяц</div>
+            <div class="donations-daytop-sidecol-body" id="donations-daytop-monthly-body"></div>
+          </aside>
+          <aside class="donations-daytop-sidecol donations-daytop-cumulative" aria-label="Всего очков">
+            <div class="donations-daytop-sidecol-head">Всего очков</div>
+            <div class="donations-daytop-sidecol-body" id="donations-daytop-cumulative-body"></div>
+          </aside>
+        </div>
+      </div>
+      <div class="empty-state" id="donations-daytop-empty-state" style="display: none;">
+        <h3>Нет данных по дням</h3>
+        <p>Появится после донатов в выбранном периоде</p>
+      </div>
+    </div>
+  </div>
+</div>

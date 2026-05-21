@@ -7,6 +7,7 @@ import { clearDuelQueue, resetDuelsOnStreamEnd, resetDuelStreamProgressOnStreamE
 import { clearActiveUsers } from "./commands/twitch-rat";
 import { log } from './utils/event-logger';
 import { initDatabase, closeDatabase, query, queryOne } from './database/database';
+import { startDonateXIntegration, stopDonateXIntegration } from './services/donatex/donatex-service';
 import { startWebServer, getBroadcastDuelBannedChanged, setOnCommandsChangedCallback, setOnCommandExecuteCallback, setOnLinksSendCallback, setOnEnableDuelsCallback, setOnDisableDuelsCallback, setOnPardonAllCallback, setGetDuelBannedListCallback, setPardonDuelUserCallback, setGetDuelsStatusCallback, setGetDuelCooldownSkipCallback, setSetDuelCooldownSkipCallback, setGetDuelOverlaySyncEnabledCallback, setSetDuelOverlaySyncEnabledCallback, setOnDuelConfigUpdatedCallback, setOnDuelDailyConfigUpdatedCallback, setOnLinksConfigUpdatedCallback, setOnRaidConfigUpdatedCallback, setOnChatModerationConfigUpdatedCallback, setOnPartyConfigUpdatedCallback, setOnFriendsShoutoutConfigUpdatedCallback, getRaidMessageFromDb } from './web/server';
 
 /** Завершение при фатальных ошибках старта: в production — для PM2; в dev — не рвём процесс без надобности. */
@@ -84,6 +85,13 @@ async function main() {
     } catch (error) {
         console.error('❌ Ошибка запуска веб-сервера:', error);
         // Не падаем если веб-сервер не запустился - бот может работать без него
+    }
+
+    // DonateX: REST backfill + SignalR → отдельные таблицы donatex_*
+    try {
+        await startDonateXIntegration();
+    } catch (error) {
+        console.error('❌ Ошибка запуска DonateX:', error);
     }
 
     // Telegram client (без polling!)
@@ -322,6 +330,9 @@ async function main() {
             console.log('🛑 Отключаем Stream мониторинг...');
             await streamMonitor.disconnect();
             
+            console.log('🛑 Останавливаем DonateX...');
+            await stopDonateXIntegration();
+
             console.log('🛑 Закрываем соединение с базой данных...');
             await closeDatabase();
             

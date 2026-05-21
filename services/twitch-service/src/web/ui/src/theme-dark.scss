@@ -172,7 +172,8 @@ body.theme-dark {
   // Таблицы
   commands-table .commands-table-card,
   counters-table .counters-table-card,
-  party-table .party-table-card {
+  party-table .party-table-card,
+  donations-table .donations-table-card {
     background: $dark-card !important;
     border: 1px solid $dark-border !important;
     box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
@@ -181,7 +182,8 @@ body.theme-dark {
   commands-table .commands-table-header .btn,
   counters-table .counters-table-header .btn,
   party-table .party-table-header .btn,
-  journal-table .journal-table-header .btn {
+  journal-table .journal-table-header .btn,
+  donations-table .donations-table-header .btn {
     background: linear-gradient(135deg, #6d28d9 0%, #7c3aed 100%) !important;
     &:hover { box-shadow: 0 4px 16px rgba(124, 58, 237, 0.5); }
   }
@@ -342,6 +344,187 @@ body.theme-dark {
     }
 
     .journal-pagination {
+      border-top-color: $dark-border;
+      .pagination-info label { color: $dark-text-muted; }
+      .pagination-info select {
+        background: $dark-bg !important;
+        border-color: $dark-border !important;
+        color: $dark-text !important;
+      }
+      .page-info { color: $dark-text-muted; }
+    }
+
+    .empty-state h3 { color: $dark-text; }
+    .empty-state p { color: $dark-text-muted; }
+  }
+
+  donations-table {
+    .donations-table-card {
+      background: $dark-card !important;
+      border: 1px solid $dark-border !important;
+      box-shadow: none !important;
+    }
+
+    .donations-table-header h3 { color: $dark-text !important; }
+    .donations-description {
+      color: $dark-text-muted !important;
+      strong { color: $dark-accent-light !important; }
+      #donations-signalr-state { color: $dark-accent-light !important; }
+    }
+
+    .donations-subtab-btn {
+      background: $dark-bg !important;
+      border-color: $dark-border !important;
+      color: $dark-text-muted !important;
+      &:hover {
+        border-color: $dark-accent !important;
+        color: $dark-accent-light !important;
+      }
+      &.active {
+        background: linear-gradient(135deg, #6d28d9 0%, #7c3aed 100%) !important;
+        color: #fff !important;
+      }
+    }
+
+    .donations-top-table .col-rub strong { color: $dark-accent-light !important; }
+
+    .donations-top-table th.sortable .th-sort-btn {
+      color: $dark-text-muted !important;
+      &:hover { color: $dark-accent-light !important; }
+    }
+    .donations-top-table th.sortable.sort-active .th-sort-btn {
+      color: $dark-accent-light !important;
+    }
+
+    .donations-daytop-table {
+      thead tr:first-child th.col-stream {
+        background: $dark-bg !important;
+        color: $dark-text !important;
+        border-color: $dark-border !important;
+      }
+      thead tr:first-child th.col-donors-group {
+        background: #3d3d4d !important;
+        color: $dark-text !important;
+        border-color: $dark-border !important;
+      }
+      thead tr:last-child th.col-top-1 {
+        background: linear-gradient(180deg, #4a3d14 0%, #2e2610 100%) !important;
+        color: #ffd54f !important;
+        border-color: #6b5a1f !important;
+      }
+      thead tr:last-child th.col-top-2 {
+        background: linear-gradient(180deg, #454a52 0%, #2e3238 100%) !important;
+        color: #d1d5db !important;
+        border-color: #6b7280 !important;
+      }
+      thead tr:last-child th.col-top-3 {
+        background: linear-gradient(180deg, #5a3820 0%, #3d2614 100%) !important;
+        color: #e8a86b !important;
+        border-color: #8b5a2e !important;
+      }
+      tbody tr.daytop-row:hover td.col-stream {
+        background: $dark-hover !important;
+      }
+      tbody tr.daytop-row:hover td.col-top-slot {
+        background: rgba(255, 255, 255, 0.04) !important;
+      }
+      tbody td {
+        border-color: $dark-border !important;
+        color: $dark-text !important;
+      }
+      tbody td.col-stream {
+        background: $dark-hover !important;
+      }
+      .daytop-name {
+        color: $dark-text !important;
+      }
+      .daytop-amount {
+        color: $dark-accent-light !important;
+      }
+    }
+
+    .donations-daytop-sidecol {
+      border-color: $dark-accent !important;
+    }
+    .donations-daytop-sidecol-head {
+      background: rgba(102, 126, 234, 0.15) !important;
+      color: $dark-accent-light !important;
+      border-bottom-color: $dark-accent !important;
+    }
+    .donations-daytop-sidecol-body {
+      background: rgba(102, 126, 234, 0.08) !important;
+      color: $dark-text !important;
+
+      .monthly-leaderboard,
+      .monthly-entry,
+      .monthly-entry::marker,
+      .monthly-name {
+        color: inherit !important;
+      }
+      .monthly-points {
+        color: $dark-accent-light !important;
+      }
+      .monthly-empty {
+        color: $dark-text-muted !important;
+      }
+    }
+
+    .donations-month-input {
+      background: $dark-bg !important;
+      color: $dark-text !important;
+      border-color: $dark-border !important;
+    }
+    .donations-month-picker-label {
+      color: $dark-text-muted !important;
+    }
+
+    .donations-search,
+    .donations-days-filter {
+      background: $dark-bg !important;
+      border: 1px solid $dark-border !important;
+      color: $dark-text !important;
+    }
+    .donations-search::placeholder { color: $dark-text-muted; opacity: 0.8; }
+    .donations-hide-test { color: $dark-text-muted !important; }
+    .donations-daytop-points-label,
+    .donations-daytop-points-status {
+      color: $dark-text-muted !important;
+    }
+    .donations-daytop-points-input {
+      background: $dark-hover !important;
+      color: $dark-text !important;
+      border-color: $dark-border !important;
+    }
+    .donations-daytop-slot-1 label { color: #ffd54f !important; }
+    .donations-daytop-slot-2 label { color: #c0c8d4 !important; }
+    .donations-daytop-slot-3 label { color: #e8a86b !important; }
+
+    .donations-table-container.loading-state { color: $dark-text-muted; }
+
+    .donations-table thead th {
+      color: $dark-accent-light !important;
+      border-color: $dark-border !important;
+      background: $dark-bg !important;
+    }
+    .donations-table tbody tr {
+      td { color: $dark-text !important; border-color: $dark-border !important; }
+      &:hover { background: $dark-hover !important; }
+    }
+    .donations-table.donations-daytop-table tbody tr:hover {
+      background: transparent !important;
+    }
+    .donations-table .col-user { color: $dark-text !important; }
+
+    .donation-flag.test {
+      background: rgba(234, 179, 8, 0.2) !important;
+      color: #facc15 !important;
+    }
+    .donation-flag.ai {
+      background: rgba(139, 92, 246, 0.25) !important;
+      color: $dark-accent-light !important;
+    }
+
+    .donations-pagination {
       border-top-color: $dark-border;
       .pagination-info label { color: $dark-text-muted; }
       .pagination-info select {

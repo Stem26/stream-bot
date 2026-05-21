@@ -17,7 +17,7 @@ import type { LinkDialogSaveDetail } from '../../../interfaces/link-dialog';
 import { clearAdminAuth, getAdminPassword, setAdminPassword } from '../../../admin-auth';
 import type { FriendsShoutoutDialogElement } from '../dialog/friends-shoutout-dialog/friends-shoutout-dialog';
 
-const VALID_TABS = ['commands', 'counters', 'duels', 'party', 'moderation', 'logs', 'admin-logs'] as const;
+const VALID_TABS = ['commands', 'counters', 'duels', 'party', 'donations', 'moderation', 'logs', 'admin-logs'] as const;
 
 function getAdminTabFromHash(): (typeof VALID_TABS)[number] {
   const hash = window.location.hash.slice(1).toLowerCase();
@@ -143,6 +143,9 @@ export class AdminPanelElement extends HTMLElement {
       }
       if (targetTab === 'admin-logs') {
         window.dispatchEvent(new CustomEvent('admin-admin-logs-open'));
+      }
+      if (targetTab === 'donations') {
+        window.dispatchEvent(new CustomEvent('admin-donations-open'));
       }
       if (tabsContainer) {
         btn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });

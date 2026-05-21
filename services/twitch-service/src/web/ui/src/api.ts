@@ -11,6 +11,10 @@ import type {
   ChatModerationConfig,
   JournalResponse,
   FriendsShoutoutConfig,
+  DonateXDonationsResponse,
+  DonateXTopDonorsResponse,
+  DonateXTopByDayResponse,
+  DonateXDayTopPointsConfig,
 } from './types';
 import { clearAdminAuth, getAdminHeaders } from './admin-auth';
 
@@ -304,6 +308,71 @@ export async function fetchAdminJournal(params: {
   const url = '/api/admin-journal' + (searchParams.toString() ? '?' + searchParams.toString() : '');
   const response = await authFetch(url);
   return handleJson<JournalResponse>(response, 'Ошибка загрузки журнала админов');
+}
+
+// === DonateX ===
+
+export async function fetchDonateXDonations(params: {
+  page?: number;
+  limit?: number;
+  search?: string;
+  days?: number;
+  hideTest?: boolean;
+}): Promise<DonateXDonationsResponse> {
+  const searchParams = new URLSearchParams();
+  if (params.page != null) searchParams.set('page', String(params.page));
+  if (params.limit != null) searchParams.set('limit', String(params.limit));
+  if (params.search) searchParams.set('search', params.search);
+  if (params.days != null) searchParams.set('days', String(params.days));
+  if (params.hideTest === false) searchParams.set('hideTest', 'false');
+  const url = '/api/admin/donatex/donations' + (searchParams.toString() ? '?' + searchParams.toString() : '');
+  const response = await authFetch(url);
+  return handleJson<DonateXDonationsResponse>(response, 'Ошибка загрузки донатов');
+}
+
+export type DonateXTopSortField = 'sum' | 'count' | 'date';
+
+export async function fetchDonateXTopByDay(options: {
+  year: number;
+  month: number;
+  hideTest?: boolean;
+}): Promise<DonateXTopByDayResponse> {
+  const params = new URLSearchParams({
+    year: String(options.year),
+    month: String(options.month),
+  });
+  if (options.hideTest === false) params.set('hideTest', 'false');
+  const response = await authFetch(`/api/admin/donatex/top-by-day?${params}`);
+  return handleJson<DonateXTopByDayResponse>(response, 'Ошибка загрузки топа по дням');
+}
+
+export async function saveDonateXDayTopPoints(points: {
+  pointsTop1: number;
+  pointsTop2: number;
+  pointsTop3: number;
+}): Promise<DonateXDayTopPointsConfig> {
+  const response = await authFetch('/api/admin/donatex/daytop-points', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(points),
+  });
+  return handleJson(response, 'Ошибка сохранения баллов');
+}
+
+export async function fetchDonateXTopDonors(options?: {
+  limit?: number;
+  hideTest?: boolean;
+  sortBy?: DonateXTopSortField;
+  sortDir?: 'asc' | 'desc';
+}): Promise<DonateXTopDonorsResponse> {
+  const params = new URLSearchParams({
+    limit: String(options?.limit ?? 20),
+    sortBy: options?.sortBy ?? 'sum',
+    sortDir: options?.sortDir ?? 'desc',
+  });
+  if (options?.hideTest === false) params.set('hideTest', 'false');
+  const response = await authFetch(`/api/admin/donatex/top?${params}`);
+  return handleJson<DonateXTopDonorsResponse>(response, 'Ошибка загрузки топа донатеров');
 }
 
 // === Логин (без authFetch — эндпоинт публичный) ===

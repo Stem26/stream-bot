@@ -4,6 +4,7 @@ import './components/admin/table/duels-table/duels-table';
 import './components/admin/table/party-table/party-table';
 import './components/admin/table/moderation-table/moderation-table';
 import './components/admin/table/journal-table/journal-table';
+import './components/admin/table/donations-table/donations-table';
 import './components/admin/admin-panel/admin-panel';
 import './components/admin/dialog/command-dialog/command-dialog';
 import './components/admin/dialog/link-dialog/link-dialog';

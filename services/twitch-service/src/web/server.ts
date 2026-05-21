@@ -10,6 +10,27 @@ import {
     getTwitchUserIdCollectionStats,
     listCollectedTwitchUserIds
 } from '../commands/twitch-duel';
+import {
+    getDonateXStats,
+    getTopDonateXDonorsForDay,
+    getTopDonateXDonorsAllTime,
+    getDonateXTopByDayMatrix,
+    getDonateXDayDonorBreakdown,
+    listDonateXDonations,
+} from '../services/donatex/donatex-storage';
+import {
+    getDonateXDayTopPointsConfig,
+    saveDonateXDayTopPointsConfig,
+    computeDonateXMonthlyPointsLeaderboard,
+    getDonateXCumulativePointsLeaderboard,
+} from '../services/donatex/donatex-daytop-points';
+import { isDonateXExcludedFromTop } from '../services/donatex/donatex-username';
+
+function sanitizeDayTopUsername(username: string | null): string | null {
+    return isDonateXExcludedFromTop(username) ? null : username;
+}
+import { queryDonateX, getDonateXPool, getDonateXDatabaseUrl } from '../database/donatex-database';
+import { getDonateXSignalRState } from '../services/donatex/donatex-signalr';
 
 const app = express();
 const PORT = parseInt(String(process.env.WEB_PORT || 3000), 10) || 3000;
@@ -2187,6 +2208,275 @@ app.get('/api/leaderboard', async (req: Request, res: Response) => {
     } catch (error) {
         console.error('❌ Ошибка загрузки таблицы лидеров:', error);
         res.status(500).json({ error: 'Ошибка загрузки таблицы' });
+    }
+});
+
+/** DonateX: сводка и топ донатеров (всё время). */
+app.get('/api/admin/donatex/stats', async (_req: Request, res: Response) => {
+    try {
+        if (!getDonateXPool()) {
+            res.status(503).json({ error: 'DonateX БД не настроена' });
+            return;
+        }
+        const stats = await getDonateXStats();
+        const donors = await queryDonateX<{
+            username: string;
+            donation_count: number;
+            total_amount_rub: string;
+            last_donation_at: string;
+        }>(
+            `SELECT username, donation_count, total_amount_rub::text, last_donation_at::text
+             FROM donatex_donors
+             ORDER BY total_amount_rub DESC
+             LIMIT 50`
+        );
+        res.json({
+            stats,
+            signalrState: getDonateXSignalRState(),
+            topDonors: donors,
+        });
+    } catch (error) {
+        console.error('❌ Ошибка DonateX stats:', error);
+        res.status(500).json({ error: 'Ошибка загрузки DonateX' });
+    }
+});
+
+/** DonateX: список донатов. ?page=1&limit=25&search=&days=30&hideTest=true */
+app.get('/api/admin/donatex/donations', async (req: Request, res: Response) => {
+    try {
+        if (!getDonateXPool()) {
+            const hint = getDonateXDatabaseUrl()
+                ? 'PostgreSQL недоступен — проверьте DATABASE_URL и запущен ли сервер БД'
+                : 'Добавьте DATABASE_URL в D:\\Projects\\stream-bot\\.env или .env.local (не путать с DONATEX_EXTERNAL_TOKEN)';
+            res.status(503).json({ error: `DonateX БД не настроена. ${hint}` });
+            return;
+        }
+        const page = Math.max(1, parseInt(String(req.query.page), 10) || 1);
+        const limit = Math.min(100, Math.max(10, parseInt(String(req.query.limit), 10) || 25));
+        const search = typeof req.query.search === 'string' ? req.query.search : undefined;
+        const days = Math.min(365, Math.max(1, parseInt(String(req.query.days), 10) || 30));
+        const hideTest = req.query.hideTest !== 'false';
+        const result = await listDonateXDonations({ page, limit, search, days, hideTest });
+        const stats = await getDonateXStats();
+        res.json({
+            items: result.items.map((r) => ({
+                id: r.id,
+                username: r.username,
+                message: r.message,
+                currency: r.currency,
+                amount: r.amount,
+                amountInRub: r.amount_in_rub,
+                donatedAt: r.donated_at,
+                isTest: r.is_test,
+                withAiResponse: r.with_ai_response,
+                source: r.source,
+            })),
+            pagination: result.pagination,
+            stats,
+            signalrState: getDonateXSignalRState(),
+        });
+    } catch (error) {
+        console.error('❌ Ошибка DonateX donations:', error);
+        res.status(500).json({ error: 'Ошибка загрузки донатов' });
+    }
+});
+
+/** DonateX: топ донатеров за всё время. ?limit=20 */
+app.get('/api/admin/donatex/top', async (req: Request, res: Response) => {
+    try {
+        if (!getDonateXPool()) {
+            const hint = getDonateXDatabaseUrl()
+                ? 'PostgreSQL недоступен'
+                : 'Добавьте DATABASE_URL в .env или .env.local';
+            res.status(503).json({ error: `DonateX БД не настроена. ${hint}` });
+            return;
+        }
+        const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit), 10) || 20));
+        const hideTest = req.query.hideTest !== 'false';
+        const sortRaw = String(req.query.sortBy ?? 'sum').toLowerCase();
+        const sortBy = (['sum', 'count', 'date'].includes(sortRaw) ? sortRaw : 'sum') as
+            | 'sum'
+            | 'count'
+            | 'date';
+        const sortDir = String(req.query.sortDir ?? 'desc').toLowerCase() === 'asc' ? 'asc' : 'desc';
+        const donors = await getTopDonateXDonorsAllTime({ limit, hideTest, sortBy, sortDir });
+        res.json({
+            donors: donors.map((d) => ({
+                username: d.username,
+                donationCount: d.donation_count,
+                totalAmountRub: d.total_amount_rub,
+                lastDonationAt: d.last_donation_at,
+            })),
+        });
+    } catch (error) {
+        console.error('❌ Ошибка DonateX top:', error);
+        res.status(500).json({ error: 'Ошибка загрузки топа донатеров' });
+    }
+});
+
+/** DonateX: полный рейтинг за день (сверка). ?date=YYYY-MM-DD&limit=50&hideTest=true */
+app.get('/api/admin/donatex/day-breakdown', async (req: Request, res: Response) => {
+    try {
+        if (!getDonateXPool()) {
+            res.status(503).json({ error: 'DonateX БД не настроена' });
+            return;
+        }
+        const date = typeof req.query.date === 'string' ? req.query.date.trim() : '';
+        if (!date) {
+            res.status(400).json({ error: 'Укажите date=YYYY-MM-DD' });
+            return;
+        }
+        const limit = Math.min(200, Math.max(1, parseInt(String(req.query.limit), 10) || 50));
+        const hideTest = req.query.hideTest !== 'false';
+        const result = await getDonateXDayDonorBreakdown({ date, limit, hideTest });
+        res.json({
+            date: result.date,
+            timezone: result.timezone,
+            groupBy: result.groupBy,
+            note:
+                result.groupBy === 'stream'
+                    ? 'Топ по сумме за окно стрима (start + duration из stream_history)'
+                    : 'Топ по сумме за календарный день (Europe/Moscow)',
+            donors: result.donors.map((d) => ({
+                username: d.username,
+                donationCount: d.donation_count,
+                totalAmountRub: d.total_amount_rub,
+                firstDonationAt: d.first_donation_at,
+                lastDonationAt: d.last_donation_at,
+            })),
+        });
+    } catch (error) {
+        console.error('❌ Ошибка DonateX day-breakdown:', error);
+        res.status(500).json({
+            error: error instanceof Error ? error.message : 'Ошибка загрузки разбивки за день',
+        });
+    }
+});
+
+/** DonateX: топ-3 донатера по каждому дню месяца. ?year=2026&month=5&hideTest=true */
+app.get('/api/admin/donatex/top-by-day', async (req: Request, res: Response) => {
+    try {
+        if (!getDonateXPool()) {
+            const hint = getDonateXDatabaseUrl()
+                ? 'PostgreSQL недоступен'
+                : 'Добавьте DATABASE_URL в .env или .env.local';
+            res.status(503).json({ error: `DonateX БД не настроена. ${hint}` });
+            return;
+        }
+        const year = parseInt(String(req.query.year), 10);
+        const month = parseInt(String(req.query.month), 10);
+        const hideTest = req.query.hideTest !== 'false';
+        const result = await getDonateXTopByDayMatrix({
+            year: Number.isFinite(year) ? year : undefined,
+            month: Number.isFinite(month) ? month : undefined,
+            hideTest,
+        });
+        const points = await getDonateXDayTopPointsConfig();
+        const monthlyLeaderboard = computeDonateXMonthlyPointsLeaderboard(result.rows, points);
+        const cumulative = await getDonateXCumulativePointsLeaderboard(hideTest);
+        res.json({
+            timezone: result.timezone,
+            year: result.year,
+            month: result.month,
+            groupBy: result.groupBy,
+            points: {
+                top1: points.pointsTop1,
+                top2: points.pointsTop2,
+                top3: points.pointsTop3,
+            },
+            monthlyLeaderboard: monthlyLeaderboard.map((e) => ({
+                username: e.username,
+                totalPoints: e.totalPoints,
+                asTop1: e.asTop1,
+                asTop2: e.asTop2,
+                asTop3: e.asTop3,
+            })),
+            cumulativeSince: cumulative.since,
+            cumulativeLeaderboard: cumulative.leaderboard.map((e) => ({
+                username: e.username,
+                totalPoints: e.totalPoints,
+                asTop1: e.asTop1,
+                asTop2: e.asTop2,
+                asTop3: e.asTop3,
+            })),
+            rows: result.rows.map((r) => ({
+                streamDate: r.stream_date,
+                top1: sanitizeDayTopUsername(r.top1_username),
+                top1Rub: sanitizeDayTopUsername(r.top1_username) ? r.top1_amount_rub : null,
+                top2: sanitizeDayTopUsername(r.top2_username),
+                top2Rub: sanitizeDayTopUsername(r.top2_username) ? r.top2_amount_rub : null,
+                top3: sanitizeDayTopUsername(r.top3_username),
+                top3Rub: sanitizeDayTopUsername(r.top3_username) ? r.top3_amount_rub : null,
+            })),
+        });
+    } catch (error) {
+        console.error('❌ Ошибка DonateX top-by-day:', error);
+        res.status(500).json({
+            error:
+                error instanceof Error ? error.message : 'Ошибка загрузки топа по дням',
+        });
+    }
+});
+
+/** DonateX: баллы за места в топе дня (сохранение в БД). */
+app.get('/api/admin/donatex/daytop-points', async (_req: Request, res: Response) => {
+    try {
+        if (!getDonateXPool()) {
+            res.status(503).json({ error: 'DonateX БД не настроена' });
+            return;
+        }
+        const config = await getDonateXDayTopPointsConfig();
+        res.json({
+            pointsTop1: config.pointsTop1,
+            pointsTop2: config.pointsTop2,
+            pointsTop3: config.pointsTop3,
+            updatedAt: config.updatedAt,
+        });
+    } catch (error) {
+        console.error('❌ Ошибка DonateX daytop-points GET:', error);
+        res.status(500).json({ error: 'Ошибка загрузки баллов' });
+    }
+});
+
+app.put('/api/admin/donatex/daytop-points', async (req: Request, res: Response) => {
+    try {
+        if (!getDonateXPool()) {
+            res.status(503).json({ error: 'DonateX БД не настроена' });
+            return;
+        }
+        const body = req.body as Record<string, unknown>;
+        const config = await saveDonateXDayTopPointsConfig({
+            pointsTop1: Number(body.pointsTop1),
+            pointsTop2: Number(body.pointsTop2),
+            pointsTop3: Number(body.pointsTop3),
+        });
+        res.json({
+            pointsTop1: config.pointsTop1,
+            pointsTop2: config.pointsTop2,
+            pointsTop3: config.pointsTop3,
+            updatedAt: config.updatedAt,
+        });
+    } catch (error) {
+        console.error('❌ Ошибка DonateX daytop-points PUT:', error);
+        res.status(500).json({ error: 'Ошибка сохранения баллов' });
+    }
+});
+
+/** DonateX: топ донатеров за день. ?date=YYYY-MM-DD&limit=20&hideTest=true */
+app.get('/api/admin/donatex/top-day', async (req: Request, res: Response) => {
+    try {
+        if (!getDonateXPool()) {
+            res.status(503).json({ error: 'DonateX БД не настроена' });
+            return;
+        }
+        const date = typeof req.query.date === 'string' ? req.query.date : undefined;
+        const limit = typeof req.query.limit === 'string' ? parseInt(req.query.limit, 10) : 20;
+        const hideTest = req.query.hideTest !== 'false';
+        const result = await getTopDonateXDonorsForDay({ date, limit, hideTest });
+        res.json(result);
+    } catch (error) {
+        console.error('❌ Ошибка DonateX top-day:', error);
+        res.status(500).json({ error: 'Ошибка загрузки топа за день' });
     }
 });
 
