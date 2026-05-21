@@ -440,12 +440,37 @@
   }
 }
 
+.filter-row-day {
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.donations-filter-username,
+.donations-filter-date,
 .donations-search,
 .donations-days-filter {
   padding: 0.5rem 0.75rem;
   border: 1px solid var(--border-color, #ddd);
   border-radius: 8px;
   font-size: 0.9rem;
+}
+
+.donations-filter-username {
+  min-width: 140px;
+  flex: 0 1 180px;
+}
+
+.donations-filter-date {
+  position: relative;
+  min-width: 150px;
+}
+
+.donations-day-filter-hint {
+  flex: 1 1 100%;
+  font-size: 0.85rem;
+  color: var(--text-muted, #666);
 }
 
 .donations-search {

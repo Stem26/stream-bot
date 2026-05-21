@@ -479,12 +479,16 @@ body.theme-dark {
     }
 
     .donations-search,
-    .donations-days-filter {
+    .donations-days-filter,
+    .donations-filter-username,
+    .donations-filter-date {
       background: $dark-bg !important;
       border: 1px solid $dark-border !important;
       color: $dark-text !important;
     }
-    .donations-search::placeholder { color: $dark-text-muted; opacity: 0.8; }
+    .donations-search::placeholder,
+    .donations-filter-username::placeholder { color: $dark-text-muted; opacity: 0.8; }
+    .donations-day-filter-hint { color: $dark-text-muted !important; }
     .donations-hide-test { color: $dark-text-muted !important; }
     .donations-daytop-points-label,
     .donations-daytop-points-status {
