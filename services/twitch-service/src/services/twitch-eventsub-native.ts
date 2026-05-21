@@ -534,14 +534,18 @@ export class TwitchEventSubNative {
     }
 
     /** Снять обработчики и закрыть сокет (не трогать другой инстанс, уже назначенный в this.ws). */
-    private teardownWebSocket(ws: WebSocket | null): void {
+    private teardownWebSocket(ws: WebSocket | null, force: boolean = false): void {
         if (!ws) {
             return;
         }
         try {
             ws.removeAllListeners();
             if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
-                ws.close();
+                if (force) {
+                    ws.terminate();
+                } else {
+                    ws.close();
+                }
             }
         } catch {
             /* ignore */
@@ -571,11 +575,43 @@ export class TwitchEventSubNative {
         this.clearReconnectWelcomeTimer();
         this.isUsingReconnectUrl = false;
         if (sock) {
-            this.teardownWebSocket(sock);
+            this.teardownWebSocket(sock, true);
         }
         this.wsConnectGeneration++;
         this.clearConnectingState('idle');
         this.subscribeInFlight = false;
+    }
+
+    /**
+     * Разрыв «зомби»-сокета: WebSocket ещё OPEN, но keepalive/notification уже не приходят.
+     * Без этого connectWebSocket() честно делает no-op: «соединение уже активно».
+     */
+    private forceTeardownZombieConnection(reason: string): void {
+        const hadOpenWs = Boolean(this.ws && this.ws.readyState === WebSocket.OPEN);
+        if (!hadOpenWs && this.connectionState !== 'connected') {
+            return;
+        }
+
+        console.warn(`⚠️ EventSub: ${reason} — принудительный разрыв перед reconnect`);
+        log('CONNECTION', {
+            service: 'TwitchEventSubNative',
+            status: 'zombie_teardown',
+            reason,
+            hadOpenWs,
+            connectionState: this.connectionState
+        });
+
+        const sock = this.ws;
+        this.ws = null;
+        this.clearReconnectWelcomeTimer();
+        this.isUsingReconnectUrl = false;
+        if (sock) {
+            this.teardownWebSocket(sock, true);
+        }
+        this.wsConnectGeneration++;
+        this.clearConnectingState('idle');
+        this.subscribeInFlight = false;
+        this.lastKeepaliveStatus = null;
     }
 
     private isConnectingStuck(now: number = Date.now()): boolean {
@@ -1784,9 +1820,29 @@ export class TwitchEventSubNative {
                     }
                 }
                 try {
+                    if (source === 'keepalive') {
+                        this.forceTeardownZombieConnection(
+                            `scheduled reconnect from ${keepaliveTrigger ?? source}`
+                        );
+                    }
+
                     await this.connectWebSocket();
-                    console.log('✅ Переподключение успешно завершено');
-                    log('EVENTSUB_RECONNECT', { status: 'success' });
+
+                    const reconnected =
+                        this.connectionState === 'connected'
+                        && Boolean(this.ws && this.ws.readyState === WebSocket.OPEN);
+                    if (reconnected) {
+                        console.log('✅ Переподключение успешно завершено');
+                        log('EVENTSUB_RECONNECT', { status: 'success' });
+                    } else {
+                        console.warn(
+                            '⚠️ Переподключение: нет активного EventSub-сокета после connectWebSocket'
+                        );
+                        log('EVENTSUB_RECONNECT', {
+                            status: 'incomplete',
+                            connectionState: this.connectionState
+                        });
+                    }
                 } catch (error) {
                     console.error('❌ Ошибка переподключения:', error);
                     log('ERROR', {
