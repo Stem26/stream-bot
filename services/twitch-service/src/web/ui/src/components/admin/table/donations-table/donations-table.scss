@@ -440,16 +440,7 @@
   }
 }
 
-.filter-row-day {
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  align-items: center;
-  margin-bottom: 0.5rem;
-}
-
 .donations-filter-username,
-.donations-filter-date,
-.donations-search,
 .donations-days-filter {
   padding: 0.5rem 0.75rem;
   border: 1px solid var(--border-color, #ddd);
@@ -458,24 +449,69 @@
 }
 
 .donations-filter-username {
-  min-width: 140px;
-  flex: 0 1 180px;
+  min-width: 120px;
+  flex: 0 1 160px;
+}
+
+.donations-date-sep {
+  color: var(--text-muted, #888);
+  font-size: 0.9rem;
+  user-select: none;
+}
+
+.donations-date-field {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-width: 9.5rem;
+  cursor: pointer;
 }
 
 .donations-filter-date {
   position: relative;
-  min-width: 150px;
+  width: 100%;
+  min-width: 9.5rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border-color, #ddd);
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-family: inherit;
+  background: var(--input-bg, #fff);
+  color: var(--text-color, #333);
+  cursor: pointer;
+
+  &::-webkit-calendar-picker-indicator {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    opacity: 0;
+    cursor: pointer;
+  }
+
+  &:not(.has-value)::-webkit-datetime-edit {
+    color: transparent;
+  }
+
+  &:not(.has-value)::-webkit-datetime-edit-fields-wrapper {
+    opacity: 0;
+  }
 }
 
-.donations-day-filter-hint {
-  flex: 1 1 100%;
-  font-size: 0.85rem;
-  color: var(--text-muted, #666);
+.donations-date-placeholder {
+  position: absolute;
+  left: 0.75rem;
+  font-size: 0.9rem;
+  color: var(--text-muted, #999);
+  pointer-events: none;
+  user-select: none;
 }
 
-.donations-search {
-  flex: 1;
-  min-width: 200px;
+.donations-filter-date.has-value ~ .donations-date-placeholder,
+.donations-filter-date:focus ~ .donations-date-placeholder {
+  display: none;
 }
 
 .donations-hide-test {
@@ -533,9 +569,15 @@
     color: var(--text-color, #212529);
   }
 
-  .col-amount,
-  .col-rub {
+  .col-amount {
     white-space: nowrap;
+
+    .donation-amount-foreign {
+      margin-left: 0.35rem;
+      font-size: 0.85em;
+      font-weight: 400;
+      color: var(--text-muted, #666);
+    }
   }
 
   .col-message {
@@ -544,12 +586,36 @@
     overflow-wrap: anywhere;
   }
 
-  .col-flags {
-    white-space: nowrap;
-  }
-
   tr:hover {
     background: var(--row-hover, rgba(0, 0, 0, 0.03));
+  }
+}
+
+/* Список «Все донаты» */
+#donations-table {
+  .col-user {
+    width: var(--donations-user-col-width, auto);
+    max-width: 250px;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .col-amount {
+    width: 1%;
+    max-width: 13rem;
+    min-width: 10rem;
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+    white-space: nowrap;
+    line-height: 1.3;
+    font-size: 0.9rem;
+
+    .donation-amount-foreign {
+      display: inline;
+      margin-left: 0.35rem;
+      margin-top: 0;
+    }
   }
 }
 

@@ -15,26 +15,28 @@
 
     <div class="donations-subtab-panel active" id="donations-panel-all">
       <div class="donations-filters">
-        <div class="filter-row filter-row-day">
+        <div class="filter-row">
           <input type="text"
                  id="donations-filter-username"
                  class="donations-filter-username"
-                 placeholder="Ник донатера"
+                 placeholder="Поиск"
                  autocomplete="off">
-          <input type="date"
-                 id="donations-filter-date"
-                 class="donations-filter-date"
-                 title="Календарный день (МСК)">
-          <button type="button" class="btn btn-small" id="donations-day-filter-btn">За день</button>
-          <button type="button" class="btn btn-small btn-ghost" id="donations-day-filter-clear" style="display: none;">Сбросить день</button>
-          <span class="donations-day-filter-hint" id="donations-day-filter-hint" style="display: none;"></span>
-        </div>
-        <div class="filter-row">
-          <input type="search"
-                 id="donations-search"
-                 class="donations-search"
-                 placeholder="Поиск по нику или сообщению..."
-                 autocomplete="off">
+          <label class="donations-date-field" for="donations-filter-date">
+            <input type="date"
+                   id="donations-filter-date"
+                   class="donations-filter-date"
+                   title="Дата с (МСК)">
+            <span class="donations-date-placeholder">дд.мм.гг</span>
+          </label>
+          <span class="donations-date-sep" aria-hidden="true">—</span>
+          <label class="donations-date-field" for="donations-filter-date-to">
+            <input type="date"
+                   id="donations-filter-date-to"
+                   class="donations-filter-date"
+                   title="Дата по (МСК)">
+            <span class="donations-date-placeholder">дд.мм.гг</span>
+          </label>
+          <button type="button" class="btn btn-small" id="donations-filter-reset">Сброс</button>
           <select id="donations-days-filter" class="donations-days-filter">
             <option value="1">1 день</option>
             <option value="7">7 дней</option>
@@ -58,9 +60,7 @@
               <th class="col-date">Дата</th>
               <th class="col-user">Донатер</th>
               <th class="col-amount">Сумма</th>
-              <th class="col-rub">В рублях</th>
               <th class="col-message">Сообщение</th>
-              <th class="col-flags">Флаги</th>
             </tr>
             </thead>
             <tbody id="donations-tbody"></tbody>

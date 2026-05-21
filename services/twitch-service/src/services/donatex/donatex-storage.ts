@@ -658,32 +658,47 @@ export async function listDonateXDonations(options: {
   search?: string;
   days?: number;
   hideTest?: boolean;
-  /** YYYY-MM-DD — все донаты за календарный день в DONATEX_TZ (без days). */
+  /** YYYY-MM-DD — день или начало периода в DONATEX_TZ (без days). */
   date?: string;
-  /** Точное совпадение ника (с date). */
-  username?: string;
+  /** YYYY-MM-DD — конец периода (включительно); если нет или равна date — один день. */
+  dateTo?: string;
 }): Promise<DonateXDonationsListResult> {
   const page = Math.max(1, options.page ?? 1);
-  const dateFilter = options.date?.trim() ?? '';
-  const byDay = /^\d{4}-\d{2}-\d{2}$/.test(dateFilter);
-  const limit = byDay
+  const dateFrom = options.date?.trim() ?? '';
+  const dateToOpt = options.dateTo?.trim() ?? '';
+  const byCalendar = /^\d{4}-\d{2}-\d{2}$/.test(dateFrom);
+  const limit = byCalendar
     ? Math.min(500, Math.max(10, options.limit ?? 100))
     : Math.min(100, Math.max(10, options.limit ?? 25));
   const days = Math.min(365, Math.max(1, options.days ?? 30));
   const hideTest = options.hideTest !== false;
-  const search = options.search?.trim().slice(0, 200).toLowerCase() ?? '';
-  const username = options.username?.trim().slice(0, 200) ?? '';
+  const search = options.search?.trim().slice(0, 200) ?? '';
   const offset = (page - 1) * limit;
 
   const params: (string | number | boolean)[] = [];
   let where: string;
   let paramIndex = 1;
 
-  if (byDay) {
-    where = `WHERE donated_at >= ($${paramIndex}::date AT TIME ZONE $${paramIndex + 1})
-      AND donated_at < (($${paramIndex}::date + INTERVAL '1 day') AT TIME ZONE $${paramIndex + 1})`;
-    params.push(dateFilter, DONATEX_TZ);
-    paramIndex += 2;
+  if (byCalendar) {
+    let rangeStart = dateFrom;
+    let rangeEnd =
+      /^\d{4}-\d{2}-\d{2}$/.test(dateToOpt) ? dateToOpt : dateFrom;
+    if (rangeStart > rangeEnd) {
+      const t = rangeStart;
+      rangeStart = rangeEnd;
+      rangeEnd = t;
+    }
+    if (rangeStart === rangeEnd) {
+      where = `WHERE donated_at >= ($${paramIndex}::date AT TIME ZONE $${paramIndex + 1})
+        AND donated_at < (($${paramIndex}::date + INTERVAL '1 day') AT TIME ZONE $${paramIndex + 1})`;
+      params.push(rangeStart, DONATEX_TZ);
+      paramIndex += 2;
+    } else {
+      where = `WHERE donated_at >= ($${paramIndex}::date AT TIME ZONE $${paramIndex + 1})
+        AND donated_at < (($${paramIndex + 2}::date + INTERVAL '1 day') AT TIME ZONE $${paramIndex + 1})`;
+      params.push(rangeStart, DONATEX_TZ, rangeEnd);
+      paramIndex += 3;
+    }
   } else {
     params.push(days);
     where = `WHERE donated_at >= NOW() - ($1::int * INTERVAL '1 day')`;
@@ -693,13 +708,15 @@ export async function listDonateXDonations(options: {
   if (hideTest) {
     where += ` AND is_test = FALSE`;
   }
-  if (byDay && username) {
-    where += ` AND LOWER(TRIM(username)) = $${paramIndex}`;
-    params.push(username.toLowerCase());
-    paramIndex++;
-  } else if (!byDay && search) {
-    where += ` AND (LOWER(username) LIKE $${paramIndex} OR LOWER(message) LIKE $${paramIndex})`;
-    params.push(`%${search}%`);
+  if (search) {
+    const pattern = `%${search.toLowerCase()}%`;
+    where += ` AND (
+      LOWER(username) LIKE $${paramIndex}
+      OR LOWER(message) LIKE $${paramIndex}
+      OR amount::text LIKE $${paramIndex}
+      OR amount_in_rub::text LIKE $${paramIndex}
+    )`;
+    params.push(pattern);
     paramIndex++;
   }
 
