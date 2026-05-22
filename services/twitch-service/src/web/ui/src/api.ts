@@ -372,7 +372,7 @@ export async function fetchDonateXTopDonors(options?: {
   sortDir?: 'asc' | 'desc';
 }): Promise<DonateXTopDonorsResponse> {
   const params = new URLSearchParams({
-    limit: String(options?.limit ?? 20),
+    limit: String(options?.limit ?? 100),
     sortBy: options?.sortBy ?? 'sum',
     sortDir: options?.sortDir ?? 'desc',
   });

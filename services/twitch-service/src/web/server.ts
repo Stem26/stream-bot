@@ -2305,7 +2305,7 @@ app.get('/api/admin/donatex/donations', async (req: Request, res: Response) => {
     }
 });
 
-/** DonateX: топ донатеров за всё время. ?limit=20 */
+/** DonateX: топ донатеров за всё время. ?limit=100 */
 app.get('/api/admin/donatex/top', async (req: Request, res: Response) => {
     try {
         if (!getDonateXPool()) {
@@ -2315,7 +2315,7 @@ app.get('/api/admin/donatex/top', async (req: Request, res: Response) => {
             res.status(503).json({ error: `DonateX БД не настроена. ${hint}` });
             return;
         }
-        const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit), 10) || 20));
+        const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit), 10) || 100));
         const hideTest = req.query.hideTest !== 'false';
         const sortRaw = String(req.query.sortBy ?? 'sum').toLowerCase();
         const sortBy = (['sum', 'count', 'date'].includes(sortRaw) ? sortRaw : 'sum') as
