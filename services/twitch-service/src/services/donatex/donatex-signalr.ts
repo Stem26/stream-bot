@@ -1,10 +1,6 @@
-import { WebSocket } from 'ws';
+import './donatex-signalr-polyfill';
 import { DonateXDonation } from './types';
 import { normalizeDonateXDonation } from './donatex-normalize';
-
-// SignalR в Node.js требует WebSocket из пакета ws
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-(globalThis as any).WebSocket = WebSocket;
 
 type SignalRModule = typeof import('@microsoft/signalr');
 type HubConnection = import('@microsoft/signalr').HubConnection;
@@ -20,17 +16,77 @@ export interface DonateXSignalROptions {
   apiBaseUrl?: string;
   onDonation: DonateXDonationHandler;
   onConnected?: () => void;
+  onReconnecting?: (error?: Error) => void;
   onDisconnected?: (error?: Error) => void;
 }
 
+const SERVER_TIMEOUT_MS = 120_000;
+const KEEP_ALIVE_INTERVAL_MS = 15_000;
+const WATCHDOG_CHECK_MS = 60_000;
+const WATCHDOG_IDLE_MS = 5 * 60_000;
+
 let connection: HubConnection | null = null;
 let signalrModule: SignalRModule | null = null;
+let lastMessageAt = Date.now();
+let watchdogTimer: ReturnType<typeof setInterval> | null = null;
+let watchdogReconnecting = false;
+let suppressDisconnectCallback = false;
+
+function touchSignalRActivity(): void {
+  lastMessageAt = Date.now();
+}
+
+function stopWatchdog(): void {
+  if (watchdogTimer) {
+    clearInterval(watchdogTimer);
+    watchdogTimer = null;
+  }
+  watchdogReconnecting = false;
+}
+
+function startWatchdog(connectedState: HubConnectionState): void {
+  stopWatchdog();
+  touchSignalRActivity();
+
+  watchdogTimer = setInterval(() => {
+    if (!connection || connection.state !== connectedState || watchdogReconnecting) {
+      return;
+    }
+    if (Date.now() - lastMessageAt <= WATCHDOG_IDLE_MS) {
+      return;
+    }
+
+    watchdogReconnecting = true;
+    console.warn('[DONATEX_SIGNALR] Нет активности 5 минут, принудительный reconnect');
+
+    void (async () => {
+      const conn = connection;
+      if (!conn) {
+        watchdogReconnecting = false;
+        return;
+      }
+      try {
+        suppressDisconnectCallback = true;
+        await conn.stop();
+        await conn.start();
+        touchSignalRActivity();
+        console.log('✅ [DONATEX_SIGNALR] Watchdog: переподключено');
+      } catch (err) {
+        console.warn('[DONATEX_SIGNALR] Watchdog reconnect ошибка:', err);
+      } finally {
+        suppressDisconnectCallback = false;
+        watchdogReconnecting = false;
+      }
+    })();
+  }, WATCHDOG_CHECK_MS);
+}
 
 async function loadSignalRModule(): Promise<SignalRModule> {
   if (signalrModule) {
     return signalrModule;
   }
   try {
+    await import('./donatex-signalr-polyfill');
     signalrModule = await import('@microsoft/signalr');
     return signalrModule;
   } catch (err) {
@@ -63,7 +119,11 @@ export async function startDonateXSignalR(options: DonateXSignalROptions): Promi
     .configureLogging(LogLevel.Warning)
     .build();
 
+  connection.serverTimeoutInMilliseconds = SERVER_TIMEOUT_MS;
+  connection.keepAliveIntervalInMilliseconds = KEEP_ALIVE_INTERVAL_MS;
+
   connection.on('DonationCreated', async (payload: unknown) => {
+    touchSignalRActivity();
     try {
       const raw =
         payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {};
@@ -78,34 +138,53 @@ export async function startDonateXSignalR(options: DonateXSignalROptions): Promi
     }
   });
 
+  connection.onreconnecting((err) => {
+    console.warn(
+      '[DONATEX_SIGNALR] Потеря соединения, попытка переподключения...',
+      err?.message ?? ''
+    );
+    const error = err ? new Error(err.message) : undefined;
+    options.onReconnecting?.(error);
+  });
+
   connection.onreconnected(() => {
+    touchSignalRActivity();
     console.log('✅ [DONATEX_SIGNALR] Переподключено');
     options.onConnected?.();
   });
 
+  // С automatic reconnect onclose — только финальное закрытие (reconnect исчерпан или stop()).
   connection.onclose((err?: Error) => {
+    if (suppressDisconnectCallback) {
+      return;
+    }
     const error = err ? new Error(err.message) : undefined;
-    console.warn('[DONATEX_SIGNALR] Соединение закрыто', err?.message ?? '');
+    console.warn('[DONATEX_SIGNALR] Соединение окончательно закрыто', err?.message ?? '');
     options.onDisconnected?.(error);
   });
 
   await connection.start();
+  touchSignalRActivity();
+  startWatchdog(HubConnectionState.Connected);
   console.log('✅ [DONATEX_SIGNALR] Подключено к public-donations-hub');
   options.onConnected?.();
 }
 
 export async function stopDonateXSignalR(): Promise<void> {
+  stopWatchdog();
   if (!connection) {
     return;
   }
   try {
     const { HubConnectionState } = await loadSignalRModule();
     if (connection.state !== HubConnectionState.Disconnected) {
+      suppressDisconnectCallback = true;
       await connection.stop();
     }
   } catch (err) {
     console.warn('[DONATEX_SIGNALR] Ошибка при остановке:', err);
   } finally {
+    suppressDisconnectCallback = false;
     connection = null;
   }
 }

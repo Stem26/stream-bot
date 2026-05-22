@@ -135,8 +135,11 @@ export async function startDonateXIntegration(): Promise<void> {
       token,
       apiBaseUrl: API_BASE,
       onDonation: (d, raw) => handleDonation(d, 'signalr', raw),
+      onReconnecting: () => {
+        console.warn('[DONATEX] Потеря соединения с DonateX, ожидаем reconnect...');
+      },
       onDisconnected: () => {
-        console.warn('[DONATEX] SignalR отключён — новые донаты до reconnect не придут; reconcile подстрахует');
+        console.warn('[DONATEX] SignalR окончательно отключён — новые донаты только через reconcile');
       },
     });
   } catch (err) {
