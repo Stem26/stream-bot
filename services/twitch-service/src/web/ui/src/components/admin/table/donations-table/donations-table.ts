@@ -21,8 +21,6 @@ import { getAdminPassword } from '../../../../admin-auth';
 
 type DonationsSubtab = 'all' | 'top' | 'daytop';
 
-const TOP_DONORS_LIMIT = 100;
-
 function formatStreamDate(isoDate: string): string {
   const dateOnly = isoDate.trim().slice(0, 10);
   const parts = dateOnly.split('-');
@@ -455,13 +453,11 @@ export class DonationsTableElement extends HTMLElement {
     if (donors.length === 0) {
       table.style.display = 'none';
       emptyState.style.display = 'block';
-      this.updateTopDonorsCount(0);
       return;
     }
 
     table.style.display = 'table';
     emptyState.style.display = 'none';
-    this.updateTopDonorsCount(donors.length);
 
     donors.forEach((row, index) => {
       const tr = document.createElement('tr');
@@ -476,18 +472,6 @@ export class DonationsTableElement extends HTMLElement {
     });
   }
 
-  private updateTopDonorsCount(count: number): void {
-    const el = this.querySelector<HTMLElement>('#donations-top-count');
-    if (!el) return;
-    if (count <= 0) {
-      el.hidden = true;
-      el.textContent = '';
-      return;
-    }
-    el.hidden = false;
-    el.textContent = `Показано: ${count}${count >= TOP_DONORS_LIMIT ? ' (макс.)' : ''}`;
-  }
-
   async loadTopDonors(force = false): Promise<void> {
     if (this.isLoadingTop) return;
     if (this.topLoaded && !force) return;
@@ -500,7 +484,7 @@ export class DonationsTableElement extends HTMLElement {
 
     try {
       const data = await fetchDonateXTopDonors({
-        limit: TOP_DONORS_LIMIT,
+        limit: 20,
         hideTest: this.topHideTest,
         sortBy: this.topSortBy,
         sortDir: this.topSortDir,

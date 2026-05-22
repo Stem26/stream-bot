@@ -603,7 +603,7 @@ export async function getTopDonateXDonorsAllTime(options?: {
   sortBy?: DonateXTopSortField;
   sortDir?: 'asc' | 'desc';
 }): Promise<DonateXDonorRankRow[]> {
-  const take = Math.min(100, Math.max(1, options?.limit ?? 100));
+  const take = Math.min(100, Math.max(1, options?.limit ?? 20));
   const hideTest = options?.hideTest !== false;
   const sortBy = options?.sortBy ?? 'sum';
   const sortDir = options?.sortDir === 'asc' ? 'ASC' : 'DESC';
