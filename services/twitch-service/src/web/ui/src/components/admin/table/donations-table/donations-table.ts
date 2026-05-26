@@ -91,7 +91,6 @@ export class DonationsTableElement extends HTMLElement {
   private currentPage = 1;
   private currentLimit = 25;
   private currentDays = 30;
-  /** Дата с / по (МСК); без days. Одна дата или одинаковые — один день. */
   private currentFilterDate = '';
   private currentFilterDateTo = '';
   private currentFilterUsername = '';
