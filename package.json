@@ -5,15 +5,19 @@
   "private": true,
   "workspaces": [
     "services/telegram-service",
-    "services/twitch-service"
+    "services/twitch-service",
+    "services/discord-service"
   ],
   "scripts": {
     "dev:telegram": "npm --workspace services/telegram-service run dev",
     "dev:twitch": "npm --workspace services/twitch-service run dev",
+    "dev:discord": "npm --workspace services/discord-service run dev",
     "build:telegram": "npm --workspace services/telegram-service run build",
     "build:twitch": "npm --workspace services/twitch-service run build",
+    "build:discord": "npm --workspace services/discord-service run build",
     "start:telegram": "npm --workspace services/telegram-service run start",
     "start:twitch": "cross-env NODE_ENV=production npm --workspace services/twitch-service run start",
+    "start:discord": "cross-env NODE_ENV=production npm --workspace services/discord-service run start",
     "nightbot:send": "npm --workspace services/twitch-service run nightbot:send",
     "twitch:announcement:test": "npm --workspace services/twitch-service run twitch:announcement:test",
     "twitch:token:check": "npm --workspace services/twitch-service run twitch:token:check",

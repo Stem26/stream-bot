@@ -1,0 +1,31 @@
+{
+  "name": "discord-service",
+  "version": "1.0.0",
+  "description": "Discord voice guard — отдельный сервис (деплой с монорепо или только эта папка)",
+  "private": true,
+  "main": "dist/src/main.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "restart": "pm2 restart discord-guard",
+    "deploy": "npm run build && pm2 restart discord-guard",
+    "start": "cross-env NODE_ENV=production TZ=Europe/Moscow node dist/src/main.js",
+    "dev": "cross-env NODE_ENV=development TZ=Europe/Moscow nodemon",
+    "watch": "tsc --watch"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "discord.js": "^14.19.3",
+    "dotenv": "^16.4.5",
+    "pino": "^10.3.0",
+    "pino-pretty": "^13.1.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "cross-env": "^10.1.0",
+    "nodemon": "^3.0.2",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
+  }
+}

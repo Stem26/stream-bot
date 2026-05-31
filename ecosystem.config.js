@@ -40,6 +40,27 @@ module.exports = {
       error_file: '~/.pm2/logs/twitch-bot-error.log',
       out_file: '~/.pm2/logs/twitch-bot-out.log',
       log_date_format: ''
+    },
+    {
+      name: 'discord-guard',
+      script: './services/discord-service/dist/src/main.js',
+      cwd: '/root/stream-bot',
+      env: {
+        NODE_ENV: 'production',
+        TZ: 'Europe/Moscow'
+      },
+      instances: 1,
+      exec_mode: 'fork',
+      autorestart: true,
+      watch: false,
+      max_memory_restart: '200M',
+      min_uptime: 10000,
+      restart_delay: 5000,
+      exp_backoff_restart_delay: 2000,
+      max_restart_delay: 60000,
+      error_file: '~/.pm2/logs/discord-guard-error.log',
+      out_file: '~/.pm2/logs/discord-guard-out.log',
+      log_date_format: ''
     }
   ]
 };
