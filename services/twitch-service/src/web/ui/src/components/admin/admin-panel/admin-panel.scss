@@ -194,10 +194,19 @@ admin-panel .moderation-rules-block {
 
 admin-panel .future-predictions-panel {
   margin-top: 20px;
-  padding: 16px;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.72);
-  border: 1px solid rgba(0, 0, 0, 0.08);
+  padding: 22px 24px;
+  border-radius: 15px;
+  background: #fff;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+
+  h2 {
+    margin: 0 0 6px;
+    color: #212529;
+  }
+
+  .admin-description {
+    color: #6c757d;
+  }
 }
 
 admin-panel .future-predictions-header {
@@ -205,33 +214,59 @@ admin-panel .future-predictions-header {
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 12px;
-
-  h2 {
-    margin: 0 0 6px;
-  }
+  margin-bottom: 14px;
 }
 
 admin-panel .future-predictions-actions {
   display: flex;
   gap: 8px;
   flex-shrink: 0;
+
+  .btn-outline {
+    border: 1px solid #adb5bd;
+    color: #495057;
+    background: #f8f9fa;
+
+    &:hover:not(:disabled) {
+      background: #e9ecef;
+      border-color: #868e96;
+      color: #212529;
+    }
+  }
 }
 
 admin-panel .future-predictions-textarea {
   width: 100%;
   min-height: 520px;
-  padding: 12px 14px;
-  border: 2px solid #e0e0e0;
+  padding: 14px 16px;
+  border: 1px solid #dde1e8;
   border-radius: 10px;
-  background: #fff;
-  color: #222;
+  background: #f4f6fa;
+  color: #1a1d21;
   font: 15px/1.5 ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
   resize: vertical;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 0, 0, 0.22) transparent;
+
+  &::placeholder {
+    color: #868e96;
+  }
+
+  &::-webkit-scrollbar {
+    width: 8px;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.22);
+    border-radius: 4px;
+  }
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
 
   &:focus {
     outline: none;
     border-color: #667eea;
+    background: #fff;
     box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.16);
   }
 }
@@ -241,7 +276,70 @@ admin-panel .future-predictions-footer {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-top: 10px;
-  color: #555;
+  margin-top: 12px;
+  color: #6c757d;
   font-size: 0.92em;
+}
+
+body.theme-dark admin-panel .future-predictions-panel {
+  background: #1a1a24;
+  border: 1px solid rgba(124, 58, 237, 0.35);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.45);
+
+  h2 {
+    color: #e2e8f0;
+  }
+
+  .admin-description {
+    color: #b8c2cc;
+  }
+
+  .future-predictions-actions {
+    .btn-outline {
+      background: rgba(139, 92, 246, 0.12);
+      border: 1px solid rgba(124, 58, 237, 0.35);
+      color: #b8c2cc;
+
+      &:hover:not(:disabled) {
+        background: rgba(139, 92, 246, 0.2);
+        border-color: #8b5cf6;
+        color: #a78bfa;
+      }
+    }
+
+    .btn-success {
+      background: linear-gradient(135deg, #6d28d9 0%, #7c3aed 100%);
+
+      &:hover:not(:disabled) {
+        box-shadow: 0 4px 16px rgba(124, 58, 237, 0.5);
+      }
+    }
+  }
+}
+
+body.theme-dark admin-panel .future-predictions-textarea {
+  background: #0f0f14;
+  border-color: rgba(124, 58, 237, 0.35);
+  color: #e2e8f0;
+
+  &::placeholder {
+    color: #b8c2cc;
+    opacity: 0.7;
+  }
+
+  &:focus {
+    border-color: #8b5cf6;
+    background: #12121a;
+    box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.25);
+  }
+
+  scrollbar-color: rgba(255, 255, 255, 0.25) transparent;
+
+  &::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.25);
+  }
+}
+
+body.theme-dark admin-panel .future-predictions-footer {
+  color: #b8c2cc;
 }
