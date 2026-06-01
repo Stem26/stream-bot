@@ -285,6 +285,13 @@ export class NightBotMonitor {
         '!оверлейвкл', '!overlayon',
         '!оверлейвыкл', '!overlayoff',
         '!jump', '!j', '!о',
+        '!points', '!очки',
+        '!top_points', '!toppoints', '!топ_очки',
+        '!top_dick', '!topdick',
+        '!bottom_dick', '!bottomdick',
+        '!horny', '!хорни',
+        '!furry', '!фурри', '!фури',
+        '!крыса', '!милашка',
     ]);
 
     private commands = this.buildCommandsMap('!партия');

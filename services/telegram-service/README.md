@@ -1,62 +1,78 @@
-# 🟦 Telegram Service
+# Telegram Service
 
-Микросервис Telegram бота для игр и развлечений.
+Telegram service отвечает за отдельного Telegram-бота с игровыми командами, публикациями в канал и PostgreSQL-хранилищем игроков.
 
-## 🚀 Функционал
+## Что делает
 
-- `/dick` — ежедневная игра измерения писюна
-- `/top_dick` — топ 10 игроков
-- `/bottom_dick` — топ 10 аутсайдеров  
-- `/post` — публикация в канал (только админы)
-- `/future` — предсказание на день
-- `/horny` — уровень развратности
-- `/furry` — уровень фурриёбости
+- Запускает Telegraf-бота через polling.
+- Регистрирует команды Telegram: `/dick`, `/top_dick`, `/bottom_dick`, `/future`, `/horny`, `/furry`, `/post`.
+- Хранит состояние игроков и результатов в PostgreSQL.
+- Поддерживает список админов для служебных команд.
+- При запуске сбрасывает старые pending updates, чтобы бот не обрабатывал накопленные сообщения после простоя.
+- Корректно закрывает соединение с БД при `SIGINT`/`SIGTERM`.
 
-## ⚙️ Конфигурация
+## Важные переменные окружения
 
-Создайте `.env` файл:
+Сервис читает `.env` из корня монорепозитория в production и `.env.local` в development.
 
 ```env
-BOT_TOKEN=your_telegram_bot_token
-CHANNEL_ID=-1001234567890
+BOT_TOKEN=telegram_bot_token
+CHANNEL_ID=telegram_channel_id
 ALLOWED_ADMINS=123456789,987654321
+STREAMER_USER_ID=1087968824,7166108463
+DATABASE_URL=postgres_connection_url
 ```
 
-## 🔧 Разработка
+`STREAMER_USER_ID` можно указать списком через запятую. Если переменная не задана, используются значения по умолчанию из `src/config/env.ts`.
+
+## Команды разработки
+
+Из корня монорепозитория:
 
 ```bash
-# Установить зависимости
-npm install
+npm run dev:telegram
+npm run build:telegram
+npm run start:telegram
+npm run db:migrate:telegram
+```
 
-# Запустить в dev режиме
+Из папки сервиса:
+
+```bash
 npm run dev
-
-# Собрать для production
 npm run build
-
-# Запустить production
 npm run start
+npm run test:run
+npm run db:migrate
+npm run db:migrate-data
 ```
 
-## 📦 Деплой
+## Production
+
+Основной entrypoint после сборки:
 
 ```bash
-# Собрать
-npm run build
-
-# Запустить через PM2
-pm2 start dist/src/index.js --name telegram-service
+node dist/main.js
 ```
 
-## 📝 Структура
+В PM2 сервис обычно запущен как `telegram-bot` через корневой `ecosystem.config.js`:
 
+```bash
+pm2 restart telegram-bot --update-env
+pm2 logs telegram-bot --lines 100
 ```
+
+## Структура
+
+```text
 telegram-service/
-├── src/
-│   ├── commands/        # Telegram команды
-│   ├── domain/          # Бизнес-логика (DickService)
-│   ├── services/        # Хранилища данных
-│   ├── utils/           # Утилиты
-│   └── index.ts
-└── players.json         # База игроков
+  src/
+    main.ts              # точка входа
+    app/                 # создание бота, middleware, handlers, регистрация команд
+    commands/            # Telegram-команды
+    database/            # PostgreSQL init/migrations
+    domain/              # доменная логика игр
+    services/            # storage и прикладные сервисы
+    types/               # типы контекста и конфигурации
+    utils/               # форматирование, даты, permissions, logger
 ```
