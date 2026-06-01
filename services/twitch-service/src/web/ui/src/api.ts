@@ -11,6 +11,7 @@ import type {
   ChatModerationConfig,
   JournalResponse,
   FriendsShoutoutConfig,
+  FuturePredictionsTextResponse,
   DonateXDonationsResponse,
   DonateXTopDonorsResponse,
   DonateXTopByDayResponse,
@@ -137,6 +138,20 @@ export async function updateFriendsShoutoutConfig(config: FriendsShoutoutConfig)
     body: JSON.stringify(config),
   });
   return handleJson<FriendsShoutoutConfig>(response, 'Ошибка сохранения настроек авто-шатаута');
+}
+
+export async function fetchFuturePredictionsText(): Promise<FuturePredictionsTextResponse> {
+  const response = await authFetch('/api/admin/future-predictions');
+  return handleJson<FuturePredictionsTextResponse>(response, 'Ошибка загрузки предсказаний');
+}
+
+export async function updateFuturePredictionsText(text: string): Promise<FuturePredictionsTextResponse> {
+  const response = await authFetch('/api/admin/future-predictions', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text }),
+  });
+  return handleJson<FuturePredictionsTextResponse>(response, 'Ошибка сохранения предсказаний');
 }
 
 // === API для счётчиков ===

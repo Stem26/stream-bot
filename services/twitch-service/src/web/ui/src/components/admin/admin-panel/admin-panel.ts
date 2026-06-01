@@ -4,10 +4,12 @@ import './admin-panel.scss';
 import { showAlert } from '../../../alerts';
 import {
   authFetch,
+  fetchFuturePredictionsText,
   fetchFriendsShoutoutConfig,
   fetchLinksConfig,
   fetchRaidConfig,
   login,
+  updateFuturePredictionsText,
   updateFriendsShoutoutConfig,
   updateLinksConfig,
   updateRaidConfig,
@@ -17,7 +19,7 @@ import type { LinkDialogSaveDetail } from '../../../interfaces/link-dialog';
 import { clearAdminAuth, getAdminPassword, setAdminPassword } from '../../../admin-auth';
 import type { FriendsShoutoutDialogElement } from '../dialog/friends-shoutout-dialog/friends-shoutout-dialog';
 
-const VALID_TABS = ['commands', 'counters', 'duels', 'party', 'donations', 'moderation', 'logs', 'admin-logs'] as const;
+const VALID_TABS = ['commands', 'counters', 'duels', 'party', 'future', 'donations', 'moderation', 'logs', 'admin-logs'] as const;
 
 function getAdminTabFromHash(): (typeof VALID_TABS)[number] {
   const hash = window.location.hash.slice(1).toLowerCase();
@@ -34,6 +36,8 @@ export class AdminPanelElement extends HTMLElement {
   private initialized = false;
   private lastLinksRotationMinutes: number | null = null;
   private lastRaidMessage: string | null = null;
+  private lastFuturePredictionsText: string | null = null;
+  private futurePredictionsLoaded = false;
   private hashChangeHandler: (() => void) | null = null;
   private readonly friendsShoutoutCollapseStorageKey = 'admin.friendsShoutoutCollapsed';
 
@@ -147,6 +151,9 @@ export class AdminPanelElement extends HTMLElement {
       if (targetTab === 'donations') {
         window.dispatchEvent(new CustomEvent('admin-donations-open'));
       }
+      if (targetTab === 'future') {
+        void this.loadFuturePredictionsOnce();
+      }
       if (tabsContainer) {
         btn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
       }
@@ -198,6 +205,7 @@ export class AdminPanelElement extends HTMLElement {
     };
 
     void this.initLinks(linkDialog, updateRaidSaveButton);
+    this.setupFuturePredictionsTab();
 
     allLinksBtn.addEventListener('click', async () => {
       try {
@@ -322,6 +330,82 @@ export class AdminPanelElement extends HTMLElement {
         showAlert('Сообщение при рейде сохранено', 'success');
       } catch (error) {
         if (error instanceof Error) showAlert(`Ошибка сохранения: ${error.message}`, 'error');
+      }
+    });
+  }
+
+  private splitFuturePredictionBlocks(raw: string): string[] {
+    return raw
+      .split(/\n\s*\n+/)
+      .map((block) => block.replace(/\r\n/g, '\n').replace(/[ \t]+\n/g, '\n').trim())
+      .filter(Boolean);
+  }
+
+  private updateFuturePredictionsUiState(): void {
+    const textarea = this.querySelector<HTMLTextAreaElement>('#future-predictions-text');
+    const saveBtn = this.querySelector<HTMLButtonElement>('#future-predictions-save-btn');
+    const counter = this.querySelector<HTMLElement>('#future-predictions-counter');
+    if (!textarea || !saveBtn || !counter) return;
+
+    const blocks = this.splitFuturePredictionBlocks(textarea.value);
+    const uniqueCount = new Set(blocks.map((block) => block.replace(/\s+/g, ' ').toLowerCase())).size;
+    const duplicates = blocks.length - uniqueCount;
+    counter.textContent = `Предсказаний: ${blocks.length}${duplicates > 0 ? `, дублей: ${duplicates}` : ''}`;
+    saveBtn.disabled = this.lastFuturePredictionsText === null || textarea.value === this.lastFuturePredictionsText || blocks.length === 0;
+  }
+
+  private async loadFuturePredictions(force = false): Promise<void> {
+    if (this.futurePredictionsLoaded && !force) return;
+
+    const textarea = this.querySelector<HTMLTextAreaElement>('#future-predictions-text');
+    const saveBtn = this.querySelector<HTMLButtonElement>('#future-predictions-save-btn');
+    const reloadBtn = this.querySelector<HTMLButtonElement>('#future-predictions-reload-btn');
+    if (!textarea) return;
+
+    if (saveBtn) saveBtn.disabled = true;
+    if (reloadBtn) reloadBtn.disabled = true;
+    try {
+      const data = await fetchFuturePredictionsText();
+      textarea.value = data.text ?? '';
+      this.lastFuturePredictionsText = textarea.value;
+      this.futurePredictionsLoaded = true;
+      this.updateFuturePredictionsUiState();
+    } catch (error) {
+      if (error instanceof Error) showAlert(`Ошибка загрузки предсказаний: ${error.message}`, 'error');
+    } finally {
+      if (reloadBtn) reloadBtn.disabled = false;
+    }
+  }
+
+  private async loadFuturePredictionsOnce(): Promise<void> {
+    await this.loadFuturePredictions(false);
+  }
+
+  private setupFuturePredictionsTab(): void {
+    const textarea = this.querySelector<HTMLTextAreaElement>('#future-predictions-text');
+    const saveBtn = this.querySelector<HTMLButtonElement>('#future-predictions-save-btn');
+    const reloadBtn = this.querySelector<HTMLButtonElement>('#future-predictions-reload-btn');
+    if (!textarea || !saveBtn || !reloadBtn) return;
+
+    textarea.addEventListener('input', () => this.updateFuturePredictionsUiState());
+    reloadBtn.addEventListener('click', () => {
+      void this.loadFuturePredictions(true);
+    });
+    saveBtn.addEventListener('click', async () => {
+      saveBtn.disabled = true;
+      reloadBtn.disabled = true;
+      try {
+        const data = await updateFuturePredictionsText(textarea.value);
+        textarea.value = data.text ?? textarea.value;
+        this.lastFuturePredictionsText = textarea.value;
+        this.futurePredictionsLoaded = true;
+        this.updateFuturePredictionsUiState();
+        showAlert(`Предсказания сохранены: ${data.count}`, 'success');
+      } catch (error) {
+        if (error instanceof Error) showAlert(`Ошибка сохранения предсказаний: ${error.message}`, 'error');
+        this.updateFuturePredictionsUiState();
+      } finally {
+        reloadBtn.disabled = false;
       }
     });
   }

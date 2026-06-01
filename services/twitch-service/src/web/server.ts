@@ -6,6 +6,7 @@ import * as path from 'path';
 import * as http from 'http';
 import WebSocket from 'ws';
 import { query, queryOne } from '../database/database';
+import { getPool } from '../database/database';
 import {
     getTwitchUserIdCollectionStats,
     listCollectedTwitchUserIds
@@ -124,6 +125,50 @@ function maskSecret(value: string, head: number = 6, tail: number = 4): string {
   const v = String(value);
   if (v.length <= head + tail) return `${v.slice(0, head)}...`;
   return `${v.slice(0, head)}...${v.slice(-tail)}`;
+}
+
+async function ensureFuturePredictionsTable(): Promise<void> {
+  await query(`
+    CREATE TABLE IF NOT EXISTS telegram_future_predictions (
+      id SERIAL PRIMARY KEY,
+      text TEXT NOT NULL,
+      enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS uniq_telegram_future_predictions_text_norm
+    ON telegram_future_predictions (LOWER(BTRIM(text)))
+  `);
+  await query(`
+    CREATE INDEX IF NOT EXISTS idx_telegram_future_predictions_enabled_sort
+    ON telegram_future_predictions(enabled, sort_order, id)
+  `);
+}
+
+function normalizePredictionText(text: string): string {
+  return text
+    .replace(/\r\n/g, '\n')
+    .replace(/[ \t]+\n/g, '\n')
+    .trim();
+}
+
+function splitPredictionBlocks(raw: string): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+
+  for (const block of raw.split(/\n\s*\n+/)) {
+    const text = normalizePredictionText(block);
+    if (!text) continue;
+    const key = text.replace(/\s+/g, ' ').toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(text);
+  }
+
+  return out;
 }
 
 // Конфиг OAuth для фронта (чтобы не хардкодить CLIENT_ID в twitch-oauth.html)
@@ -1385,6 +1430,91 @@ app.put('/api/raid', async (req: Request, res: Response) => {
     } catch (error) {
         console.error('❌ Ошибка обновления настроек рейда:', error);
         res.status(500).json({ error: 'Ошибка обновления настроек рейда' });
+    }
+});
+
+// === API для Telegram /future предсказаний ===
+
+app.get('/api/admin/future-predictions', async (_req: Request, res: Response) => {
+    try {
+        await ensureFuturePredictionsTable();
+        const rows = await query<{
+            id: number;
+            text: string;
+            enabled: boolean;
+            sort_order: number;
+        }>(
+            `SELECT id, text, enabled, sort_order
+             FROM telegram_future_predictions
+             WHERE enabled = TRUE
+             ORDER BY sort_order ASC, id ASC`
+        );
+        const predictions = rows.map((row) => row.text);
+        res.json({
+            text: predictions.join('\n\n'),
+            count: predictions.length,
+        });
+    } catch (error) {
+        console.error('❌ Ошибка загрузки future-предсказаний:', error);
+        res.status(500).json({ error: 'Ошибка загрузки предсказаний' });
+    }
+});
+
+app.put('/api/admin/future-predictions', async (req: Request, res: Response) => {
+    const client = await getPool().connect();
+    try {
+        const rawText = typeof req.body?.text === 'string' ? req.body.text : '';
+        if (rawText.length > 300_000) {
+            res.status(400).json({ error: 'Список предсказаний слишком длинный' });
+            return;
+        }
+
+        const predictions = splitPredictionBlocks(rawText);
+        if (predictions.length === 0) {
+            res.status(400).json({ error: 'Добавьте хотя бы одно предсказание' });
+            return;
+        }
+
+        await ensureFuturePredictionsTable();
+        await client.query('BEGIN');
+        await client.query('UPDATE telegram_future_predictions SET enabled = FALSE, updated_at = NOW()');
+
+        for (const [index, text] of predictions.entries()) {
+            const existing = await client.query<{ id: number }>(
+                `SELECT id
+                 FROM telegram_future_predictions
+                 WHERE LOWER(BTRIM(text)) = LOWER(BTRIM($1))
+                 LIMIT 1`,
+                [text]
+            );
+            if (existing.rows[0]) {
+                await client.query(
+                    `UPDATE telegram_future_predictions
+                     SET text = $1, enabled = TRUE, sort_order = $2, updated_at = NOW()
+                     WHERE id = $3`,
+                    [text, index, existing.rows[0].id]
+                );
+            } else {
+                await client.query(
+                    `INSERT INTO telegram_future_predictions (text, enabled, sort_order, updated_at)
+                     VALUES ($1, TRUE, $2, NOW())`,
+                    [text, index]
+                );
+            }
+        }
+
+        await client.query('COMMIT');
+        console.log(`✅ Future-предсказания обновлены: активных=${predictions.length}`);
+        res.json({
+            text: predictions.join('\n\n'),
+            count: predictions.length,
+        });
+    } catch (error) {
+        await client.query('ROLLBACK').catch(() => {});
+        console.error('❌ Ошибка сохранения future-предсказаний:', error);
+        res.status(500).json({ error: 'Ошибка сохранения предсказаний' });
+    } finally {
+        client.release();
     }
 });
 

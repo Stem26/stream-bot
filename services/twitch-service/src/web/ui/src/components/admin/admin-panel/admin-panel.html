@@ -41,6 +41,7 @@
     <button class="tab-btn" data-tab="counters">🔢 Счётчики</button>
     <button class="tab-btn" data-tab="duels">⚔️ Дуэли</button>
     <button class="tab-btn" data-tab="party">🎉 Партия</button>
+    <button class="tab-btn" data-tab="future">🔮 Предсказания</button>
     <button class="tab-btn" data-tab="donations">💰 Донаты</button>
     <button class="tab-btn" data-tab="moderation">🛡️ Модерация чата</button>
     <button class="tab-btn" data-tab="logs">📜 Журналы</button>
@@ -156,6 +157,40 @@
   <div class="tab-content"
        id="tab-party">
     <party-table></party-table>
+  </div>
+  <div class="tab-content"
+       id="tab-future">
+    <div class="future-predictions-panel">
+      <div class="future-predictions-header">
+        <div>
+          <h2>Предсказания Telegram /future</h2>
+          <p class="admin-description">
+            Один блок = одно предсказание. Разделяй предсказания пустой строкой; внутри блока можно делать переносы строк.
+          </p>
+        </div>
+        <div class="future-predictions-actions">
+          <button type="button"
+                  class="btn btn-outline btn-small"
+                  id="future-predictions-reload-btn">
+            Обновить
+          </button>
+          <button type="button"
+                  class="btn btn-success btn-small"
+                  id="future-predictions-save-btn"
+                  disabled>
+            Сохранить
+          </button>
+        </div>
+      </div>
+      <textarea id="future-predictions-text"
+                class="future-predictions-textarea"
+                spellcheck="true"
+                placeholder="Предсказание 1&#10;может быть в несколько строк.&#10;&#10;Предсказание 2"></textarea>
+      <div class="future-predictions-footer">
+        <span id="future-predictions-counter">Предсказаний: 0</span>
+        <span>Пустая строка разделяет предсказания.</span>
+      </div>
+    </div>
   </div>
   <div class="tab-content"
        id="tab-donations">

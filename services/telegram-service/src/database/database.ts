@@ -2,6 +2,7 @@ import { Pool } from 'pg';
 import * as dotenv from 'dotenv';
 import * as path from 'path';
 import * as fs from 'fs';
+import { predictions as defaultFuturePredictions } from '../utils/predictions';
 
 // Загрузка .env из корня монорепо
 const MONOREPO_ROOT = (() => {
@@ -94,6 +95,45 @@ export async function initDatabase(): Promise<void> {
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_player_stats_last_used ON player_stats(last_used_date)
     `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS telegram_future_predictions (
+        id SERIAL PRIMARY KEY,
+        text TEXT NOT NULL,
+        enabled BOOLEAN NOT NULL DEFAULT TRUE,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+
+    await client.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS uniq_telegram_future_predictions_text_norm
+      ON telegram_future_predictions (LOWER(BTRIM(text)))
+    `);
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_telegram_future_predictions_enabled_sort
+      ON telegram_future_predictions(enabled, sort_order, id)
+    `);
+
+    const existingPredictions = await client.query<{ count: string }>(
+      'SELECT COUNT(*) AS count FROM telegram_future_predictions'
+    );
+    const predictionCount = Number(existingPredictions.rows[0]?.count ?? 0);
+    if (predictionCount === 0) {
+      for (const [index, text] of defaultFuturePredictions.entries()) {
+        await client.query(
+          `INSERT INTO telegram_future_predictions (text, enabled, sort_order)
+           SELECT $1, TRUE, $2
+           WHERE NOT EXISTS (
+             SELECT 1 FROM telegram_future_predictions WHERE LOWER(BTRIM(text)) = LOWER(BTRIM($1))
+           )`,
+          [text, index]
+        );
+      }
+      console.log(`[DATABASE] Предсказания Telegram загружены из fallback: ${defaultFuturePredictions.length}`);
+    }
 
     console.log('[DATABASE] Таблицы Telegram бота созданы');
   } finally {

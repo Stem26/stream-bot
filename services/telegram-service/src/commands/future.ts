@@ -1,7 +1,7 @@
 import { BotContext } from '../types/context';
 import { getMoscowDate, canUseFutureToday } from '../utils/date';
-import { predictions } from '../utils/predictions';
 import { getAvailablePredictions, addToHistory, clearHistory } from '../utils/futureHistory';
+import { getActiveFuturePredictions } from '../services/future-predictions';
 
 export async function futureCommand(ctx: BotContext) {
   if (!ctx.from) {
@@ -36,6 +36,7 @@ export async function futureCommand(ctx: BotContext) {
   const attempts = player.futureAttemptsToday || 0;
 
   if (canUse) {
+    const predictions = await getActiveFuturePredictions();
     let availablePredictions = getAvailablePredictions(predictions);
     
     if (availablePredictions.length === 0) {

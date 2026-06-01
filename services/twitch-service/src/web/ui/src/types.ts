@@ -36,6 +36,11 @@ export interface FriendsShoutoutConfig {
   logins: string[];
 }
 
+export interface FuturePredictionsTextResponse {
+  text: string;
+  count: number;
+}
+
 export interface Counter {
   id: string;
   trigger: string;
