@@ -354,13 +354,12 @@ function applyTwitchUserId(player: TwitchPlayerData, twitchUserId?: string): voi
   }
 }
 
-/** Привязать login → user id в БД (без полной перезагрузки статистики). */
+/** Привязать login ↔ user id в БД (sync по схеме id → nick). */
 export async function bindTwitchUserId(
   twitchUsername: string,
   twitchUserId?: string | null
 ): Promise<void> {
-  if (!twitchUserId) return;
-  await storage.recordTwitchUserId(twitchUsername, twitchUserId);
+  await storage.syncPlayerLogin(twitchUsername, twitchUserId);
 }
 
 export async function getTwitchUserIdCollectionStats(): Promise<{
@@ -376,7 +375,7 @@ export async function listCollectedTwitchUserIds(): Promise<
   return storage.listTwitchUserIds();
 }
 
-function ensurePlayer(
+function ensurePlayerInMap(
   players: Map<string, TwitchPlayerData>,
   twitchUsername: string,
   twitchUserId?: string
@@ -429,6 +428,30 @@ function ensurePlayer(
   players.set(normalized, player);
 
   return player;
+}
+
+async function resolvePlayer(
+  players: Map<string, TwitchPlayerData>,
+  twitchUsername: string,
+  twitchUserId?: string,
+): Promise<TwitchPlayerData> {
+  const normalized = twitchUsername.toLowerCase();
+  const fromDb = await storage.resolvePlayerData(twitchUsername, twitchUserId);
+
+  if (fromDb) {
+    fromDb.twitchUsername = twitchUsername;
+    if (fromDb.twitchUserId) {
+      for (const [key, p] of players.entries()) {
+        if (p.twitchUserId === fromDb.twitchUserId && key !== normalized) {
+          players.delete(key);
+        }
+      }
+    }
+    players.set(normalized, fromDb);
+    return fromDb;
+  }
+
+  return ensurePlayerInMap(players, twitchUsername, twitchUserId);
 }
 
 /**
@@ -540,8 +563,8 @@ async function handlePersonalChallenge(
   }
   
   const targetNormalized = cleanTarget;
-  const challengerPlayer = ensurePlayer(players, challengerUsername, actorIds?.userId);
-  ensurePlayer(players, cleanTarget, actorIds?.targetUserId);
+  const challengerPlayer = await resolvePlayer(players, challengerUsername, actorIds?.userId);
+  await resolvePlayer(players, cleanTarget, actorIds?.targetUserId);
   
   // Нельзя вызвать самого себя
   if (challengerNormalized === targetNormalized) {
@@ -704,8 +727,8 @@ async function executeDuel(
   players: Map<string, TwitchPlayerData>,
   now: number
 ): Promise<DuelCommandResult> {
-  const player1 = ensurePlayer(players, player1Username);
-  const player2 = ensurePlayer(players, player2Username);
+  const player1 = await resolvePlayer(players, player1Username);
+  const player2 = await resolvePlayer(players, player2Username);
 
   const todayStr = new Date().toISOString().slice(0, 10);
 
@@ -1060,7 +1083,7 @@ export async function processTwitchDuelCommand(
   const players = await storage.loadTwitchPlayers();
   const now = Date.now();
   const normalized = twitchUsername.toLowerCase();
-  const player = ensurePlayer(players, twitchUsername, actorIds?.userId);
+  const player = await resolvePlayer(players, twitchUsername, actorIds?.userId);
 
   // Если указан целевой пользователь - это персональный вызов
   if (targetUsername) {
@@ -1432,7 +1455,7 @@ export async function acceptDuelChallenge(
     };
   }
 
-  const challengedPlayer = ensurePlayer(players, twitchUsername, twitchUserId);
+  const challengedPlayer = await resolvePlayer(players, twitchUsername, twitchUserId);
   const challengedIsExempt = DUEL_EXEMPT_USERS.has(normalized);
   const challengerIsExempt = DUEL_EXEMPT_USERS.has(userChallenge.challenger);
 

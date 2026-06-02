@@ -2,9 +2,23 @@ import { TwitchPlayersStorageDB } from '../services/TwitchPlayersStorageDB';
 
 const storage = new TwitchPlayersStorageDB();
 
-export async function processTwitchPointsCommand(twitchUsername: string): Promise<string> {
-  const players = await storage.loadTwitchPlayers();
+export async function processTwitchPointsCommand(
+  twitchUsername: string,
+  twitchUserId?: string,
+): Promise<string> {
   const normalized = twitchUsername.toLowerCase();
+  const resolved = await storage.resolvePlayerData(twitchUsername, twitchUserId);
+  const players = await storage.loadTwitchPlayers();
+  if (resolved) {
+    if (resolved.twitchUserId) {
+      for (const [key, p] of players.entries()) {
+        if (p.twitchUserId === resolved.twitchUserId && key !== normalized) {
+          players.delete(key);
+        }
+      }
+    }
+    players.set(normalized, resolved);
+  }
   const player = players.get(normalized);
 
   if (!player || player.points === undefined) {

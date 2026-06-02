@@ -1519,7 +1519,7 @@ export class NightBotMonitor {
         console.log(`🎮 Команда !dick от ${user} в ${channel}`);
 
         try {
-            const response = await processTwitchDickCommand(user);
+            const response = await processTwitchDickCommand(user, this.getTwitchUserIdFromChat(msg));
             await this.sendMessage(channel, response);
             console.log(`✅ Отправлен ответ в чат: ${response}`);
         } catch (error) {
@@ -1574,7 +1574,7 @@ export class NightBotMonitor {
         console.log(`💰 Команда !points от ${user} в ${channel}`);
 
         try {
-            const response = await processTwitchPointsCommand(user);
+            const response = await processTwitchPointsCommand(user, this.getTwitchUserIdFromChat(msg));
             await this.sendMessage(channel, response);
             console.log(`✅ Отправлен ответ в чат: ${response}`);
         } catch (error) {

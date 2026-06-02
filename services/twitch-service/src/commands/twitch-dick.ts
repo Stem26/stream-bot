@@ -37,12 +37,26 @@ async function generateGrowth(normalizedUsername: string, players: Map<string, T
   return Math.floor(Math.random() * 21) - 10;
 }
 
-export async function processTwitchDickCommand(twitchUsername: string): Promise<string> {
+export async function processTwitchDickCommand(
+  twitchUsername: string,
+  twitchUserId?: string,
+): Promise<string> {
+  const normalizedUsername = twitchUsername.toLowerCase();
+  const resolved = await storage.resolvePlayerData(twitchUsername, twitchUserId);
   const players = await storage.loadTwitchPlayers();
+  if (resolved) {
+    if (resolved.twitchUserId) {
+      for (const [key, p] of players.entries()) {
+        if (p.twitchUserId === resolved.twitchUserId && key !== normalizedUsername) {
+          players.delete(key);
+        }
+      }
+    }
+    players.set(normalizedUsername, resolved);
+  }
+  let player = players.get(normalizedUsername);
   const today = getMoscowDate();
   const now = Date.now();
-  const normalizedUsername = twitchUsername.toLowerCase();
-  let player = players.get(normalizedUsername);
   const isFirstTime = !player;
   const canPlay = !player || canPlayTodayTwitch(player);
 

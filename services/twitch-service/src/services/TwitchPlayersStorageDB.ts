@@ -44,6 +44,34 @@ interface TwitchPlayerStatsRow {
   streak_bonus_awarded_this_stream: boolean | null;
 }
 
+const PLAYER_STATS_SELECT = `
+  twitch_username, twitch_user_id, size, last_used, last_used_date, points,
+  duel_timeout_until, duel_cooldown_until, duel_wins, duel_losses, duel_draws,
+  duels_today, last_duel_date, last_daily_quest_reward_date,
+  duel_win_streak, streak_reward_active, streak_bonus_awarded_this_stream
+`;
+
+function playerActivityScore(r: TwitchPlayerStatsRow): number {
+  return (
+    (r.duel_wins ?? 0) +
+    (r.duel_losses ?? 0) +
+    (r.duel_draws ?? 0) +
+    (r.points ?? 0) +
+    (r.size ?? 0)
+  );
+}
+
+/** Пустая заглушка после смены ника (дефолты, без дуэлей). */
+function isEmptyPlayerStub(r: TwitchPlayerStatsRow): boolean {
+  return (
+    (r.duel_wins ?? 0) === 0 &&
+    (r.duel_losses ?? 0) === 0 &&
+    (r.duel_draws ?? 0) === 0 &&
+    (r.size ?? 0) === 0 &&
+    (r.points ?? 1000) <= 1000
+  );
+}
+
 function rowToPlayer(r: TwitchPlayerStatsRow): TwitchPlayerData {
   return {
     twitchUsername: r.twitch_username,
@@ -131,27 +159,128 @@ export class TwitchPlayersStorageDB {
   }
 
   /**
-   * Сохранить Twitch user id для логина (без полной загрузки Map).
-   * Создаёт строку игрока при первом появлении в чате, если её ещё нет.
+   * 1) id на строку с текущим ником, если id был NULL
+   * 2) поиск по user_id; при другом нике — UPDATE twitch_username
+   * 3–4) чтение через fetchPlayerRow (по id, затем по nick)
    */
-  async recordTwitchUserId(twitchUsername: string, twitchUserId: string): Promise<boolean> {
+  async syncPlayerLogin(
+    twitchUsername: string,
+    twitchUserId?: string | null,
+  ): Promise<void> {
     const norm = twitchUsername.trim().toLowerCase();
     const id = normalizeTwitchUserId(twitchUserId);
-    if (!norm || !id) return false;
+    if (!norm || !id) return;
 
-    const cacheKey = `${norm}:${id}`;
-    if (this.userIdPersistCache.has(cacheKey)) return false;
+    const cacheKey = `sync:${norm}:${id}`;
+    if (this.userIdPersistCache.has(cacheKey)) return;
 
     await query(
-      `INSERT INTO twitch_player_stats (twitch_username, twitch_user_id, size, last_used, points)
-       VALUES ($1, $2, 0, 0, 1000)
-       ON CONFLICT (twitch_username) DO UPDATE SET
-         twitch_user_id = EXCLUDED.twitch_user_id,
-         updated_at = CURRENT_TIMESTAMP`,
-      [norm, id]
+      `UPDATE twitch_player_stats
+       SET twitch_user_id = $1, updated_at = CURRENT_TIMESTAMP
+       WHERE twitch_username = $2 AND twitch_user_id IS NULL`,
+      [id, norm],
     );
+
+    const rowsById = await query<TwitchPlayerStatsRow>(
+      `SELECT ${PLAYER_STATS_SELECT}
+       FROM twitch_player_stats
+       WHERE twitch_user_id = $1`,
+      [id],
+    );
+
+    if (rowsById.length > 0) {
+      const canonical =
+        rowsById.find((r) => r.twitch_username.toLowerCase() === norm) ??
+        rowsById.reduce((best, r) =>
+          playerActivityScore(r) > playerActivityScore(best) ? r : best,
+        );
+
+      const canonicalKey = canonical.twitch_username.toLowerCase();
+
+      if (canonicalKey !== norm) {
+        const stub = await queryOne<TwitchPlayerStatsRow>(
+          `SELECT ${PLAYER_STATS_SELECT}
+           FROM twitch_player_stats
+           WHERE twitch_username = $1`,
+          [norm],
+        );
+        if (stub && stub.twitch_username.toLowerCase() !== canonicalKey && isEmptyPlayerStub(stub)) {
+          await query(`DELETE FROM twitch_player_stats WHERE twitch_username = $1`, [norm]);
+        }
+        await query(
+          `UPDATE twitch_player_stats
+           SET twitch_username = $1, updated_at = CURRENT_TIMESTAMP
+           WHERE twitch_username = $2`,
+          [norm, canonical.twitch_username],
+        );
+      }
+
+      for (const extra of rowsById) {
+        const extraKey = extra.twitch_username.toLowerCase();
+        if (extraKey === norm || extraKey === canonicalKey) continue;
+        if (isEmptyPlayerStub(extra)) {
+          await query(`DELETE FROM twitch_player_stats WHERE twitch_username = $1`, [extraKey]);
+        }
+      }
+    } else {
+      await query(
+        `INSERT INTO twitch_player_stats (twitch_username, twitch_user_id, size, last_used, points)
+         VALUES ($1, $2, 0, 0, 1000)
+         ON CONFLICT (twitch_username) DO UPDATE SET
+           twitch_user_id = EXCLUDED.twitch_user_id,
+           updated_at = CURRENT_TIMESTAMP`,
+        [norm, id],
+      );
+    }
+
     this.userIdPersistCache.add(cacheKey);
+  }
+
+  /** Строка игрока: сначала по user_id, иначе по nick. */
+  async fetchPlayerRow(
+    twitchUsername: string,
+    twitchUserId?: string | null,
+  ): Promise<TwitchPlayerStatsRow | null> {
+    const norm = twitchUsername.trim().toLowerCase();
+    const id = normalizeTwitchUserId(twitchUserId);
+
+    if (id) {
+      const byId = await queryOne<TwitchPlayerStatsRow>(
+        `SELECT ${PLAYER_STATS_SELECT}
+         FROM twitch_player_stats
+         WHERE twitch_user_id = $1
+         ORDER BY (duel_wins + duel_losses + duel_draws) DESC, points DESC
+         LIMIT 1`,
+        [id],
+      );
+      if (byId) return byId;
+    }
+
+    if (!norm) return null;
+    return queryOne<TwitchPlayerStatsRow>(
+      `SELECT ${PLAYER_STATS_SELECT}
+       FROM twitch_player_stats
+       WHERE twitch_username = $1`,
+      [norm],
+    );
+  }
+
+  /**
+   * Сохранить Twitch user id для логина (без полной загрузки Map).
+   */
+  async recordTwitchUserId(twitchUsername: string, twitchUserId: string): Promise<boolean> {
+    await this.syncPlayerLogin(twitchUsername, twitchUserId);
     return true;
+  }
+
+  /** sync + fetch; null если игрока ещё нет в БД. */
+  async resolvePlayerData(
+    twitchUsername: string,
+    twitchUserId?: string | null,
+  ): Promise<TwitchPlayerData | null> {
+    await this.syncPlayerLogin(twitchUsername, twitchUserId);
+    const row = await this.fetchPlayerRow(twitchUsername, twitchUserId);
+    return row ? rowToPlayer(row) : null;
   }
 
   async getTwitchUserIdStats(): Promise<{ total: number; withUserId: number }> {
