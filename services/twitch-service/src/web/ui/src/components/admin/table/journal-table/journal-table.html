@@ -15,12 +15,21 @@
             <option value="command">Команды</option>
             <option value="system">Системные</option>
           </select>
+          <label class="journal-date-field" for="journal-filter-date">
+            <input type="date"
+                   id="journal-filter-date"
+                   class="journal-filter-date"
+                   title="Календарный день (МСК)">
+            <span class="journal-date-placeholder">дд.мм.гг</span>
+          </label>
+          <button type="button" class="btn btn-small" id="journal-filter-reset">Сброс даты</button>
           <select id="journal-days-filter" class="journal-days-filter">
             <option value="1">1 день</option>
             <option value="3">3 дня</option>
             <option value="7" selected>7 дней</option>
             <option value="14">14 дней</option>
             <option value="30">30 дней</option>
+            <option value="0">Всё время</option>
           </select>
           <button type="button" class="btn btn-small" id="journal-refresh-btn">Обновить</button>
         </div>

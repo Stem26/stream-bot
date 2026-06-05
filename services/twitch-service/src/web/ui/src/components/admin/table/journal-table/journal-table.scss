@@ -58,6 +58,59 @@
   background: #fff;
 }
 
+.journal-date-field {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-width: 9.5rem;
+  cursor: pointer;
+}
+
+.journal-filter-date {
+  position: relative;
+  width: 100%;
+  min-width: 9.5rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border-color, #ddd);
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-family: inherit;
+  background: var(--input-bg, #fff);
+  color: var(--text-color, #333);
+  cursor: pointer;
+
+  &::-webkit-calendar-picker-indicator {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    opacity: 0;
+    cursor: pointer;
+  }
+
+  &:not(.has-value)::-webkit-datetime-edit {
+    color: transparent;
+  }
+
+  &:not(.has-value)::-webkit-datetime-edit-fields-wrapper {
+    opacity: 0;
+  }
+}
+
+.journal-date-placeholder {
+  position: absolute;
+  left: 0.75rem;
+  pointer-events: none;
+  font-size: 0.9rem;
+  color: var(--text-muted, #888);
+}
+
+.journal-filter-date.has-value ~ .journal-date-placeholder {
+  display: none;
+}
+
 .journal-table-container {
   position: relative;
   min-height: 120px;

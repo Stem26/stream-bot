@@ -296,14 +296,18 @@ export async function fetchJournal(params: {
   limit?: number;
   search?: string;
   type?: string;
+  /** 0 = всё время; не передавать при выборе date */
   days?: number;
+  /** YYYY-MM-DD, календарный день (МСК) */
+  date?: string;
 }): Promise<JournalResponse> {
   const searchParams = new URLSearchParams();
   if (params.page != null) searchParams.set('page', String(params.page));
   if (params.limit != null) searchParams.set('limit', String(params.limit));
   if (params.search) searchParams.set('search', params.search);
   if (params.type) searchParams.set('type', params.type);
-  if (params.days != null) searchParams.set('days', String(params.days));
+  if (params.date) searchParams.set('date', params.date);
+  else if (params.days != null) searchParams.set('days', String(params.days));
   const url = '/api/journal' + (searchParams.toString() ? '?' + searchParams.toString() : '');
   const response = await authFetch(url);
   return handleJson<JournalResponse>(response, 'Ошибка загрузки журнала');
@@ -314,12 +318,14 @@ export async function fetchAdminJournal(params: {
   limit?: number;
   search?: string;
   days?: number;
+  date?: string;
 }): Promise<JournalResponse> {
   const searchParams = new URLSearchParams();
   if (params.page != null) searchParams.set('page', String(params.page));
   if (params.limit != null) searchParams.set('limit', String(params.limit));
   if (params.search) searchParams.set('search', params.search);
-  if (params.days != null) searchParams.set('days', String(params.days));
+  if (params.date) searchParams.set('date', params.date);
+  else if (params.days != null) searchParams.set('days', String(params.days));
   const url = '/api/admin-journal' + (searchParams.toString() ? '?' + searchParams.toString() : '');
   const response = await authFetch(url);
   return handleJson<JournalResponse>(response, 'Ошибка загрузки журнала админов');

@@ -32,6 +32,11 @@ function sanitizeDayTopUsername(username: string | null): string | null {
 }
 import { queryDonateX, getDonateXPool, getDonateXDatabaseUrl } from '../database/donatex-database';
 import { getDonateXSignalRState } from '../services/donatex/donatex-signalr';
+import {
+    appendJournalSearchFilter,
+    appendJournalTypeFilter,
+    buildJournalDateWhere,
+} from './journal-query';
 
 const app = express();
 const PORT = parseInt(String(process.env.WEB_PORT || 3000), 10) || 3000;
@@ -1999,25 +2004,20 @@ app.get('/api/journal', async (req: Request, res: Response) => {
         const limit = Math.min(100, Math.max(10, parseInt(req.query.limit as string) || 25));
         const search = typeof req.query.search === 'string' ? req.query.search.trim().slice(0, 200) : '';
         const eventType = typeof req.query.type === 'string' ? req.query.type.trim().toLowerCase() : '';
-        const days = Math.min(30, Math.max(1, parseInt(req.query.days as string) || 7));
         const offset = (page - 1) * limit;
 
         const validTypes = ['message', 'command', 'system'];
         const typeFilter = eventType && validTypes.includes(eventType) ? eventType : null;
 
-        let whereClause = `WHERE created_at >= NOW() - ($1::int * INTERVAL '1 day')`;
-        const params: (string | number)[] = [days];
-        let paramIndex = 2;
+        let sqlParts = buildJournalDateWhere({
+            days: typeof req.query.days === 'string' ? req.query.days : undefined,
+            date: typeof req.query.date === 'string' ? req.query.date : undefined,
+        });
+        sqlParts = appendJournalTypeFilter(sqlParts, typeFilter);
+        sqlParts = appendJournalSearchFilter(sqlParts, search);
 
-        if (typeFilter) {
-            whereClause += ` AND event_type = $${paramIndex++}`;
-            params.push(typeFilter);
-        }
-        if (search) {
-            whereClause += ` AND (LOWER(username) LIKE $${paramIndex} OR LOWER(message) LIKE $${paramIndex})`;
-            params.push(`%${search.toLowerCase()}%`);
-            paramIndex++;
-        }
+        const { whereClause, params } = sqlParts;
+        let paramIndex = sqlParts.nextParamIndex;
 
         const countResult = await queryOne<{ count: string }>(
             `SELECT COUNT(*)::text AS count FROM event_journal ${whereClause}`,
@@ -2064,18 +2064,24 @@ app.get('/api/admin-journal', async (req: Request, res: Response) => {
         const page = Math.max(1, parseInt(req.query.page as string) || 1);
         const limit = Math.min(100, Math.max(10, parseInt(req.query.limit as string) || 25));
         const search = typeof req.query.search === 'string' ? req.query.search.trim().slice(0, 200) : '';
-        const days = Math.min(30, Math.max(1, parseInt(req.query.days as string) || 7));
         const offset = (page - 1) * limit;
 
-        let whereClause = `WHERE created_at >= NOW() - ($1::int * INTERVAL '1 day')`;
-        const params: (string | number)[] = [days];
-        let paramIndex = 2;
-
+        let sqlParts = buildJournalDateWhere({
+            days: typeof req.query.days === 'string' ? req.query.days : undefined,
+            date: typeof req.query.date === 'string' ? req.query.date : undefined,
+        });
         if (search) {
-            whereClause += ` AND (LOWER(admin_username) LIKE $${paramIndex} OR LOWER(action) LIKE $${paramIndex} OR LOWER(details) LIKE $${paramIndex})`;
-            params.push(`%${search.toLowerCase()}%`);
-            paramIndex++;
+            const q = search.toLowerCase();
+            const clause = sqlParts.whereClause ? ' AND ' : ' WHERE ';
+            sqlParts = {
+                whereClause: `${sqlParts.whereClause}${clause}(LOWER(admin_username) LIKE $${sqlParts.nextParamIndex} OR LOWER(action) LIKE $${sqlParts.nextParamIndex} OR LOWER(details) LIKE $${sqlParts.nextParamIndex})`,
+                params: [...sqlParts.params, `%${q}%`],
+                nextParamIndex: sqlParts.nextParamIndex + 1,
+            };
         }
+
+        const { whereClause, params } = sqlParts;
+        let paramIndex = sqlParts.nextParamIndex;
 
         const countResult = await queryOne<{ count: string }>(
             `SELECT COUNT(*)::text AS count FROM admin_action_journal ${whereClause}`,

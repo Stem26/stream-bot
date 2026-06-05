@@ -314,11 +314,13 @@ body.theme-dark {
 
     .journal-search,
     .journal-type-filter,
-    .journal-days-filter {
+    .journal-days-filter,
+    .journal-filter-date {
       background: $dark-bg !important;
       border: 1px solid $dark-border !important;
       color: $dark-text !important;
     }
+    .journal-date-placeholder { color: $dark-text-muted !important; }
     .journal-search::placeholder { color: $dark-text-muted; opacity: 0.8; }
 
     .journal-table-container.loading-state { color: $dark-text-muted; }

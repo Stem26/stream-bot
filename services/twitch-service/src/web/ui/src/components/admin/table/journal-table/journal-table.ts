@@ -24,6 +24,7 @@ export class JournalTableElement extends HTMLElement {
   private currentSearch = '';
   private currentType = '';
   private currentDays = 7;
+  private currentFilterDate = '';
   private lastResponse: JournalResponse | null = null;
   private isLoading = false;
   private source: 'event' | 'admin' = 'event';
@@ -124,7 +125,12 @@ export class JournalTableElement extends HTMLElement {
     const limitSelect = this.querySelector<HTMLSelectElement>('#journal-limit-select');
 
     if (pageInfo) {
-      pageInfo.textContent = `Страница ${data.pagination.page} из ${Math.max(1, data.pagination.totalPages)}`;
+      const pages = Math.max(1, data.pagination.totalPages);
+      const total = data.pagination.total;
+      pageInfo.textContent =
+        total > 0
+          ? `Страница ${data.pagination.page} из ${pages} (${total.toLocaleString('ru-RU')} записей)`
+          : `Страница ${data.pagination.page} из ${pages}`;
     }
     if (prevBtn) {
       prevBtn.disabled = data.pagination.page <= 1;
@@ -148,19 +154,20 @@ export class JournalTableElement extends HTMLElement {
     if (loadingEl) loadingEl.style.display = 'block';
 
     try {
+      const byDate = Boolean(this.currentFilterDate);
+      const listParams = {
+        page: this.currentPage,
+        limit: this.currentLimit,
+        search: this.currentSearch || undefined,
+        ...(byDate
+          ? { date: this.currentFilterDate }
+          : { days: this.currentDays }),
+      };
       const data = this.source === 'admin'
-        ? await fetchAdminJournal({
-            page: this.currentPage,
-            limit: this.currentLimit,
-            search: this.currentSearch || undefined,
-            days: this.currentDays,
-          })
+        ? await fetchAdminJournal(listParams)
         : await fetchJournal({
-            page: this.currentPage,
-            limit: this.currentLimit,
-            search: this.currentSearch || undefined,
+            ...listParams,
             type: this.currentType || undefined,
-            days: this.currentDays,
           });
       this.renderItems(data);
     } catch (error) {
@@ -174,10 +181,40 @@ export class JournalTableElement extends HTMLElement {
     }
   }
 
+  private updateDatePlaceholder(): void {
+    const dateInput = this.querySelector<HTMLInputElement>('#journal-filter-date');
+    if (dateInput) dateInput.classList.toggle('has-value', Boolean(dateInput.value));
+  }
+
+  private syncJournalFilterUi(): void {
+    const daysFilter = this.querySelector<HTMLSelectElement>('#journal-days-filter');
+    if (daysFilter) daysFilter.disabled = Boolean(this.currentFilterDate);
+    this.updateDatePlaceholder();
+  }
+
+  private applyFiltersFromInputs(): void {
+    const dateInput = this.querySelector<HTMLInputElement>('#journal-filter-date');
+    this.currentFilterDate = dateInput?.value?.trim() ?? '';
+    this.currentPage = 1;
+    this.syncJournalFilterUi();
+    void this.loadJournal();
+  }
+
+  private resetJournalDate(): void {
+    this.currentFilterDate = '';
+    const dateInput = this.querySelector<HTMLInputElement>('#journal-filter-date');
+    if (dateInput) dateInput.value = '';
+    this.currentPage = 1;
+    this.syncJournalFilterUi();
+    void this.loadJournal();
+  }
+
   private setupHandlers(): void {
     const searchInput = this.querySelector<HTMLInputElement>('#journal-search');
     const typeFilter = this.querySelector<HTMLSelectElement>('#journal-type-filter');
     const daysFilter = this.querySelector<HTMLSelectElement>('#journal-days-filter');
+    const dateInput = this.querySelector<HTMLInputElement>('#journal-filter-date');
+    const dateResetBtn = this.querySelector<HTMLButtonElement>('#journal-filter-reset');
     const refreshBtn = this.querySelector<HTMLButtonElement>('#journal-refresh-btn');
     const prevBtn = this.querySelector<HTMLButtonElement>('#journal-prev-btn');
     const nextBtn = this.querySelector<HTMLButtonElement>('#journal-next-btn');
@@ -201,12 +238,18 @@ export class JournalTableElement extends HTMLElement {
     });
 
     daysFilter?.addEventListener('change', () => {
-      this.currentDays = parseInt(daysFilter.value, 10) || 7;
+      const parsed = parseInt(daysFilter.value, 10);
+      this.currentDays = Number.isFinite(parsed) ? parsed : 7;
       this.currentPage = 1;
       void this.loadJournal();
     });
 
+    dateInput?.addEventListener('change', () => this.applyFiltersFromInputs());
+    dateResetBtn?.addEventListener('click', () => this.resetJournalDate());
+
     refreshBtn?.addEventListener('click', () => void this.loadJournal());
+
+    this.syncJournalFilterUi();
 
     prevBtn?.addEventListener('click', () => {
       if (this.currentPage > 1) {
