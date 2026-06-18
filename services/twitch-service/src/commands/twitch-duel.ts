@@ -1028,7 +1028,7 @@ async function executeDuel(
   markBotDuelParticipationCooldown(channel, player1Normalized, player2Normalized, now);
 
   const introMessage = `@${player1Username} и @${player2Username} сошлись в дуэли!`;
-  const resultMessage = `@${winner} победил в дуэли(+${duelConfig.winPoints}), проигравший @${loser}(-${duelConfig.lossPoints}, таймаут на ${duelConfig.timeoutMinutes} мин.)`;
+  const resultMessage = `@${winner} победил в дуэли (+${duelConfig.winPoints}), проигравший @${loser} (-${duelConfig.lossPoints}, таймаут на ${duelConfig.timeoutMinutes} мин.)`;
 
   if (duelOverlaySyncEnabled) {
     const postOverlayMessage = (async (): Promise<string | undefined> => {
