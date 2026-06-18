@@ -831,17 +831,17 @@ async function executeDuel(
     markBotDuelParticipationCooldown(channel, player1Normalized, player2Normalized, now);
 
     const introMessage = `@${player1Username} и @${player2Username} сошлись в дуэли!`;
-    const finalMessage = `Оба попали и убили друг друга! 💀💀 Оба получают (-${duelConfig.lossPoints}) очков и таймаут на ${duelConfig.timeoutMinutes} мин.`;
+    const resultMessage = `Оба попали и убили друг друга! 💀💀 @${player1Username}(-${duelConfig.lossPoints}, таймаут на ${duelConfig.timeoutMinutes} мин.), @${player2Username}(-${duelConfig.lossPoints}, таймаут на ${duelConfig.timeoutMinutes} мин.)`;
 
     if (duelOverlaySyncEnabled) {
       const postOverlayMessage = (async (): Promise<string | undefined> => {
         const sent = await sendOverlayDuelSafe(player1Username, player2Username, 'all-lose');
         if (!sent) {
-          return finalMessage;
+          return resultMessage;
         }
         const waitFromSec = Math.floor(Date.now() / 1000);
         await waitOverlayDuelCompleteEvent(waitFromSec);
-        return finalMessage;
+        return resultMessage;
       })();
 
       return {
@@ -856,7 +856,7 @@ async function executeDuel(
     void sendOverlayDuel(player1Username, player2Username, 'all-lose');
 
     return {
-      response: `${introMessage} ${finalMessage}`,
+      response: resultMessage,
       loser: player1Username,
       loser2: player2Username,
       bothLost: true
@@ -887,17 +887,17 @@ async function executeDuel(
     markBotDuelParticipationCooldown(channel, player1Normalized, player2Normalized, now);
 
     const introMessage = `@${player1Username} и @${player2Username} сошлись в дуэли!`;
-    const finalMessage = `Оба промахнулись! 😅 Живы оба, но позор на всю деревню! (-${duelConfig.missPenalty}) очков каждому.`;
+    const resultMessage = `Оба промахнулись! 😅 @${player1Username}(-${duelConfig.missPenalty}), @${player2Username}(-${duelConfig.missPenalty})`;
 
     if (duelOverlaySyncEnabled) {
       const postOverlayMessage = (async (): Promise<string | undefined> => {
         const sent = await sendOverlayDuelSafe(player1Username, player2Username, 'all-win');
         if (!sent) {
-          return finalMessage;
+          return resultMessage;
         }
         const waitFromSec = Math.floor(Date.now() / 1000);
         await waitOverlayDuelCompleteEvent(waitFromSec);
-        return finalMessage;
+        return resultMessage;
       })();
 
       return {
@@ -913,7 +913,7 @@ async function executeDuel(
     void sendOverlayDuel(player1Username, player2Username, 'all-win');
 
     return {
-      response: `${introMessage} ${finalMessage}`,
+      response: resultMessage,
       loser: undefined,
       loser2: undefined,
       bothLost: false
@@ -1028,17 +1028,17 @@ async function executeDuel(
   markBotDuelParticipationCooldown(channel, player1Normalized, player2Normalized, now);
 
   const introMessage = `@${player1Username} и @${player2Username} сошлись в дуэли!`;
-  const finalMessage = `Победитель @${winner} (+${duelConfig.winPoints}), проигравший @${loser} (-${duelConfig.lossPoints}) и в таймаут на ${duelConfig.timeoutMinutes} мин.`;
+  const resultMessage = `@${winner} победил в дуэли(+${duelConfig.winPoints}), проигравший @${loser}(-${duelConfig.lossPoints}, таймаут на ${duelConfig.timeoutMinutes} мин.)`;
 
   if (duelOverlaySyncEnabled) {
     const postOverlayMessage = (async (): Promise<string | undefined> => {
       const sent = await sendOverlayDuelSafe(player1Username, player2Username, mode);
       if (!sent) {
-        return finalMessage;
+        return resultMessage;
       }
       const waitFromSec = Math.floor(Date.now() / 1000);
       await waitOverlayDuelCompleteEvent(waitFromSec);
-      return finalMessage;
+      return resultMessage;
     })();
 
     return {
@@ -1052,7 +1052,7 @@ async function executeDuel(
   void sendOverlayDuel(player1Username, player2Username, mode);
 
   return {
-    response: `${introMessage} ${finalMessage}`,
+    response: resultMessage,
     loser,
     ...(extraMessages.length > 0 && { extraMessages })
   };
@@ -1160,7 +1160,7 @@ export async function processTwitchDuelCommand(
     duelQueueByChannel.set(channel, { username: normalized, displayName: twitchUsername, joinedAt: now });
     await storage.saveTwitchPlayers(players);
     return {
-      response: `Очередь истекла. @${twitchUsername} встал в очередь на дуэль. Ждём 2 минуты соперника!`
+      response: `@${twitchUsername}, в очереди на дуэль. Ждём соперника 2 минуты!`
     };
   }
 
@@ -1168,14 +1168,14 @@ export async function processTwitchDuelCommand(
     duelQueueByChannel.set(channel, { username: normalized, displayName: twitchUsername, joinedAt: now });
     await storage.saveTwitchPlayers(players);
     return {
-      response: `@${twitchUsername}, ты встал в очередь на дуэль. Ждём 2 минуты соперника!`
+      response: `@${twitchUsername}, в очереди на дуэль. Ждём соперника 2 минуты!`
     };
   }
 
   if (waiting.username === normalized) {
     const secondsLeft = Math.ceil((QUEUE_TIMEOUT_MS - (now - waiting.joinedAt)) / 1000);
     return {
-      response: `@${twitchUsername}, ты уже в очереди на дуэль. Ждём соперника ещё ${secondsLeft} сек.`
+      response: `@${twitchUsername}, ты уже в очереди на дуэль. Ждём соперника.`
     };
   }
 
