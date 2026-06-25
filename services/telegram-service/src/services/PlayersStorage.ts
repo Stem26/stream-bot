@@ -11,6 +11,7 @@ export interface Player {
   lastHornyDate?: string;
   lastFurryDate?: string;
   lastFutureDate?: string;
+  lastAllDate?: string;
   futureAttemptsToday?: number;
   lastGrowth?: number; // Последний прирост для механики компенсации
 }

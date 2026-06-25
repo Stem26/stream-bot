@@ -6,6 +6,7 @@ import { bottomDickCommand } from './bottomDick';
 import { hornyCommand } from './horny';
 import { furryCommand } from './furry';
 import { futureCommand } from './future';
+import { allCommand } from './all';
 import { postCommand } from './post';
 import { canUsePost } from '../utils/permissions';
 
@@ -101,6 +102,14 @@ export const commands: BotCommand[] = [
     showInMenu: true,
     showInHelp: true,
     handler: (ctx: BotContext, bot: Telegraf<BotContext>) => futureCommand(ctx)
+  },
+  {
+    name: 'all',
+    description: 'Dick, предсказание, horny и furry одним сообщением',
+    category: '🎮 Игровые команды',
+    showInMenu: true,
+    showInHelp: true,
+    handler: (ctx: BotContext, bot: Telegraf<BotContext>) => allCommand(ctx)
   },
   {
     name: 'post',

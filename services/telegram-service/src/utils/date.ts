@@ -46,4 +46,12 @@ export function canUseFutureToday(player: Player): boolean {
   return player.lastFutureDate !== today;
 }
 
+export function canUseAllToday(player: Player): boolean {
+  const today = getMoscowDate();
+  if (!player.lastAllDate) {
+    return true;
+  }
+
+  return player.lastAllDate !== today;
+}
 

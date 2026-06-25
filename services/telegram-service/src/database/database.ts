@@ -83,6 +83,7 @@ export async function initDatabase(): Promise<void> {
         last_horny_date TEXT,
         last_furry_date TEXT,
         last_future_date TEXT,
+        last_all_date TEXT,
         future_attempts_today INTEGER DEFAULT 0,
         last_growth INTEGER DEFAULT 0,
         updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
@@ -94,6 +95,10 @@ export async function initDatabase(): Promise<void> {
     `);
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_player_stats_last_used ON player_stats(last_used_date)
+    `);
+
+    await client.query(`
+      ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS last_all_date TEXT
     `);
 
     await client.query(`

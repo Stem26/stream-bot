@@ -10,6 +10,7 @@ export interface Player {
   lastHornyDate?: string;
   lastFurryDate?: string;
   lastFutureDate?: string;
+  lastAllDate?: string;
   futureAttemptsToday?: number;
   lastGrowth?: number;
 }
@@ -24,6 +25,7 @@ interface PlayerStatsRow {
   last_horny_date: string | null;
   last_furry_date: string | null;
   last_future_date: string | null;
+  last_all_date: string | null;
   future_attempts_today: number | null;
   last_growth: number | null;
 }
@@ -39,6 +41,7 @@ function rowToPlayer(row: PlayerStatsRow): Player {
     lastHornyDate: row.last_horny_date || undefined,
     lastFurryDate: row.last_furry_date || undefined,
     lastFutureDate: row.last_future_date || undefined,
+    lastAllDate: row.last_all_date || undefined,
     futureAttemptsToday: row.future_attempts_today || 0,
     lastGrowth: row.last_growth || 0
   };
@@ -63,23 +66,23 @@ export class PlayersStorageDB {
     if (!existing) {
       await query(
         `INSERT INTO player_stats (telegram_id, username, first_name, size, last_used, last_used_date,
-          last_horny_date, last_furry_date, last_future_date, future_attempts_today, last_growth)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+          last_horny_date, last_furry_date, last_future_date, last_all_date, future_attempts_today, last_growth)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
         [
           userId, player.username, player.firstName, player.size, player.lastUsed, player.lastUsedDate,
           player.lastHornyDate || null, player.lastFurryDate || null, player.lastFutureDate || null,
-          player.futureAttemptsToday || 0, player.lastGrowth || 0
+          player.lastAllDate || null, player.futureAttemptsToday || 0, player.lastGrowth || 0
         ]
       );
     } else {
       await query(
         `UPDATE player_stats SET username=$1, first_name=$2, size=$3, last_used=$4, last_used_date=$5,
-          last_horny_date=$6, last_furry_date=$7, last_future_date=$8, future_attempts_today=$9, last_growth=$10,
-          updated_at=CURRENT_TIMESTAMP WHERE telegram_id=$11`,
+          last_horny_date=$6, last_furry_date=$7, last_future_date=$8, last_all_date=$9,
+          future_attempts_today=$10, last_growth=$11, updated_at=CURRENT_TIMESTAMP WHERE telegram_id=$12`,
         [
           player.username, player.firstName, player.size, player.lastUsed, player.lastUsedDate,
           player.lastHornyDate || null, player.lastFurryDate || null, player.lastFutureDate || null,
-          player.futureAttemptsToday || 0, player.lastGrowth || 0, userId
+          player.lastAllDate || null, player.futureAttemptsToday || 0, player.lastGrowth || 0, userId
         ]
       );
     }
