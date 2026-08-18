@@ -308,6 +308,9 @@ export async function initDatabase(): Promise<void> {
         ALTER TABLE chat_moderation_config ADD COLUMN IF NOT EXISTS check_links BOOLEAN NOT NULL DEFAULT false
       `).catch(() => {});
       await client.query(`
+        ALTER TABLE chat_moderation_config ADD COLUMN IF NOT EXISTS allow_vip_links BOOLEAN NOT NULL DEFAULT false
+      `).catch(() => {});
+      await client.query(`
         INSERT INTO chat_moderation_config (id, max_message_length, max_letters_digits, timeout_minutes)
         VALUES (1, 300, 300, 10)
         ON CONFLICT (id) DO NOTHING

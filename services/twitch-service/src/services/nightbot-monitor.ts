@@ -249,6 +249,7 @@ export class NightBotMonitor {
         checkSymbols: true,
         checkLetters: true,
         checkLinks: false,
+        allowVipLinks: false,
         linkWhitelistCompiled: { domains: new Set<string>(), paths: [] as string[] },
         maxMessageLength: 25,
         maxLettersDigits: 100,
@@ -1215,7 +1216,12 @@ export class NightBotMonitor {
                     }
 
                     // Фильтр ссылок: удаляем сообщения с неразрешёнными ссылками
-                    const linkHandled = await this.handleLinkViolationIfNeeded(username, originalMessage, messageId);
+                    const linkHandled = await this.handleLinkViolationIfNeeded(
+                        username,
+                        originalMessage,
+                        messageId,
+                        msg.userInfo
+                    );
                     if (linkHandled) {
                         return;
                     }
@@ -2581,17 +2587,19 @@ export class NightBotMonitor {
                 check_symbols: boolean;
                 check_letters: boolean;
                 check_links: boolean;
+                allow_vip_links: boolean;
                 max_message_length: number;
                 max_letters_digits: number;
                 timeout_minutes: number;
             }>(
-                'SELECT moderation_enabled, check_symbols, check_letters, check_links, max_message_length, max_letters_digits, timeout_minutes FROM chat_moderation_config WHERE id = 1'
+                'SELECT moderation_enabled, check_symbols, check_letters, check_links, allow_vip_links, max_message_length, max_letters_digits, timeout_minutes FROM chat_moderation_config WHERE id = 1'
             );
             if (row) {
                 this.spamConfig.moderationEnabled = row.moderation_enabled ?? this.spamConfig.moderationEnabled;
                 this.spamConfig.checkSymbols = row.check_symbols ?? this.spamConfig.checkSymbols;
                 this.spamConfig.checkLetters = row.check_letters ?? this.spamConfig.checkLetters;
                 this.spamConfig.checkLinks = row.check_links ?? this.spamConfig.checkLinks;
+                this.spamConfig.allowVipLinks = row.allow_vip_links ?? this.spamConfig.allowVipLinks;
                 this.spamConfig.maxMessageLength = row.max_message_length ?? this.spamConfig.maxMessageLength;
                 this.spamConfig.maxLettersDigits = row.max_letters_digits ?? this.spamConfig.maxLettersDigits;
                 this.spamConfig.timeoutMinutes = row.timeout_minutes ?? this.spamConfig.timeoutMinutes;
@@ -2769,8 +2777,19 @@ export class NightBotMonitor {
         }
     }
 
-    private async handleLinkViolationIfNeeded(username: string, message: string, messageId?: string): Promise<boolean> {
+    private async handleLinkViolationIfNeeded(
+        username: string,
+        message: string,
+        messageId?: string,
+        userInfo?: any
+    ): Promise<boolean> {
         await this.ensureSpamConfigLoaded();
+        if (
+            this.spamConfig.allowVipLinks &&
+            resolveOverlayRoleFromUserInfo(userInfo) === 'vip'
+        ) {
+            return false;
+        }
         if (!this.hasLinkViolation(message)) return false;
         try {
             if (messageId) {

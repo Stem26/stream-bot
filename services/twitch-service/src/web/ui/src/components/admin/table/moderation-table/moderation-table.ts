@@ -38,6 +38,7 @@ export class ModerationTableElement extends HTMLElement {
     const checkSymbolsToggle = this.querySelector('#chat-check-symbols-toggle') as HTMLElement | null;
     const checkLettersToggle = this.querySelector('#chat-check-letters-toggle') as HTMLElement | null;
     const checkLinksToggle = this.querySelector('#chat-check-links-toggle') as HTMLElement | null;
+    const allowVipLinksToggle = this.querySelector('#chat-allow-vip-links-toggle') as HTMLElement | null;
     if (!moderationSaveBtn || !maxLenInput || !maxLettersDigitsInput || !timeoutInput || !this.lastChatModerationConfig) {
       if (moderationSaveBtn) moderationSaveBtn.disabled = true;
       return;
@@ -50,11 +51,13 @@ export class ModerationTableElement extends HTMLElement {
     const symOn = checkSymbolsToggle?.getAttribute('data-enabled') === 'true';
     const letOn = checkLettersToggle?.getAttribute('data-enabled') === 'true';
     const linksOn = checkLinksToggle?.getAttribute('data-enabled') === 'true';
+    const vipLinksOn = allowVipLinksToggle?.getAttribute('data-enabled') === 'true';
     const same =
       (c.moderationEnabled ?? true) === modOn &&
       (c.checkSymbols ?? true) === symOn &&
       (c.checkLetters ?? true) === letOn &&
       (c.checkLinks ?? false) === linksOn &&
+      (c.allowVipLinks ?? false) === vipLinksOn &&
       (c.maxMessageLength ?? 300) === maxLen &&
       (c.maxLettersDigits ?? 300) === maxLetters &&
       (c.timeoutMinutes ?? 10) === timeout;
@@ -79,6 +82,7 @@ export class ModerationTableElement extends HTMLElement {
     const checkSymbolsToggle = this.querySelector('#chat-check-symbols-toggle') as HTMLElement | null;
     const checkLettersToggle = this.querySelector('#chat-check-letters-toggle') as HTMLElement | null;
     const checkLinksToggle = this.querySelector('#chat-check-links-toggle') as HTMLElement | null;
+    const allowVipLinksToggle = this.querySelector('#chat-allow-vip-links-toggle') as HTMLElement | null;
 
 
     const saveModerationNow = async (): Promise<void> => {
@@ -87,11 +91,12 @@ export class ModerationTableElement extends HTMLElement {
       const checkSymbols = checkSymbolsToggle?.getAttribute('data-enabled') === 'true';
       const checkLetters = checkLettersToggle?.getAttribute('data-enabled') === 'true';
       const checkLinks = checkLinksToggle?.getAttribute('data-enabled') === 'true';
+      const allowVipLinks = allowVipLinksToggle?.getAttribute('data-enabled') === 'true';
       const maxMessageLength = Math.max(1, parseInt(maxLenInput.value || String(this.lastChatModerationConfig?.maxMessageLength ?? 300), 10) || (this.lastChatModerationConfig?.maxMessageLength ?? 300));
       const maxLettersDigits = Math.max(1, parseInt(maxLettersDigitsInput.value || String(this.lastChatModerationConfig?.maxLettersDigits ?? 300), 10) || (this.lastChatModerationConfig?.maxLettersDigits ?? 300));
       const timeoutMinutes = Math.max(1, parseInt(timeoutInput.value || String(this.lastChatModerationConfig?.timeoutMinutes ?? 10), 10) || (this.lastChatModerationConfig?.timeoutMinutes ?? 10));
       try {
-        const saved = await updateChatModerationConfig({ moderationEnabled, checkSymbols: moderationEnabled ? checkSymbols : false, checkLetters: moderationEnabled ? checkLetters : false, checkLinks: moderationEnabled ? checkLinks : false, maxMessageLength, maxLettersDigits, timeoutMinutes });
+        const saved = await updateChatModerationConfig({ moderationEnabled, checkSymbols: moderationEnabled ? checkSymbols : false, checkLetters: moderationEnabled ? checkLetters : false, checkLinks: moderationEnabled ? checkLinks : false, allowVipLinks: moderationEnabled ? allowVipLinks : false, maxMessageLength, maxLettersDigits, timeoutMinutes });
         this.lastChatModerationConfig = saved;
         this.updateModerationSaveButton();
       } catch (error) { if (error instanceof Error) showAlert(`Ошибка: ${error.message}`, 'error'); }
@@ -105,6 +110,7 @@ export class ModerationTableElement extends HTMLElement {
         this.setModerationToggleState(checkSymbolsToggle, false, 'ВЫКЛ');
         this.setModerationToggleState(checkLettersToggle, false, 'ВЫКЛ');
         this.setModerationToggleState(checkLinksToggle, false, 'ВЫКЛ');
+        this.setModerationToggleState(allowVipLinksToggle, false, 'ВЫКЛ');
       }
       void saveModerationNow();
     });
@@ -126,7 +132,16 @@ export class ModerationTableElement extends HTMLElement {
     checkLinksToggle?.addEventListener('click', () => {
       if (moderationEnabledToggle?.getAttribute('data-enabled') !== 'true') return;
       const on = checkLinksToggle.getAttribute('data-enabled') === 'true';
-      this.setModerationToggleState(checkLinksToggle, !on, !on ? 'ВКЛ' : 'ВЫКЛ');
+      const newVal = !on;
+      this.setModerationToggleState(checkLinksToggle, newVal, newVal ? 'ВКЛ' : 'ВЫКЛ');
+      void saveModerationNow();
+    });
+
+    allowVipLinksToggle?.addEventListener('click', () => {
+      if (moderationEnabledToggle?.getAttribute('data-enabled') !== 'true') return;
+      if (checkLinksToggle?.getAttribute('data-enabled') !== 'true') return;
+      const on = allowVipLinksToggle.getAttribute('data-enabled') === 'true';
+      this.setModerationToggleState(allowVipLinksToggle, !on, !on ? 'ВКЛ' : 'ВЫКЛ');
       void saveModerationNow();
     });
 
@@ -148,11 +163,12 @@ export class ModerationTableElement extends HTMLElement {
       const checkSymbols = checkSymbolsToggle?.getAttribute('data-enabled') === 'true';
       const checkLetters = checkLettersToggle?.getAttribute('data-enabled') === 'true';
       const checkLinks = checkLinksToggle?.getAttribute('data-enabled') === 'true';
+      const allowVipLinks = allowVipLinksToggle?.getAttribute('data-enabled') === 'true';
       const maxMessageLength = Math.max(1, parseInt(maxLenInput.value || '300', 10) || 300);
       const maxLettersDigits = Math.max(1, parseInt(maxLettersDigitsInput.value || '300', 10) || 300);
       const timeoutMinutes = Math.max(1, parseInt(timeoutInput.value || '10', 10) || 10);
       try {
-        const saved = await updateChatModerationConfig({ moderationEnabled, checkSymbols: moderationEnabled ? checkSymbols : false, checkLetters: moderationEnabled ? checkLetters : false, checkLinks: moderationEnabled ? checkLinks : false, maxMessageLength, maxLettersDigits, timeoutMinutes });
+        const saved = await updateChatModerationConfig({ moderationEnabled, checkSymbols: moderationEnabled ? checkSymbols : false, checkLetters: moderationEnabled ? checkLetters : false, checkLinks: moderationEnabled ? checkLinks : false, allowVipLinks: moderationEnabled ? allowVipLinks : false, maxMessageLength, maxLettersDigits, timeoutMinutes });
         this.lastChatModerationConfig = saved;
         this.updateModerationSaveButton();
         showAlert('Настройки модерации чата сохранены', 'success');
@@ -177,6 +193,7 @@ export class ModerationTableElement extends HTMLElement {
       const checkSymbolsToggle = this.querySelector('#chat-check-symbols-toggle') as HTMLElement | null;
       const checkLettersToggle = this.querySelector('#chat-check-letters-toggle') as HTMLElement | null;
       const checkLinksToggle = this.querySelector('#chat-check-links-toggle') as HTMLElement | null;
+      const allowVipLinksToggle = this.querySelector('#chat-allow-vip-links-toggle') as HTMLElement | null;
       if (maxLenInput) maxLenInput.value = String(config.maxMessageLength ?? 300);
       if (maxLettersDigitsInput) maxLettersDigitsInput.value = String(config.maxLettersDigits ?? 300);
       if (timeoutInput) timeoutInput.value = String(config.timeoutMinutes ?? 10);
@@ -184,10 +201,12 @@ export class ModerationTableElement extends HTMLElement {
       const symOn = config.checkSymbols ?? true;
       const letOn = config.checkLetters ?? true;
       const linksOn = config.checkLinks ?? false;
+      const vipLinksOn = config.allowVipLinks ?? false;
       if (moderationEnabledToggle) this.setModerationToggleState(moderationEnabledToggle, modOn, modOn ? 'ВКЛ' : 'ВЫКЛ');
       if (checkSymbolsToggle) this.setModerationToggleState(checkSymbolsToggle, symOn, symOn ? 'ВКЛ' : 'ВЫКЛ');
       if (checkLettersToggle) this.setModerationToggleState(checkLettersToggle, letOn, letOn ? 'ВКЛ' : 'ВЫКЛ');
       if (checkLinksToggle) this.setModerationToggleState(checkLinksToggle, linksOn, linksOn ? 'ВКЛ' : 'ВЫКЛ');
+      if (allowVipLinksToggle) this.setModerationToggleState(allowVipLinksToggle, vipLinksOn, vipLinksOn ? 'ВКЛ' : 'ВЫКЛ');
       this.updateModerationSaveButton();
     } catch (error) {
       if (error instanceof Error) showAlert(`Ошибка загрузки настроек модерации: ${error.message}`, 'error');

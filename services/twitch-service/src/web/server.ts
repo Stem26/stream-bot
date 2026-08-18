@@ -434,6 +434,7 @@ type ChatModerationAuditSnapshot = {
     check_symbols: boolean;
     check_letters: boolean;
     check_links: boolean;
+    allow_vip_links: boolean;
     max_message_length: number;
     max_letters_digits: number;
     timeout_minutes: number;
@@ -513,7 +514,7 @@ async function loadAdminAuditContext(req: Request): Promise<AdminAuditContext> {
     }
     if (method === 'POST' && pathOnly === '/api/admin/chat-moderation/config') {
         ctx.previousChatModerationConfig = await queryOne<ChatModerationAuditSnapshot>(
-            'SELECT moderation_enabled, check_symbols, check_letters, check_links, max_message_length, max_letters_digits, timeout_minutes FROM chat_moderation_config WHERE id = 1'
+            'SELECT moderation_enabled, check_symbols, check_letters, check_links, allow_vip_links, max_message_length, max_letters_digits, timeout_minutes FROM chat_moderation_config WHERE id = 1'
         );
     }
     if (method === 'POST' && pathOnly === '/api/admin/link-whitelist') {
@@ -894,6 +895,7 @@ function describeAdminAction(req: Request, context?: AdminAuditContext): { actio
         if (body.checkSymbols != null && (!prev || Boolean(body.checkSymbols) !== prev.check_symbols)) changes.push(prev ? `символы: ${prev.check_symbols ? 'вкл' : 'выкл'} -> ${Boolean(body.checkSymbols) ? 'вкл' : 'выкл'}` : `символы: ${Boolean(body.checkSymbols) ? 'вкл' : 'выкл'}`);
         if (body.checkLetters != null && (!prev || Boolean(body.checkLetters) !== prev.check_letters)) changes.push(prev ? `буквы/цифры: ${prev.check_letters ? 'вкл' : 'выкл'} -> ${Boolean(body.checkLetters) ? 'вкл' : 'выкл'}` : `буквы/цифры: ${Boolean(body.checkLetters) ? 'вкл' : 'выкл'}`);
         if (body.checkLinks != null && (!prev || Boolean(body.checkLinks) !== prev.check_links)) changes.push(prev ? `ссылки: ${prev.check_links ? 'вкл' : 'выкл'} -> ${Boolean(body.checkLinks) ? 'вкл' : 'выкл'}` : `ссылки: ${Boolean(body.checkLinks) ? 'вкл' : 'выкл'}`);
+        if (body.allowVipLinks != null && (!prev || Boolean(body.allowVipLinks) !== prev.allow_vip_links)) changes.push(prev ? `VIP-ссылки: ${prev.allow_vip_links ? 'вкл' : 'выкл'} -> ${Boolean(body.allowVipLinks) ? 'вкл' : 'выкл'}` : `VIP-ссылки: ${Boolean(body.allowVipLinks) ? 'вкл' : 'выкл'}`);
         if (body.maxMessageLength != null && (!prev || Number(body.maxMessageLength) !== prev.max_message_length)) changes.push(prev ? `лимит сообщения: ${prev.max_message_length} -> ${Number(body.maxMessageLength)}` : `лимит сообщения: ${Number(body.maxMessageLength)}`);
         if (body.maxLettersDigits != null && (!prev || Number(body.maxLettersDigits) !== prev.max_letters_digits)) changes.push(prev ? `лимит букв/цифр: ${prev.max_letters_digits} -> ${Number(body.maxLettersDigits)}` : `лимит букв/цифр: ${Number(body.maxLettersDigits)}`);
         if (body.timeoutMinutes != null && (!prev || Number(body.timeoutMinutes) !== prev.timeout_minutes)) changes.push(prev ? `таймаут: ${prev.timeout_minutes} -> ${Number(body.timeoutMinutes)} мин` : `таймаут: ${Number(body.timeoutMinutes)} мин`);
@@ -2822,6 +2824,7 @@ type ChatModerationRow = {
     check_symbols: boolean;
     check_letters: boolean;
     check_links: boolean;
+    allow_vip_links: boolean;
     max_message_length: number;
     max_letters_digits: number;
     timeout_minutes: number;
@@ -2832,6 +2835,7 @@ const defaultModerationConfig = () => ({
     checkSymbols: true,
     checkLetters: true,
     checkLinks: false,
+    allowVipLinks: false,
     maxMessageLength: 300,
     maxLettersDigits: 300,
     timeoutMinutes: 10,
@@ -2840,7 +2844,7 @@ const defaultModerationConfig = () => ({
 app.get('/api/admin/chat-moderation/config', async (_req: Request, res: Response) => {
     try {
         const row = await queryOne<ChatModerationRow>(
-            'SELECT moderation_enabled, check_symbols, check_links, check_letters, max_message_length, max_letters_digits, timeout_minutes FROM chat_moderation_config WHERE id = 1'
+            'SELECT moderation_enabled, check_symbols, check_links, check_letters, allow_vip_links, max_message_length, max_letters_digits, timeout_minutes FROM chat_moderation_config WHERE id = 1'
         );
         if (!row) {
             res.json(defaultModerationConfig());
@@ -2851,6 +2855,7 @@ app.get('/api/admin/chat-moderation/config', async (_req: Request, res: Response
             checkSymbols: row.check_symbols ?? true,
             checkLetters: row.check_letters ?? true,
             checkLinks: row.check_links ?? false,
+            allowVipLinks: row.allow_vip_links ?? false,
             maxMessageLength: row.max_message_length,
             maxLettersDigits: row.max_letters_digits ?? 300,
             timeoutMinutes: row.timeout_minutes,
@@ -2871,6 +2876,8 @@ app.post('/api/admin/chat-moderation/config', async (req: Request, res: Response
             req.body?.checkLetters != null ? Boolean(req.body.checkLetters) : undefined;
         const checkLinks =
             req.body?.checkLinks != null ? Boolean(req.body.checkLinks) : undefined;
+        const allowVipLinks =
+            req.body?.allowVipLinks != null ? Boolean(req.body.allowVipLinks) : undefined;
         const maxMessageLength =
             req.body?.maxMessageLength != null ? Number(req.body.maxMessageLength) : undefined;
         const maxLettersDigits =
@@ -2918,6 +2925,10 @@ app.post('/api/admin/chat-moderation/config', async (req: Request, res: Response
             updates.push(`check_links = $${i++}`);
             params.push(checkLinks);
         }
+        if (allowVipLinks != null) {
+            updates.push(`allow_vip_links = $${i++}`);
+            params.push(allowVipLinks);
+        }
         if (maxMessageLength != null) {
             updates.push(`max_message_length = $${i++}`);
             params.push(maxMessageLength);
@@ -2933,7 +2944,7 @@ app.post('/api/admin/chat-moderation/config', async (req: Request, res: Response
 
         if (updates.length === 0) {
             const row = await queryOne<ChatModerationRow>(
-                'SELECT moderation_enabled, check_symbols, check_letters, check_links, max_message_length, max_letters_digits, timeout_minutes FROM chat_moderation_config WHERE id = 1'
+                'SELECT moderation_enabled, check_symbols, check_letters, check_links, allow_vip_links, max_message_length, max_letters_digits, timeout_minutes FROM chat_moderation_config WHERE id = 1'
             );
             const out = row
                 ? {
@@ -2941,6 +2952,7 @@ app.post('/api/admin/chat-moderation/config', async (req: Request, res: Response
                       checkSymbols: row.check_symbols ?? true,
                       checkLetters: row.check_letters ?? true,
                       checkLinks: row.check_links ?? false,
+                      allowVipLinks: row.allow_vip_links ?? false,
                       maxMessageLength: row.max_message_length,
                       maxLettersDigits: row.max_letters_digits ?? 300,
                       timeoutMinutes: row.timeout_minutes,
@@ -2956,7 +2968,7 @@ app.post('/api/admin/chat-moderation/config', async (req: Request, res: Response
         );
 
         const row = await queryOne<ChatModerationRow>(
-            'SELECT moderation_enabled, check_symbols, check_letters, check_links, max_message_length, max_letters_digits, timeout_minutes FROM chat_moderation_config WHERE id = 1'
+            'SELECT moderation_enabled, check_symbols, check_letters, check_links, allow_vip_links, max_message_length, max_letters_digits, timeout_minutes FROM chat_moderation_config WHERE id = 1'
         );
         const config = row
             ? {
@@ -2964,6 +2976,7 @@ app.post('/api/admin/chat-moderation/config', async (req: Request, res: Response
                   checkSymbols: row.check_symbols ?? true,
                   checkLetters: row.check_letters ?? true,
                   checkLinks: row.check_links ?? false,
+                  allowVipLinks: row.allow_vip_links ?? false,
                   maxMessageLength: row.max_message_length,
                   maxLettersDigits: row.max_letters_digits ?? 300,
                   timeoutMinutes: row.timeout_minutes,

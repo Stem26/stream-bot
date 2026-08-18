@@ -82,6 +82,7 @@ export interface ChatModerationConfig {
   checkSymbols: boolean;
   checkLetters: boolean;
   checkLinks: boolean;
+  allowVipLinks: boolean;
   maxMessageLength: number;
   maxLettersDigits: number;
   timeoutMinutes: number;

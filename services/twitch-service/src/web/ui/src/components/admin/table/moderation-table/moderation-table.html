@@ -2,7 +2,7 @@
   <h3>Модерация чата</h3>
   <p class="admin-description">
     Первые 2 слишком длинных сообщения скрываются (как vanish), при повторе за последние 5 минут — тайм-аут.
-    Проверка ссылок удаляет сообщения с любыми ссылками, кроме разрешённых в whitelist.
+    Проверка ссылок удаляет сообщения с любыми ссылками, кроме разрешённых в whitelist и VIP (если включено).
   </p>
   <div class="admin-duels-toggle-row">
     <span class="admin-duels-label">Модерация чата</span>
@@ -47,6 +47,13 @@
     </div>
     <div class="moderation-setting-actions">
       <button type="button" class="btn btn-small" id="chat-link-whitelist-btn" title="Настроить список разрешённых ссылок">🔗 Разрешённые ссылки</button>
+    </div>
+    <div class="moderation-setting-header moderation-setting-sub">
+      <span class="moderation-setting-title">Пропускать ссылки для VIP</span>
+      <div class="status-toggle off" id="chat-allow-vip-links-toggle" data-enabled="false" title="VIP могут отправлять любые ссылки при включённой проверке ссылок">
+        <div class="status-toggle-circle"></div>
+        <span class="status-toggle-text">ВЫКЛ</span>
+      </div>
     </div>
   </div>
   <div class="admin-duels-config-fields">
