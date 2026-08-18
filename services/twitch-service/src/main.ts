@@ -8,7 +8,7 @@ import { clearActiveUsers } from "./commands/twitch-rat";
 import { log } from './utils/event-logger';
 import { initDatabase, closeDatabase, query, queryOne } from './database/database';
 import { startDonateXIntegration, stopDonateXIntegration } from './services/donatex/donatex-service';
-import { startWebServer, getBroadcastDuelBannedChanged, setOnCommandsChangedCallback, setOnCommandExecuteCallback, setOnLinksSendCallback, setOnEnableDuelsCallback, setOnDisableDuelsCallback, setOnPardonAllCallback, setGetDuelBannedListCallback, setPardonDuelUserCallback, setGetDuelsStatusCallback, setGetDuelCooldownSkipCallback, setSetDuelCooldownSkipCallback, setGetDuelOverlaySyncEnabledCallback, setSetDuelOverlaySyncEnabledCallback, setOnDuelConfigUpdatedCallback, setOnDuelDailyConfigUpdatedCallback, setOnLinksConfigUpdatedCallback, setOnRaidConfigUpdatedCallback, setOnChatModerationConfigUpdatedCallback, setOnPartyConfigUpdatedCallback, setOnFriendsShoutoutConfigUpdatedCallback, getRaidMessageFromDb } from './web/server';
+import { startWebServer, getBroadcastDuelBannedChanged, setOnCommandsChangedCallback, setOnCommandExecuteCallback, setOnLinksSendCallback, setOnEnableDuelsCallback, setOnDisableDuelsCallback, setOnPardonAllCallback, setGetDuelBannedListCallback, setPardonDuelUserCallback, setGetDuelsStatusCallback, setGetDuelCooldownSkipCallback, setSetDuelCooldownSkipCallback, setGetDuelOverlaySyncEnabledCallback, setSetDuelOverlaySyncEnabledCallback, setOnDuelConfigUpdatedCallback, setOnDuelDailyConfigUpdatedCallback, setOnLinksConfigUpdatedCallback, setOnRaidConfigUpdatedCallback, setOnChatModerationConfigUpdatedCallback, setOnPartyConfigUpdatedCallback, setOnFriendsShoutoutConfigUpdatedCallback, getRaidConfigFromDb } from './web/server';
 
 /** Завершение при фатальных ошибках старта: в production — для PM2; в dev — не рвём процесс без надобности. */
 function exitProcessForRecovery(code: number, reason: string): void {
@@ -130,7 +130,7 @@ async function main() {
         return row?.all_links_text ?? '';
     });
 
-    streamMonitor.setRaidMessageProvider(getRaidMessageFromDb);
+    streamMonitor.setRaidConfigProvider(getRaidConfigFromDb);
 
     streamMonitor.setRaidDuelBoostHandler((login, viewers) => {
         registerRaidDuelBoostFromRaidEvent(login, viewers);

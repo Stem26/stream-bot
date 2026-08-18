@@ -407,6 +407,14 @@ export async function initDatabase(): Promise<void> {
         INSERT INTO raid_config (id, raid_message) VALUES (1, '')
         ON CONFLICT (id) DO NOTHING
       `);
+      await client.query(`
+        ALTER TABLE raid_config
+          ADD COLUMN IF NOT EXISTS auto_shoutout_enabled BOOLEAN NOT NULL DEFAULT TRUE
+      `).catch(() => {});
+      await client.query(`
+        ALTER TABLE raid_config
+          ADD COLUMN IF NOT EXISTS auto_shoutout_min_viewers INTEGER NOT NULL DEFAULT 1
+      `).catch(() => {});
 
       // Авто-шатаут "друзья-стримеры": список логинов + вкл/выкл (одна строка)
       await client.query(`

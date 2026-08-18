@@ -64,9 +64,30 @@
         <p class="admin-hint"><strong>!tags</strong> [теги] — управление тегами стрима: <code>!tags</code> — показать,
           <code>!tags tag1, tag2</code> — задать</p>
         <p class="admin-hint"><strong class="raid-label">Рейд</strong> — при входящем рейде бот отправит сообщение в чат
-          и сделает шатаут.
+          и (если включено) сделает шатаут.
           Плейсхолдеры: <code class="placeholder-accent">{from}</code>, <code
               class="placeholder-accent">{viewers}</code></p>
+        <div class="admin-duels-config-fields raid-shoutout-fields">
+          <div class="admin-duels-config-row">
+            <label for="raid-shoutout-enabled">Авто-шатаут при рейде</label>
+            <div class="status-toggle off"
+                 id="raid-shoutout-enabled"
+                 data-enabled="true"
+                 title="Включить/выключить авто-шатаут при рейде">
+              <div class="status-toggle-circle"></div>
+              <span class="status-toggle-text">ВКЛ</span>
+            </div>
+          </div>
+          <div class="admin-duels-config-row">
+            <label for="raid-shoutout-min-viewers">Мин. зрителей для шатаута</label>
+            <input type="number"
+                   id="raid-shoutout-min-viewers"
+                   min="1"
+                   max="10000"
+                   step="1"
+                   value="1">
+          </div>
+        </div>
         <div class="admin-inline-row">
           <textarea id="raid-message"
                     class="raid-message-input"

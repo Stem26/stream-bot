@@ -29,6 +29,8 @@ export interface LinksConfig {
 
 export interface RaidConfig {
   raidMessage: string;
+  autoShoutoutEnabled: boolean;
+  autoShoutoutMinViewers: number;
 }
 
 export interface FriendsShoutoutConfig {

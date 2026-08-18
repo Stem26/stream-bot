@@ -18,6 +18,7 @@ import type { LinkDialogElement } from '../dialog/link-dialog/link-dialog';
 import type { LinkDialogSaveDetail } from '../../../interfaces/link-dialog';
 import { clearAdminAuth, getAdminPassword, setAdminPassword } from '../../../admin-auth';
 import type { FriendsShoutoutDialogElement } from '../dialog/friends-shoutout-dialog/friends-shoutout-dialog';
+import type { RaidConfig } from '../../../types';
 
 const VALID_TABS = ['commands', 'counters', 'duels', 'party', 'future', 'donations', 'moderation', 'logs', 'admin-logs'] as const;
 
@@ -35,7 +36,7 @@ function updateAdminHash(tab: string): void {
 export class AdminPanelElement extends HTMLElement {
   private initialized = false;
   private lastLinksRotationMinutes: number | null = null;
-  private lastRaidMessage: string | null = null;
+  private lastRaidConfig: RaidConfig | null = null;
   private lastFuturePredictionsText: string | null = null;
   private futurePredictionsLoaded = false;
   private hashChangeHandler: (() => void) | null = null;
@@ -198,10 +199,32 @@ export class AdminPanelElement extends HTMLElement {
 
     const raidMessageInput = this.querySelector<HTMLTextAreaElement>('#raid-message');
     const raidSaveBtn = this.querySelector<HTMLButtonElement>('#raid-save-btn');
+    const raidShoutoutToggle = this.querySelector<HTMLElement>('#raid-shoutout-enabled');
+    const raidMinViewersInput = this.querySelector<HTMLInputElement>('#raid-shoutout-min-viewers');
+
+    const getRaidConfigFromInputs = (): RaidConfig => ({
+      raidMessage: raidMessageInput?.value ?? '',
+      autoShoutoutEnabled: raidShoutoutToggle?.getAttribute('data-enabled') === 'true',
+      autoShoutoutMinViewers: parseInt(raidMinViewersInput?.value ?? '1', 10) || 1,
+    });
+
+    const applyRaidShoutoutToggleUi = (enabled: boolean): void => {
+      if (!raidShoutoutToggle) return;
+      raidShoutoutToggle.classList.toggle('on', enabled);
+      raidShoutoutToggle.classList.toggle('off', !enabled);
+      raidShoutoutToggle.setAttribute('data-enabled', String(enabled));
+      const textEl = raidShoutoutToggle.querySelector('.status-toggle-text');
+      if (textEl) textEl.textContent = enabled ? 'ВКЛ' : 'ВЫКЛ';
+    };
+
     const updateRaidSaveButton = (): void => {
-      if (!raidMessageInput || !raidSaveBtn) return;
-      const current = raidMessageInput.value;
-      raidSaveBtn.disabled = this.lastRaidMessage === null || this.lastRaidMessage === current;
+      if (!raidSaveBtn || !this.lastRaidConfig) return;
+      const current = getRaidConfigFromInputs();
+      const unchanged =
+        current.raidMessage === this.lastRaidConfig.raidMessage
+        && current.autoShoutoutEnabled === this.lastRaidConfig.autoShoutoutEnabled
+        && current.autoShoutoutMinViewers === this.lastRaidConfig.autoShoutoutMinViewers;
+      raidSaveBtn.disabled = unchanged;
     };
 
     void this.initLinks(linkDialog, updateRaidSaveButton);
@@ -320,15 +343,35 @@ export class AdminPanelElement extends HTMLElement {
       resizeRaidInput();
     });
     raidMessageInput?.addEventListener('change', updateRaidSaveButton);
+    raidMinViewersInput?.addEventListener('input', updateRaidSaveButton);
+    raidMinViewersInput?.addEventListener('change', updateRaidSaveButton);
+
+    raidShoutoutToggle?.addEventListener('click', () => {
+      if (!raidShoutoutToggle) return;
+      const enabled = raidShoutoutToggle.getAttribute('data-enabled') === 'true';
+      applyRaidShoutoutToggleUi(!enabled);
+      updateRaidSaveButton();
+    });
 
     raidSaveBtn?.addEventListener('click', async () => {
-      const message = raidMessageInput?.value ?? '';
+      const payload = getRaidConfigFromInputs();
+      if (payload.autoShoutoutMinViewers < 1 || payload.autoShoutoutMinViewers > 10000) {
+        showAlert('Мин. зрителей: от 1 до 10000', 'error');
+        return;
+      }
       try {
-        await updateRaidConfig({ raidMessage: message });
-        this.lastRaidMessage = message;
+        const saved = await updateRaidConfig(payload);
+        this.lastRaidConfig = saved;
+        applyRaidShoutoutToggleUi(saved.autoShoutoutEnabled);
+        if (raidMinViewersInput) raidMinViewersInput.value = String(saved.autoShoutoutMinViewers);
         updateRaidSaveButton();
-        showAlert('Сообщение при рейде сохранено', 'success');
+        showAlert('Настройки рейда сохранены', 'success');
       } catch (error) {
+        if (this.lastRaidConfig) {
+          applyRaidShoutoutToggleUi(this.lastRaidConfig.autoShoutoutEnabled);
+          if (raidMinViewersInput) raidMinViewersInput.value = String(this.lastRaidConfig.autoShoutoutMinViewers);
+        }
+        updateRaidSaveButton();
         if (error instanceof Error) showAlert(`Ошибка сохранения: ${error.message}`, 'error');
       }
     });
@@ -447,13 +490,26 @@ export class AdminPanelElement extends HTMLElement {
       const linksIntervalInput = this.querySelector<HTMLInputElement>('#links-rotation-interval-min');
       if (linksIntervalInput) linksIntervalInput.value = String(this.lastLinksRotationMinutes);
       const raidMessageInput = this.querySelector<HTMLTextAreaElement>('#raid-message');
+      const raidMinViewersInput = this.querySelector<HTMLInputElement>('#raid-shoutout-min-viewers');
       if (raidMessageInput) {
         raidMessageInput.value = raidConfig.raidMessage ?? '';
-        this.lastRaidMessage = raidConfig.raidMessage ?? '';
         raidMessageInput.style.height = '1px';
         const raw = raidMessageInput.scrollHeight;
         raidMessageInput.style.height = `${Math.min(Math.max(raw + 4, 40), 160)}px`;
       }
+      if (raidMinViewersInput) {
+        raidMinViewersInput.value = String(raidConfig.autoShoutoutMinViewers ?? 1);
+      }
+      const raidShoutoutToggle = this.querySelector<HTMLElement>('#raid-shoutout-enabled');
+      if (raidShoutoutToggle) {
+        const enabled = Boolean(raidConfig.autoShoutoutEnabled);
+        raidShoutoutToggle.classList.toggle('on', enabled);
+        raidShoutoutToggle.classList.toggle('off', !enabled);
+        raidShoutoutToggle.setAttribute('data-enabled', String(enabled));
+        const textEl = raidShoutoutToggle.querySelector('.status-toggle-text');
+        if (textEl) textEl.textContent = enabled ? 'ВКЛ' : 'ВЫКЛ';
+      }
+      this.lastRaidConfig = raidConfig;
       const friendsToggle = this.querySelector<HTMLInputElement>('#friends-shoutout-enabled');
       const friendsToggleEl = this.querySelector<HTMLElement>('#friends-shoutout-enabled');
       if (friendsToggleEl) {

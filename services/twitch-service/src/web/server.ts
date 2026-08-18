@@ -407,7 +407,11 @@ type PartyConfigAuditSnapshot = {
 };
 
 type LinksConfigAuditSnapshot = { all_links_text: string; rotation_interval_minutes: number };
-type RaidConfigAuditSnapshot = { raid_message: string };
+type RaidConfigAuditSnapshot = {
+    raid_message: string;
+    auto_shoutout_enabled: boolean;
+    auto_shoutout_min_viewers: number;
+};
 type FriendsShoutoutAuditSnapshot = { enabled: boolean; logins: string[] };
 type DuelConfigAuditSnapshot = {
     timeout_minutes: number;
@@ -489,7 +493,7 @@ async function loadAdminAuditContext(req: Request): Promise<AdminAuditContext> {
     }
     if (method === 'PUT' && pathOnly === '/api/raid') {
         ctx.previousRaidConfig = await queryOne<RaidConfigAuditSnapshot>(
-            'SELECT raid_message FROM raid_config WHERE id = 1'
+            'SELECT raid_message, auto_shoutout_enabled, auto_shoutout_min_viewers FROM raid_config WHERE id = 1'
         );
     }
     if (method === 'PUT' && pathOnly === '/api/friends-shoutout') {
@@ -616,18 +620,32 @@ function describeAdminAction(req: Request, context?: AdminAuditContext): { actio
     }
     if (method === 'PUT' && pathOnly === '/api/raid') {
         const prev = context?.previousRaidConfig;
-        if (typeof body.raidMessage === 'string') {
-            if (!prev || prev.raid_message !== body.raidMessage) {
-                return {
-                    action: 'обновил сообщение при рейде',
-                    details: prev
-                        ? `Сообщение: "${shortAuditText(prev.raid_message)}" -> "${shortAuditText(body.raidMessage)}"`
-                        : `Сообщение: "${shortAuditText(body.raidMessage)}"`,
-                };
-            }
-            return { action: 'сохранил сообщение рейда без изменений' };
+        const changes: string[] = [];
+        if (typeof body.raidMessage === 'string' && (!prev || prev.raid_message !== body.raidMessage)) {
+            changes.push(
+                prev
+                    ? `сообщение: "${shortAuditText(prev.raid_message)}" -> "${shortAuditText(body.raidMessage)}"`
+                    : `сообщение: "${shortAuditText(body.raidMessage)}"`
+            );
         }
-        return { action: 'обновил сообщение при рейде' };
+        if (body.autoShoutoutEnabled != null && (!prev || Boolean(body.autoShoutoutEnabled) !== prev.auto_shoutout_enabled)) {
+            changes.push(
+                prev
+                    ? `авто-шатаут: ${prev.auto_shoutout_enabled ? 'вкл' : 'выкл'} -> ${Boolean(body.autoShoutoutEnabled) ? 'вкл' : 'выкл'}`
+                    : `авто-шатаут: ${Boolean(body.autoShoutoutEnabled) ? 'вкл' : 'выкл'}`
+            );
+        }
+        if (body.autoShoutoutMinViewers != null && (!prev || Number(body.autoShoutoutMinViewers) !== prev.auto_shoutout_min_viewers)) {
+            changes.push(
+                prev
+                    ? `мин. зрителей: ${prev.auto_shoutout_min_viewers} -> ${Number(body.autoShoutoutMinViewers)}`
+                    : `мин. зрителей: ${Number(body.autoShoutoutMinViewers)}`
+            );
+        }
+        if (changes.length === 0) {
+            return { action: 'сохранил настройки рейда без изменений' };
+        }
+        return { action: 'обновил настройки рейда', details: changes.join('; ') };
     }
     if (method === 'PUT' && pathOnly === '/api/friends-shoutout') {
         const prev = context?.previousFriendsShoutoutConfig;
@@ -1259,28 +1277,56 @@ async function saveLinksToDb(config: LinksConfig): Promise<boolean> {
     }
 }
 
-interface RaidConfig {
+export interface RaidConfig {
     raidMessage: string;
+    autoShoutoutEnabled: boolean;
+    autoShoutoutMinViewers: number;
+}
+
+function normalizeRaidConfig(row?: {
+    raid_message?: string;
+    auto_shoutout_enabled?: boolean;
+    auto_shoutout_min_viewers?: number;
+} | null): RaidConfig {
+    const minViewers = Number(row?.auto_shoutout_min_viewers ?? 1);
+    return {
+        raidMessage: row?.raid_message ?? '',
+        autoShoutoutEnabled: row?.auto_shoutout_enabled ?? true,
+        autoShoutoutMinViewers: Number.isFinite(minViewers) && minViewers >= 1 ? Math.floor(minViewers) : 1,
+    };
 }
 
 async function getRaidFromDb(): Promise<RaidConfig> {
     try {
-        const row = await queryOne<{ raid_message: string }>(
-            'SELECT raid_message FROM raid_config WHERE id = 1'
+        const row = await queryOne<{
+            raid_message: string;
+            auto_shoutout_enabled: boolean;
+            auto_shoutout_min_viewers: number;
+        }>(
+            'SELECT raid_message, auto_shoutout_enabled, auto_shoutout_min_viewers FROM raid_config WHERE id = 1'
         );
-        return { raidMessage: row?.raid_message ?? '' };
+        return normalizeRaidConfig(row);
     } catch (error) {
         console.error('⚠️ Ошибка загрузки raid_config из БД:', error);
-        return { raidMessage: '' };
+        return normalizeRaidConfig(null);
     }
 }
 
 async function saveRaidToDb(config: RaidConfig): Promise<boolean> {
     try {
+        const minViewers = Math.min(10000, Math.max(1, Math.floor(config.autoShoutoutMinViewers ?? 1)));
         await query(
-            `INSERT INTO raid_config (id, raid_message) VALUES (1, $1)
-             ON CONFLICT (id) DO UPDATE SET raid_message = EXCLUDED.raid_message`,
-            [String(config.raidMessage ?? '').slice(0, 500)]
+            `INSERT INTO raid_config (id, raid_message, auto_shoutout_enabled, auto_shoutout_min_viewers)
+             VALUES (1, $1, $2, $3)
+             ON CONFLICT (id) DO UPDATE SET
+               raid_message = EXCLUDED.raid_message,
+               auto_shoutout_enabled = EXCLUDED.auto_shoutout_enabled,
+               auto_shoutout_min_viewers = EXCLUDED.auto_shoutout_min_viewers`,
+            [
+                String(config.raidMessage ?? '').slice(0, 500),
+                Boolean(config.autoShoutoutEnabled),
+                minViewers,
+            ]
         );
         return true;
     } catch (error) {
@@ -1417,18 +1463,28 @@ app.get('/api/raid', async (req: Request, res: Response) => {
 
 app.put('/api/raid', async (req: Request, res: Response) => {
     try {
-        const { raidMessage } = req.body as Partial<RaidConfig>;
-        const safeMessage = typeof raidMessage === 'string' ? raidMessage.slice(0, 500) : '';
-        if (await saveRaidToDb({ raidMessage: safeMessage })) {
+        const body = req.body as Partial<RaidConfig>;
+        const current = await getRaidFromDb();
+        const minViewersRaw = body.autoShoutoutMinViewers != null ? Number(body.autoShoutoutMinViewers) : current.autoShoutoutMinViewers;
+        if (body.autoShoutoutMinViewers != null && (Number.isNaN(minViewersRaw) || minViewersRaw < 1 || minViewersRaw > 10000)) {
+            res.status(400).json({ error: 'autoShoutoutMinViewers: от 1 до 10000' });
+            return;
+        }
+        const next: RaidConfig = {
+            raidMessage: typeof body.raidMessage === 'string' ? body.raidMessage.slice(0, 500) : current.raidMessage,
+            autoShoutoutEnabled: body.autoShoutoutEnabled != null ? Boolean(body.autoShoutoutEnabled) : current.autoShoutoutEnabled,
+            autoShoutoutMinViewers: body.autoShoutoutMinViewers != null ? Math.floor(minViewersRaw) : current.autoShoutoutMinViewers,
+        };
+        if (await saveRaidToDb(next)) {
             console.log('✅ Конфиг рейда обновлён (БД)');
             if (onRaidConfigUpdatedCallback) {
                 try {
-                    onRaidConfigUpdatedCallback({ raidMessage: safeMessage });
+                    onRaidConfigUpdatedCallback(next);
                 } catch (cbError) {
                     console.error('⚠️ Ошибка в onRaidConfigUpdatedCallback:', cbError);
                 }
             }
-            res.json({ raidMessage: safeMessage });
+            res.json(next);
         } else {
             res.status(500).json({ error: 'Ошибка сохранения настроек рейда' });
         }
@@ -3379,6 +3435,10 @@ export function setOnRaidConfigUpdatedCallback(callback: (config: RaidConfig) =>
 
 export function setOnFriendsShoutoutConfigUpdatedCallback(callback: (config: FriendsShoutoutConfig) => void) {
     onFriendsShoutoutConfigUpdatedCallback = callback;
+}
+
+export async function getRaidConfigFromDb(): Promise<RaidConfig> {
+    return getRaidFromDb();
 }
 
 export async function getRaidMessageFromDb(): Promise<string> {

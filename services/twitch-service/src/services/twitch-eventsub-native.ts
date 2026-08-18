@@ -328,7 +328,11 @@ export class TwitchEventSubNative {
     private getLinkRotationItems: (() => Promise<LinkRotationItem[]>) | null = null;
     private getRotationIntervalMinutes: (() => Promise<number>) | null = null;
     private getWelcomeMessage: (() => Promise<string>) | null = null;
-    private getRaidMessage: (() => Promise<string>) | null = null;
+    private getRaidConfig: (() => Promise<{
+        raidMessage: string;
+        autoShoutoutEnabled: boolean;
+        autoShoutoutMinViewers: number;
+    }>) | null = null;
     /** Рейд-буст дуэлей: логин рейдера (как в EventSub) + число зрителей рейда */
     private onRaidDuelBoost: ((raiderLogin: string, viewers: number) => void) | null = null;
     private broadcastAccessToken: string | null = null;
@@ -1477,7 +1481,8 @@ export class TwitchEventSubNative {
             return;
         }
 
-        const template = this.getRaidMessage ? await this.getRaidMessage() : '';
+        const raidConfig = this.getRaidConfig ? await this.getRaidConfig() : null;
+        const template = raidConfig?.raidMessage ?? '';
         if (template && this.chatSender && this.channelName) {
             const message = template
                 .replace(/\{from\}/gi, fromName)
@@ -1492,7 +1497,17 @@ export class TwitchEventSubNative {
             console.log('ℹ️ Сообщение при рейде не настроено');
         }
 
-        if (this.broadcastAccessToken && this.broadcasterId && this.clientId) {
+        const shoutoutEnabled = raidConfig?.autoShoutoutEnabled ?? true;
+        const shoutoutMinViewers = raidConfig?.autoShoutoutMinViewers ?? 1;
+        const shouldShoutout = shoutoutEnabled && viewers >= shoutoutMinViewers;
+
+        if (!shouldShoutout) {
+            if (!shoutoutEnabled) {
+                console.log('ℹ️ Авто-шатаут при рейде отключён в настройках');
+            } else {
+                console.log(`ℹ️ Авто-шатаут пропущен: ${viewers} зрит. < минимума ${shoutoutMinViewers}`);
+            }
+        } else if (this.broadcastAccessToken && this.broadcasterId && this.clientId) {
             try {
                 const toBroadcasterId = event.from_broadcaster_user_id;
                 if (!toBroadcasterId) {
@@ -2887,8 +2902,21 @@ export class TwitchEventSubNative {
         this.channelName = channelName;
     }
 
+    setRaidConfigProvider(provider: () => Promise<{
+        raidMessage: string;
+        autoShoutoutEnabled: boolean;
+        autoShoutoutMinViewers: number;
+    }>): void {
+        this.getRaidConfig = provider;
+    }
+
+    /** @deprecated используй setRaidConfigProvider */
     setRaidMessageProvider(provider: () => Promise<string>): void {
-        this.getRaidMessage = provider;
+        this.getRaidConfig = async () => ({
+            raidMessage: await provider(),
+            autoShoutoutEnabled: true,
+            autoShoutoutMinViewers: 1,
+        });
     }
 
     setRaidDuelBoostHandler(handler: ((raiderLogin: string, viewers: number) => void) | null): void {

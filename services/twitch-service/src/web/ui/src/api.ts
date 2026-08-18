@@ -117,7 +117,7 @@ export async function fetchRaidConfig(): Promise<RaidConfig> {
   return handleJson<RaidConfig>(response, 'Ошибка загрузки настроек рейда');
 }
 
-export async function updateRaidConfig(config: { raidMessage: string }): Promise<RaidConfig> {
+export async function updateRaidConfig(config: Partial<RaidConfig>): Promise<RaidConfig> {
   const response = await authFetch('/api/raid', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
