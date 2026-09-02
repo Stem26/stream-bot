@@ -27,6 +27,7 @@ export async function playFuture(
 
   const canUse = canUseFutureToday(player);
   const attempts = player.futureAttemptsToday || 0;
+  const name = displayName(firstName);
 
   if (canUse) {
     const predictions = await getActiveFuturePredictions();
@@ -48,10 +49,8 @@ export async function playFuture(
     player.firstName = firstName;
     await players.set(userId, player);
 
-    return `"${prediction}"`;
+    return `${name}, "${prediction}"`;
   }
-
-  const name = displayName(firstName);
 
   if (!countAsRetry) {
     return `${name}, ты уже получал предсказание сегодня.\nСледующая попытка завтра!`;
