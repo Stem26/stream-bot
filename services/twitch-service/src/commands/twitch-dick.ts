@@ -94,7 +94,7 @@ export async function processTwitchDickCommand(
     return formatPlayMessage(twitchUsername, growth, player.size);
   } else if (player) {
     const rank = await storage.getTwitchPlayerRank(players, normalizedUsername);
-    return `@${twitchUsername}, ты уже играл. Сейчас он равен ${player.size} см. Ты занимаешь ${rank} место в топе. Следующая попытка завтра!`;
+    return `@${twitchUsername}, ты уже играл. Сейчас он равен ${player.size} см., на ${rank} месте в топе. Следующая попытка завтра!`;
   }
 
   return `@${twitchUsername}, произошла ошибка при обработке команды.`;

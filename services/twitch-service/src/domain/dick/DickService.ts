@@ -87,8 +87,7 @@ export class DickService {
       const rank = this.playersStorage.getRank(userId);
       const message = 
         `@${username}, ты уже играл.\n` +
-        `Сейчас он равен ${player.size} см.\n` +
-        `Ты занимаешь ${rank} место в топе.\n` +
+        `Сейчас он равен ${player.size} см., на ${rank} месте в топе.\n` +
         `Следующая попытка завтра!`;
 
       return { type: 'already_played', player, rank, message };

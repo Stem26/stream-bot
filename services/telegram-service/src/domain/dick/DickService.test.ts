@@ -105,7 +105,8 @@ describe('DickService', () => {
       expect(result.type).toBe('already_played');
       expect(result.rank).toBeDefined();
       expect(result.message).toContain('уже играл');
-      expect(result.message).toContain('15 см');
+      expect(result.message).toContain('15 см., на');
+      expect(result.message).toContain('месте в топе');
       expect(result.message).not.toContain('@bob');
       expect(result.message).toContain('Следующая попытка завтра!');
     });
