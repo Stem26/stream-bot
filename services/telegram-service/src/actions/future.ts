@@ -47,7 +47,7 @@ export async function playFuture(
     player.firstName = firstName;
     await players.set(userId, player);
 
-    return `"${prediction}"`;
+    return prediction;
   }
 
   if (!countAsRetry) {

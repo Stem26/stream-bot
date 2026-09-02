@@ -54,7 +54,7 @@ export function futureCommand(ctx: BotContext) {
     player.firstName = firstName;
     ctx.services.players.set(userId, player);
 
-    ctx.reply(`"${prediction}"\n\n`);
+    ctx.reply(prediction);
   } else {
     player.futureAttemptsToday = (attempts + 1);
     player.username = username;
