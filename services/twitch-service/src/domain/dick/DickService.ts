@@ -35,6 +35,13 @@ export class DickService {
     return `не изменился`;
   }
 
+  private formatPlayMessage(username: string, growth: number, size: number): string {
+    if (growth === 0) {
+      return `@${username}, твой писюн не изменился и теперь равен ${size} см.`;
+    }
+    return `@${username}, твой писюн ${this.formatGrowthText(growth)} см и теперь равен ${size} см.`;
+  }
+
   /**
    * Играть в dick (главная бизнес-логика)
    */
@@ -59,12 +66,7 @@ export class DickService {
       };
       this.playersStorage.set(userId, player);
 
-      const growthText = this.formatGrowthText(growth);
-      const message = 
-        `@${username}, твой писюн ${growthText} см.\n` +
-        `Теперь он равен ${player.size} см.`;
-
-      return { type: 'first_time', player, growth, message };
+      return { type: 'first_time', player, growth, message: this.formatPlayMessage(username, growth, player.size) };
     }
 
     // ===== Можно играть =====
@@ -77,12 +79,7 @@ export class DickService {
       player.firstName = firstName;
       this.playersStorage.set(userId, player);
 
-      const growthText = this.formatGrowthText(growth);
-      const message = 
-        `@${username}, твой писюн ${growthText} см.\n` +
-        `Теперь он равен ${player.size} см.`;
-
-      return { type: 'success', player, growth, message };
+      return { type: 'success', player, growth, message: this.formatPlayMessage(username, growth, player.size) };
     }
 
     // ===== Уже играл сегодня =====

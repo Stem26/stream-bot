@@ -53,6 +53,13 @@ export class DickService {
     return `не изменился`;
   }
 
+  private formatPlayMessage(growth: number, size: number): string {
+    if (growth === 0) {
+      return `Твой писюн не изменился и теперь равен ${size} см.`;
+    }
+    return `Твой писюн ${this.formatGrowthText(growth)} см и теперь равен ${size} см.`;
+  }
+
   /**
    * Играть в dick (главная бизнес-логика)
    */
@@ -77,12 +84,7 @@ export class DickService {
       };
       await this.playersStorage.set(userId, player);
 
-      const growthText = this.formatGrowthText(growth);
-      const message =
-        `Твой писюн ${growthText} см.\n` +
-        `Теперь он равен ${player.size} см.`;
-
-      return { type: 'first_time', player, growth, message };
+      return { type: 'first_time', player, growth, message: this.formatPlayMessage(growth, player.size) };
     }
 
     if (canPlay && player) {
@@ -95,12 +97,7 @@ export class DickService {
       player.lastGrowth = growth;
       await this.playersStorage.set(userId, player);
 
-      const growthText = this.formatGrowthText(growth);
-      const message =
-        `Твой писюн ${growthText} см.\n` +
-        `Теперь он равен ${player.size} см.`;
-
-      return { type: 'success', player, growth, message };
+      return { type: 'success', player, growth, message: this.formatPlayMessage(growth, player.size) };
     }
 
     if (player) {

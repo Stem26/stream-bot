@@ -34,6 +34,7 @@ describe('DickService', () => {
       expect(result.growth).toBeGreaterThanOrEqual(-10);
       expect(result.growth).toBeLessThanOrEqual(10);
       expect(result.message).toContain('john');
+      expect(result.message).toContain('и теперь равен');
       expect(result.message).not.toContain('Следующая попытка завтра!');
     });
 

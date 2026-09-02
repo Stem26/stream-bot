@@ -22,6 +22,16 @@ function canPlayTodayTwitch(player: TwitchPlayerData): boolean {
   return !player.lastUsedDate || player.lastUsedDate !== today;
 }
 
+function formatPlayMessage(twitchUsername: string, growth: number, size: number): string {
+  if (growth === 0) {
+    return `@${twitchUsername}, твой писюн не изменился и теперь равен ${size} см.`;
+  }
+  const growthText = growth > 0
+    ? `вырос на ${growth}`
+    : `уменьшился на ${Math.abs(growth)}`;
+  return `@${twitchUsername}, твой писюн ${growthText} см и теперь равен ${size} см.`;
+}
+
 async function generateGrowth(normalizedUsername: string, players: Map<string, TwitchPlayerData>): Promise<number> {
   const isStreamer = STREAMER_USERNAME && normalizedUsername === STREAMER_USERNAME;
 
@@ -71,13 +81,7 @@ export async function processTwitchDickCommand(
     players.set(normalizedUsername, player);
     await storage.saveTwitchPlayers(players);
 
-    const growthText = growth > 0
-      ? `вырос на ${growth}`
-      : growth < 0
-        ? `уменьшился на ${Math.abs(growth)}`
-        : `не изменился`;
-
-    return `@${twitchUsername}, твой писюн ${growthText} см. Теперь он равен ${player.size} см.`;
+    return formatPlayMessage(twitchUsername, growth, player.size);
   } else if (canPlay && player) {
     const growth = await generateGrowth(normalizedUsername, players);
     player.size += growth;
@@ -87,13 +91,7 @@ export async function processTwitchDickCommand(
     players.set(normalizedUsername, player);
     await storage.saveTwitchPlayers(players);
 
-    const growthText = growth > 0
-      ? `вырос на ${growth}`
-      : growth < 0
-        ? `уменьшился на ${Math.abs(growth)}`
-        : `не изменился`;
-
-    return `@${twitchUsername}, твой писюн ${growthText} см. Теперь он равен ${player.size} см.`;
+    return formatPlayMessage(twitchUsername, growth, player.size);
   } else if (player) {
     const rank = await storage.getTwitchPlayerRank(players, normalizedUsername);
     return `@${twitchUsername}, ты уже играл. Сейчас он равен ${player.size} см. Ты занимаешь ${rank} место в топе. Следующая попытка завтра!`;
