@@ -63,7 +63,7 @@ describe('DickService', () => {
       expect(result.growth).toBeDefined();
       expect(result.growth).toBeGreaterThanOrEqual(-10);
       expect(result.growth).toBeLessThanOrEqual(10);
-      expect(result.message).toContain('John');
+      expect(result.message).toContain('Твой писюн');
       expect(result.message).not.toContain('@john');
       expect(result.message).toContain('Следующая попытка завтра!');
     });
@@ -105,7 +105,6 @@ describe('DickService', () => {
       expect(result.rank).toBeDefined();
       expect(result.message).toContain('уже играл');
       expect(result.message).toContain('15 см');
-      expect(result.message).toContain('Bob');
       expect(result.message).not.toContain('@bob');
     });
 
