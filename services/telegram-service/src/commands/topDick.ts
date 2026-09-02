@@ -1,5 +1,5 @@
 import { BotContext } from '../types/context';
-import { formatName } from '../utils/format';
+import { displayName } from '../utils/format';
 
 export async function topDickCommand(ctx: BotContext) {
   // ✨ Используем ctx.services вместо импорта!
@@ -14,7 +14,7 @@ export async function topDickCommand(ctx: BotContext) {
 
   topPlayers.forEach((player, index) => {
     const rank = index + 1;
-    const name = formatName(player.firstName);
+    const name = displayName(player.firstName);
     message += `${rank} | ${name} — ${player.size} см.\n`;
   });
 

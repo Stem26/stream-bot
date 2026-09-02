@@ -4,6 +4,7 @@ import { playHorny } from '../actions/horny';
 import { playFurry } from '../actions/furry';
 import { playFuture } from '../actions/future';
 import { getOrCreatePlayer } from '../actions/player';
+import { displayName } from '../utils/format';
 
 export async function allCommand(ctx: BotContext) {
   if (!ctx.from) {
@@ -19,7 +20,7 @@ export async function allCommand(ctx: BotContext) {
 
   const existingPlayer = await ctx.services.players.get(userId);
   if (existingPlayer && !canUseAllToday(existingPlayer)) {
-    ctx.reply(`@${username}, ты уже использовал /all сегодня.\nСледующая попытка завтра!`);
+    ctx.reply(`${displayName(firstName)}, ты уже использовал /all сегодня.\nСледующая попытка завтра!`);
     return;
   }
 

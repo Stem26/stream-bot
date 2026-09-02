@@ -2,6 +2,7 @@ import { PlayersStorageDB } from '../services/PlayersStorageDB';
 import { getMoscowDate, canUseFutureToday } from '../utils/date';
 import { getAvailablePredictions, addToHistory, clearHistory } from '../utils/futureHistory';
 import { getActiveFuturePredictions } from '../services/future-predictions';
+import { displayName } from '../utils/format';
 import { getOrCreatePlayer } from './player';
 
 export interface PlayFutureOptions {
@@ -50,8 +51,10 @@ export async function playFuture(
     return `"${prediction}"`;
   }
 
+  const name = displayName(firstName);
+
   if (!countAsRetry) {
-    return `@${username}, ты уже получал предсказание сегодня.\nСледующая попытка завтра!`;
+    return `${name}, ты уже получал предсказание сегодня.\nСледующая попытка завтра!`;
   }
 
   player.futureAttemptsToday = attempts + 1;
@@ -60,7 +63,7 @@ export async function playFuture(
   await players.set(userId, player);
 
   if (attempts === 1) {
-    return `@${username}, ты уже получал предсказание сегодня.\nСледующая попытка завтра!`;
+    return `${name}, ты уже получал предсказание сегодня.\nСледующая попытка завтра!`;
   }
   if (attempts === 2) {
     return 'Серьёзно? Ещё раз? Завтра это не сегодня, понял?';

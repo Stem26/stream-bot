@@ -1,5 +1,6 @@
 import { PlayersStorageDB } from '../services/PlayersStorageDB';
 import { getMoscowDate, canUseFurryToday } from '../utils/date';
+import { displayName } from '../utils/format';
 import { getOrCreatePlayer } from './player';
 
 export async function playFurry(
@@ -12,8 +13,10 @@ export async function playFurry(
   const today = getMoscowDate();
   const player = await getOrCreatePlayer(players, userId, username, firstName);
 
+  const name = displayName(firstName);
+
   if (!canUseFurryToday(player)) {
-    return `@${username}, ты уже проверял свой уровень фури сегодня.\nСледующая попытка завтра!`;
+    return `${name}, ты уже проверял свой уровень фури сегодня.\nСледующая попытка завтра!`;
   }
 
   const isStreamer = streamerUserIds.includes(userId);
@@ -29,5 +32,5 @@ export async function playFurry(
   player.firstName = firstName;
   await players.set(userId, player);
 
-  return `@${username} ты сегодня фури на ${percentage}%\nСледующая попытка завтра!`;
+  return `${name}, ты сегодня фури на ${percentage}%\nСледующая попытка завтра!`;
 }

@@ -1,5 +1,6 @@
 import { Player, PlayersStorageDB } from '../../services/PlayersStorageDB';
 import { getMoscowDate, canPlayToday } from '../../utils/date';
+import { displayName } from '../../utils/format';
 
 /**
  * Результат игры
@@ -78,8 +79,9 @@ export class DickService {
       await this.playersStorage.set(userId, player);
 
       const growthText = this.formatGrowthText(growth);
+      const name = displayName(firstName);
       const message =
-        `@${username}, твой писюн ${growthText} см.\n` +
+        `${name}, твой писюн ${growthText} см.\n` +
         `Теперь он равен ${player.size} см.\n` +
         `Следующая попытка завтра!`;
 
@@ -97,8 +99,9 @@ export class DickService {
       await this.playersStorage.set(userId, player);
 
       const growthText = this.formatGrowthText(growth);
+      const name = displayName(firstName);
       const message =
-        `@${username}, твой писюн ${growthText} см.\n` +
+        `${name}, твой писюн ${growthText} см.\n` +
         `Теперь он равен ${player.size} см.\n` +
         `Следующая попытка завтра!`;
 
@@ -107,8 +110,9 @@ export class DickService {
 
     if (player) {
       const rank = await this.playersStorage.getRank(userId);
+      const name = displayName(firstName);
       const message =
-        `@${username}, ты уже играл.\n` +
+        `${name}, ты уже играл.\n` +
         `Сейчас он равен ${player.size} см.\n` +
         `Ты занимаешь ${rank} место в топе.\n` +
         `Следующая попытка завтра!`;
