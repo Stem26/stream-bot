@@ -21,5 +21,5 @@ export async function playHorny(
   player.firstName = firstName;
   await players.set(userId, player);
 
-  return `Ты сегодня хорни на ${percentage}%\nСледующая попытка завтра!`;
+  return `Ты сегодня хорни на ${percentage}%`;
 }

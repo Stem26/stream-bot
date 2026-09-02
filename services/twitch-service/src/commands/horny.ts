@@ -37,7 +37,7 @@ export function hornyCommand(ctx: BotContext) {
     player.firstName = firstName;
     ctx.services.players.set(userId, player);
 
-    ctx.reply(`@${username} ты сегодня хорни на ${percentage}%\nСледующая попытка завтра!`);
+    ctx.reply(`@${username} ты сегодня хорни на ${percentage}%`);
   } else {
     ctx.reply(`@${username}, ты уже проверял свой уровень хорни сегодня.\nСледующая попытка завтра!`);
   }

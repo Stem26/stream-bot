@@ -29,5 +29,5 @@ export async function playFurry(
   player.firstName = firstName;
   await players.set(userId, player);
 
-  return `Ты сегодня фури на ${percentage}%\nСледующая попытка завтра!`;
+  return `Ты сегодня фури на ${percentage}%`;
 }

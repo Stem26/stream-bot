@@ -36,7 +36,7 @@ export function furryCommand(ctx: BotContext) {
     player.firstName = firstName;
     ctx.services.players.set(userId, player);
 
-    ctx.reply(`@${username} ты сегодня фури на ${percentage}%\nСледующая попытка завтра!`);
+    ctx.reply(`@${username} ты сегодня фури на ${percentage}%`);
   } else {
     ctx.reply(`@${username}, ты уже проверял свой уровень фури сегодня.\nСледующая попытка завтра!`);
   }

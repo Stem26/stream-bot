@@ -34,7 +34,7 @@ describe('DickService', () => {
       expect(result.growth).toBeGreaterThanOrEqual(-10);
       expect(result.growth).toBeLessThanOrEqual(10);
       expect(result.message).toContain('john');
-      expect(result.message).toContain('Следующая попытка завтра!');
+      expect(result.message).not.toContain('Следующая попытка завтра!');
     });
 
     it('должен позволить играть при первой попытке сегодня', () => {
@@ -74,6 +74,7 @@ describe('DickService', () => {
       expect(result.rank).toBeDefined();
       expect(result.message).toContain('уже играл');
       expect(result.message).toContain('15 см');
+      expect(result.message).toContain('Следующая попытка завтра!');
     });
 
     it('размер должен изменяться в диапазоне -10..+10', () => {

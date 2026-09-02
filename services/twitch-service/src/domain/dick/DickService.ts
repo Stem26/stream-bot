@@ -62,8 +62,7 @@ export class DickService {
       const growthText = this.formatGrowthText(growth);
       const message = 
         `@${username}, твой писюн ${growthText} см.\n` +
-        `Теперь он равен ${player.size} см.\n` +
-        `Следующая попытка завтра!`;
+        `Теперь он равен ${player.size} см.`;
 
       return { type: 'first_time', player, growth, message };
     }
@@ -81,8 +80,7 @@ export class DickService {
       const growthText = this.formatGrowthText(growth);
       const message = 
         `@${username}, твой писюн ${growthText} см.\n` +
-        `Теперь он равен ${player.size} см.\n` +
-        `Следующая попытка завтра!`;
+        `Теперь он равен ${player.size} см.`;
 
       return { type: 'success', player, growth, message };
     }

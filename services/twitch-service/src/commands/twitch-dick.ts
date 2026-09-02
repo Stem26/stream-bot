@@ -77,7 +77,7 @@ export async function processTwitchDickCommand(
         ? `уменьшился на ${Math.abs(growth)}`
         : `не изменился`;
 
-    return `@${twitchUsername}, твой писюн ${growthText} см. Теперь он равен ${player.size} см. Следующая попытка завтра!`;
+    return `@${twitchUsername}, твой писюн ${growthText} см. Теперь он равен ${player.size} см.`;
   } else if (canPlay && player) {
     const growth = await generateGrowth(normalizedUsername, players);
     player.size += growth;
@@ -93,7 +93,7 @@ export async function processTwitchDickCommand(
         ? `уменьшился на ${Math.abs(growth)}`
         : `не изменился`;
 
-    return `@${twitchUsername}, твой писюн ${growthText} см. Теперь он равен ${player.size} см. Следующая попытка завтра!`;
+    return `@${twitchUsername}, твой писюн ${growthText} см. Теперь он равен ${player.size} см.`;
   } else if (player) {
     const rank = await storage.getTwitchPlayerRank(players, normalizedUsername);
     return `@${twitchUsername}, ты уже играл. Сейчас он равен ${player.size} см. Ты занимаешь ${rank} место в топе. Следующая попытка завтра!`;
